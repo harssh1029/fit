@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutAnimation,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Platform,
   ScrollView,
   Text,
@@ -34,16 +32,15 @@ type RegisterScreenProps = NativeStackScreenProps<
 >;
 
 type Gender = "male" | "female" | "other";
+type FitnessLevel = "beginner" | "consistent" | "advanced";
 type FitnessGoal =
+  | "cardio"
   | "weight_loss"
-  | "muscle_gain"
-  | "endurance"
-  | "longevity"
-  | "strength_gain"
-  | "flexibility_mobility"
-  | "maintain_shape"
-  | "recovery";
-type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
+  | "strength"
+  | "stress"
+  | "stay_fit"
+  | "mobility";
+type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 type RegisterFormState = {
   username: string;
@@ -53,21 +50,24 @@ type RegisterFormState = {
   age: number;
   heightCm: number;
   weightKg: number;
+  pushups: number;
+  workoutsPerWeek: number;
+  fitnessLevel: FitnessLevel | null;
   goals: FitnessGoal[];
 };
 
-const NUMBER_PICKER_ITEM_HEIGHT = 64;
-const NUMBER_PICKER_FRAME_HEIGHT = 280; // keep in sync with authStyles.numberPickerFrame.height
+const STEP_COUNT = 5;
+const SCROLL_CHIP_WIDTH = 56;
 
 const STEP_TRANSITION_ANIMATION = {
-  duration: 240,
+  duration: 220,
   create: {
     type: LayoutAnimation.Types.easeInEaseOut,
     property: LayoutAnimation.Properties.opacity,
   },
   update: {
     type: LayoutAnimation.Types.easeInEaseOut,
-    springDamping: 0.85,
+    springDamping: 0.86,
   },
   delete: {
     type: LayoutAnimation.Types.easeInEaseOut,
@@ -75,271 +75,149 @@ const STEP_TRANSITION_ANIMATION = {
   },
 } as const;
 
-type NumberPickerProps = {
-  label: string;
-  min: number;
-  max: number;
-  value: number;
-  onChange: (value: number) => void;
-  isLight: boolean;
-  unit?: string;
-  showUnitToggle?: boolean;
-  unitOptions?: [string, string];
-  selectedUnit?: string;
-  onUnitChange?: (unit: string) => void;
-};
+const GOAL_OPTIONS: { key: FitnessGoal; label: string; icon: string }[] = [
+  { key: "cardio", label: "Cardio", icon: "pulse-outline" },
+  { key: "weight_loss", label: "Lose weight", icon: "trending-down-outline" },
+  { key: "strength", label: "Strength", icon: "barbell-outline" },
+  { key: "stress", label: "Reduce stress", icon: "leaf-outline" },
+  { key: "stay_fit", label: "Stay fit", icon: "shield-checkmark-outline" },
+  { key: "mobility", label: "Mobility", icon: "body-outline" },
+];
 
-const NumberPicker: React.FC<NumberPickerProps> = ({
-  label,
-  min,
-  max,
-  value,
-  onChange,
-  isLight,
-  unit,
-  showUnitToggle = false,
-  unitOptions,
-  selectedUnit,
-  onUnitChange,
-}) => {
-  const items = useMemo(
-    () => Array.from({ length: max - min + 1 }, (_, index) => min + index),
-    [min, max],
+const FITNESS_LEVELS: {
+  key: FitnessLevel;
+  title: string;
+  subtitle: string;
+  icon: string;
+}[] = [
+  {
+    key: "beginner",
+    title: "Beginner",
+    subtitle: "Getting consistent",
+    icon: "walk-outline",
+  },
+  {
+    key: "consistent",
+    title: "Intermediate",
+    subtitle: "Training weekly",
+    icon: "fitness-outline",
+  },
+  {
+    key: "advanced",
+    title: "Advanced",
+    subtitle: "Pushing performance",
+    icon: "flash-outline",
+  },
+];
+
+const buildNumberRange = (min: number, max: number, step = 1) =>
+  Array.from({ length: Math.floor((max - min) / step) + 1 }, (_, index) =>
+    min + index * step,
   );
 
-  const initialIndex = useMemo(() => {
-    const idx = items.indexOf(value);
-    return idx === -1 ? 0 : idx;
-  }, [items, value]);
+const ScrollValuePicker: React.FC<{
+  label: string;
+  value: number;
+  values: number[];
+  unit?: string;
+  isLight: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  onChange: (value: number) => void;
+}> = ({ label, value, values, unit, isLight, icon, onChange }) => {
+  const scrollRef = useRef<ScrollView>(null);
 
-  const [activeIndex, setActiveIndex] = useState(initialIndex);
-
-  const scrollRef = useRef<ScrollView | null>(null);
-  const lastScrollHapticIndexRef = useRef<number | null>(null);
-  const lastCommittedValueRef = useRef<number | null>(null);
-
-  const applyCanonicalValue = (newValue: number) => {
-    if (newValue !== value) {
-      onChange(newValue);
-    }
-  };
-
-  // Keep active index and scroll position in sync if the parent changes
-  // the value externally (e.g., when re-entering the screen or going back).
   useEffect(() => {
-    const idx = items.indexOf(value);
-    if (idx !== -1 && idx !== activeIndex) {
-      setActiveIndex(idx);
-      if (scrollRef.current) {
-        scrollRef.current.scrollTo({
-          y: idx * NUMBER_PICKER_ITEM_HEIGHT,
-          animated: false,
-        });
-      }
-    }
-  }, [items, value, activeIndex]);
-  // Lightweight visual update on scroll for smooth scaling/opacity.
-  const updateVisualIndexFromOffset = (yOffset: number) => {
-    const index = Math.round(yOffset / NUMBER_PICKER_ITEM_HEIGHT);
-    const clampedIndex = Math.min(items.length - 1, Math.max(0, index));
+    const selectedIndex = Math.max(values.indexOf(value), 0);
+    const offset = Math.max(0, selectedIndex * (SCROLL_CHIP_WIDTH + 8) - 84);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: offset, animated: true });
+    });
+  }, [value, values]);
 
-    if (clampedIndex === activeIndex) return;
-
-    setActiveIndex(clampedIndex);
-
-    // Haptic feedback once per integer change while scrolling
-    if (lastScrollHapticIndexRef.current !== clampedIndex) {
-      lastScrollHapticIndexRef.current = clampedIndex;
-      Haptics.selectionAsync().catch(() => {
-        // ignore haptic errors (e.g., unsupported platform)
-      });
-    }
+  const handleChange = (nextValue: number) => {
+    onChange(nextValue);
+    Haptics.selectionAsync().catch(() => {
+      // Haptics are best-effort and may be unavailable on some platforms.
+    });
   };
 
-  // Commit the final snapped value once scrolling has settled.
-  const commitSelectionFromOffset = (yOffset: number) => {
-    const index = Math.round(yOffset / NUMBER_PICKER_ITEM_HEIGHT);
-    const clampedIndex = Math.min(items.length - 1, Math.max(0, index));
-
-    const selectedValue = items[clampedIndex];
-
-    // If the snapped value is already selected, just ensure the
-    // visual index matches and exit without triggering another update.
-    if (selectedValue === value) {
-      if (activeIndex !== clampedIndex) {
-        setActiveIndex(clampedIndex);
-      }
-      return;
-    }
-
-    setActiveIndex(clampedIndex);
-    applyCanonicalValue(selectedValue);
-
-    // Distinct haptic for final snapped selection.
-    if (lastCommittedValueRef.current !== selectedValue) {
-      lastCommittedValueRef.current = selectedValue;
-      Haptics.selectionAsync().catch(() => {
-        // best-effort haptics; ignore errors
-      });
-    }
-  };
-
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const yOffset = event.nativeEvent.contentOffset.y;
-    updateVisualIndexFromOffset(yOffset);
-  };
-
-  const handleMomentumEnd = (
-    event: NativeSyntheticEvent<NativeScrollEvent>,
-  ) => {
-    const yOffset = event.nativeEvent.contentOffset.y;
-    commitSelectionFromOffset(yOffset);
-  };
-  // Default single-column layout
   return (
-    <View style={authStyles.numberPickerContainer}>
-      <Text
-        style={[
-          authStyles.numberPickerLabel,
-          isLight && authStyles.numberPickerLabelLight,
-        ]}
-      >
-        {label}
-      </Text>
-      <View
-        style={[
-          authStyles.numberPickerFrame,
-          !isLight && authStyles.numberPickerFrameDark,
-        ]}
-      >
-        <ScrollView
-          ref={scrollRef}
-          showsVerticalScrollIndicator={false}
-          snapToInterval={NUMBER_PICKER_ITEM_HEIGHT}
-          snapToAlignment="start"
-          decelerationRate="fast"
-          onScroll={handleScroll}
-          onMomentumScrollEnd={handleMomentumEnd}
-          contentContainerStyle={{
-            // Center the active item vertically between the two selection lines
-            paddingVertical:
-              (NUMBER_PICKER_FRAME_HEIGHT - NUMBER_PICKER_ITEM_HEIGHT) / 2,
-          }}
-          scrollEventThrottle={16}
-          nestedScrollEnabled
-        >
-          {items.map((item, index) => {
-            const distance =
-              activeIndex === -1
-                ? Number.POSITIVE_INFINITY
-                : Math.abs(index - activeIndex);
-            const isActive = distance === 0;
-            const isNear = distance === 1;
-            const isFar = distance >= 2;
-
-            return (
-              <View
-                key={item}
-                style={{
-                  height: NUMBER_PICKER_ITEM_HEIGHT,
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                {isActive ? (
-                  <View style={authStyles.numberPickerActiveContainer}>
-                    <Text
-                      style={[
-                        authStyles.numberPickerItemActive,
-                        isLight
-                          ? authStyles.numberPickerItemActiveLight
-                          : authStyles.numberPickerItemActiveDark,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-                    {unit && !showUnitToggle && (
-                      <Text
-                        style={[
-                          authStyles.numberPickerUnit,
-                          isLight
-                            ? authStyles.numberPickerUnitLight
-                            : authStyles.numberPickerUnitDark,
-                        ]}
-                      >
-                        {unit}
-                      </Text>
-                    )}
-                  </View>
-                ) : (
-                  <Text
-                    style={[
-                      authStyles.numberPickerItem,
-                      isLight
-                        ? authStyles.numberPickerItemLight
-                        : authStyles.numberPickerItemDark,
-                      isNear && authStyles.numberPickerItemNear,
-                      isFar && authStyles.numberPickerItemFar,
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-        <View
+    <View
+      style={[
+        authStyles.scrollPickerBlock,
+        isLight && authStyles.scrollPickerBlockLight,
+      ]}
+    >
+      <View style={authStyles.scrollPickerHeader}>
+        <View style={authStyles.scrollPickerLabelRow}>
+          <Ionicons
+            name={icon}
+            size={17}
+            color={isLight ? "#0070cc" : "#7DD3FC"}
+          />
+          <Text
+            style={[
+              authStyles.scrollPickerLabel,
+              isLight && authStyles.scrollPickerLabelLight,
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
+        <Text
           style={[
-            authStyles.numberPickerSelectionLine,
-            authStyles.numberPickerSelectionLineTop,
-            !isLight && authStyles.numberPickerSelectionLineDark,
-          ]}
-          pointerEvents="none"
-        />
-        <View
-          style={[
-            authStyles.numberPickerSelectionLine,
-            authStyles.numberPickerSelectionLineBottom,
-            !isLight && authStyles.numberPickerSelectionLineDark,
-          ]}
-          pointerEvents="none"
-        />
-      </View>
-      {showUnitToggle && unitOptions && selectedUnit && onUnitChange && (
-        <View
-          style={[
-            authStyles.unitToggleContainer,
-            isLight && authStyles.unitToggleContainerLight,
+            authStyles.scrollPickerValue,
+            isLight && authStyles.scrollPickerValueLight,
           ]}
         >
-          {unitOptions.map((unitOption) => (
-            <TouchableOpacity
-              key={unitOption}
+          {value}
+          {!!unit && (
+            <Text
               style={[
-                authStyles.unitToggleButton,
-                selectedUnit === unitOption &&
-                  (isLight
-                    ? authStyles.unitToggleButtonActiveLight
-                    : authStyles.unitToggleButtonActive),
+                authStyles.scrollPickerUnit,
+                isLight && authStyles.scrollPickerUnitLight,
               ]}
-              onPress={() => onUnitChange(unitOption)}
+            >
+              {" "}
+              {unit}
+            </Text>
+          )}
+        </Text>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        keyboardShouldPersistTaps="handled"
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={authStyles.scrollPickerTrack}
+      >
+        {values.map((item) => {
+          const selected = item === value;
+          return (
+            <TouchableOpacity
+              key={item}
+              style={[
+                authStyles.scrollPickerChip,
+                isLight && authStyles.scrollPickerChipLight,
+                selected && authStyles.scrollPickerChipSelected,
+              ]}
+              activeOpacity={0.85}
+              onPress={() => handleChange(item)}
             >
               <Text
                 style={[
-                  authStyles.unitToggleText,
-                  selectedUnit === unitOption &&
-                    (isLight
-                      ? authStyles.unitToggleTextActiveLight
-                      : authStyles.unitToggleTextActive),
+                  authStyles.scrollPickerChipText,
+                  isLight && authStyles.scrollPickerChipTextLight,
+                  selected && authStyles.scrollPickerChipTextSelected,
                 ]}
               >
-                {unitOption}
+                {item}
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
+          );
+        })}
+      </ScrollView>
     </View>
   );
 };
@@ -355,14 +233,52 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     password: "",
     gender: null,
     age: 25,
-    heightCm: 170,
+    heightCm: 172,
     weightKg: 70,
+    pushups: 15,
+    workoutsPerWeek: 3,
+    fitnessLevel: null,
     goals: [],
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isFirstStep = step === 1;
+  const ageValues = useMemo(() => buildNumberRange(16, 80), []);
+  const heightValues = useMemo(() => buildNumberRange(120, 220), []);
+  const weightValues = useMemo(() => buildNumberRange(40, 160), []);
+  const pushupValues = useMemo(() => buildNumberRange(0, 100, 5), []);
+  const workoutValues = useMemo(() => buildNumberRange(0, 7), []);
+
+  const stepMeta = useMemo(() => {
+    switch (step) {
+      case 1:
+        return {
+          title: "Create your account",
+          subtitle: "A clean start. This takes less than a minute.",
+        };
+      case 2:
+        return {
+          title: "Tell us about you",
+          subtitle: "Pick gender and age so training starts in the right lane.",
+        };
+      case 3:
+        return {
+          title: "Body metrics",
+          subtitle: "Scroll to your height and weight. No repeated tapping.",
+        };
+      case 4:
+        return {
+          title: "Fitness baseline",
+          subtitle: "A quick snapshot helps match your first plan.",
+        };
+      case 5:
+      default:
+        return {
+          title: "What's your goal?",
+          subtitle: "Choose up to three goals. You can change this later.",
+        };
+    }
+  }, [step]);
 
   const updateField = <K extends keyof RegisterFormState>(
     key: K,
@@ -374,64 +290,42 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     }));
   };
 
-  const validateStep = (currentStep: WizardStep): boolean => {
-    switch (currentStep) {
-      case 1: {
-        if (!form.username || !form.email || !form.password) {
-          setError("Please fill in username, email and password to continue.");
-          return false;
-        }
-        break;
+  const setNextStep = (nextStep: WizardStep) => {
+    LayoutAnimation.configureNext(STEP_TRANSITION_ANIMATION as any);
+    Haptics.selectionAsync().catch(() => {
+      // best-effort haptics
+    });
+    setStep(nextStep);
+  };
+
+  const validateStep = (currentStep: WizardStep) => {
+    if (currentStep === 1) {
+      if (!form.username.trim() || !form.email.trim() || !form.password) {
+        setError("Add username, email and password to continue.");
+        return false;
       }
-      case 2: {
-        if (!form.gender) {
-          setError("Please select your gender to continue.");
-          return false;
-        }
-        break;
-      }
-      case 6: {
-        if (!form.goals || form.goals.length === 0) {
-          setError("Please choose at least one fitness goal.");
-          return false;
-        }
-        break;
-      }
-      default:
-        break;
     }
+    if (currentStep === 2 && !form.gender) {
+      setError("Select gender to continue.");
+      return false;
+    }
+    if (currentStep === 4 && !form.fitnessLevel) {
+      setError("Choose your current fitness level.");
+      return false;
+    }
+    if (currentStep === 5 && form.goals.length === 0) {
+      setError("Choose at least one goal.");
+      return false;
+    }
+
     setError(null);
     return true;
   };
 
-  const onSubmit = async () => {
-    if (!validateStep(6)) {
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    try {
-      await signUp(form.username.trim(), form.email.trim(), form.password);
-      // Additional onboarding data (gender, age, metrics, goal) is kept in
-      // local state here. It can be wired into the backend request when the
-      // API supports these extra attributes.
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleNext = () => {
-    if (!validateStep(step)) {
-      return;
-    }
-    if (step < 6) {
-      LayoutAnimation.configureNext(STEP_TRANSITION_ANIMATION as any);
-      Haptics.selectionAsync().catch(() => {
-        // best-effort haptics; ignore errors
-      });
-      setStep((prev) => (prev + 1) as WizardStep);
+    if (!validateStep(step)) return;
+    if (step < STEP_COUNT) {
+      setNextStep((step + 1) as WizardStep);
     }
   };
 
@@ -440,419 +334,417 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
       navigation.replace("Login");
       return;
     }
-    LayoutAnimation.configureNext(STEP_TRANSITION_ANIMATION as any);
-    Haptics.selectionAsync().catch(() => {
-      // best-effort haptics; ignore errors
-    });
-    setStep((prev) => (prev - 1) as WizardStep);
+    setError(null);
+    setNextStep((step - 1) as WizardStep);
   };
 
-  const renderGenderOption = (value: Gender, label: string) => {
-    const isSelected = form.gender === value;
-    const iconName =
-      value === "male"
-        ? "male-outline"
-        : value === "female"
-          ? "female-outline"
-          : "person-outline";
-    return (
-      <TouchableOpacity
-        key={value}
-        style={[
-          authStyles.genderCard,
-          !isLight && authStyles.genderCardDark,
-          isSelected && authStyles.genderCardSelected,
-          !isLight && isSelected && authStyles.genderCardSelectedDark,
-        ]}
-        onPress={() => updateField("gender", value)}
-        activeOpacity={0.9}
-      >
-        <Ionicons
-          name={iconName}
-          size={32}
-          color={isSelected ? "#FFFFFF" : "#6B7280"}
-          style={authStyles.genderIcon}
-        />
-        <Text
-          style={[
-            authStyles.genderLabel,
-            isSelected && authStyles.genderLabelSelected,
-          ]}
-        >
-          {label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  const onSubmit = async () => {
+    if (!validateStep(5)) return;
+    setLoading(true);
+    setError(null);
 
-  const renderGoalOption = (value: FitnessGoal, label: string) => {
-    const isSelected = form.goals.includes(value);
-
-    const handleToggle = () => {
-      const nextGoals = isSelected
-        ? form.goals.filter((g) => g !== value)
-        : [...form.goals, value];
-
-      updateField("goals", nextGoals as RegisterFormState["goals"]);
-    };
-
-    return (
-      <TouchableOpacity
-        key={value}
-        style={[
-          authStyles.goalItem,
-          isLight ? authStyles.goalItemLight : authStyles.goalItemDark,
-          isSelected && authStyles.goalItemSelected,
-        ]}
-        onPress={handleToggle}
-        activeOpacity={0.9}
-      >
-        <Ionicons
-          name={isSelected ? "checkmark-circle" : "ellipse-outline"}
-          size={20}
-          color={isSelected ? "#2563EB" : "#9CA3AF"}
-        />
-        <Text
-          style={[
-            authStyles.goalItemLabel,
-            !isLight && authStyles.goalItemLabelDark,
-            isSelected && authStyles.goalItemLabelSelected,
-          ]}
-        >
-          {label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const getStepTitle = (): string => {
-    switch (step) {
-      case 2:
-        return "Tell us about yourself";
-      case 3:
-        return "How old are you?";
-      case 4:
-        return "What is your height?";
-      case 5:
-        return "What is your weight?";
-      case 6:
-        return "What's your goal?";
-      default:
-        return "";
+    try {
+      await signUp(form.username.trim(), form.email.trim(), form.password);
+      // The collected onboarding profile is kept locally until the backend
+      // exposes a profile-onboarding endpoint.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStepSubtitle = (): string => {
-    switch (step) {
-      case 2:
-        return "Share a few personal details to personalize your plan.";
-      case 3:
-        return "This helps us to create your personalized exercise plan.";
-      case 4:
-        return "We use this to tailor recommendations to you.";
-      case 5:
-        return "This helps us tune your plan to your body.";
-      case 6:
-        return "We will use this to build a plan that fits you best.";
-      default:
-        return "";
+  const toggleGoal = (goal: FitnessGoal) => {
+    const hasGoal = form.goals.includes(goal);
+    if (!hasGoal && form.goals.length >= 3) {
+      setError("Pick up to three goals for now.");
+      return;
     }
+    setError(null);
+    updateField(
+      "goals",
+      hasGoal ? form.goals.filter((item) => item !== goal) : [...form.goals, goal],
+    );
   };
+
+  const renderTextInput = (
+    icon: keyof typeof Ionicons.glyphMap,
+    placeholder: string,
+    value: string,
+    onChangeText: (value: string) => void,
+    options?: Partial<React.ComponentProps<typeof TextInput>>,
+  ) => (
+    <View style={[authStyles.inputRow, isLight && authStyles.inputRowLight]}>
+      <Ionicons
+        name={icon}
+        size={18}
+        color={isLight ? "#0070cc" : "#7DD3FC"}
+        style={authStyles.inputIcon}
+      />
+      <TextInput
+        style={[authStyles.inputField, !isLight && authStyles.inputFieldDark]}
+        placeholder={placeholder}
+        placeholderTextColor={isLight ? "#9CA3AF" : "#6B7280"}
+        value={value}
+        onChangeText={onChangeText}
+        {...options}
+      />
+    </View>
+  );
 
   const renderStepContent = () => {
-    switch (step) {
-      case 1:
-        return (
-          <View>
-            <Text style={authStyles.stepTitle}>Account setup</Text>
-            <Text style={authStyles.stepSubtitle}>
-              Choose your login details to secure your account.
-            </Text>
-
-            <View style={authStyles.inputRow}>
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color="#2563EB"
-                style={authStyles.inputIcon}
-              />
-              <TextInput
-                style={authStyles.inputField}
-                placeholder="Username"
-                placeholderTextColor="#9CA3AF"
-                value={form.username}
-                onChangeText={(text) => updateField("username", text)}
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={authStyles.inputRow}>
-              <Ionicons
-                name="mail-outline"
-                size={18}
-                color="#2563EB"
-                style={authStyles.inputIcon}
-              />
-              <TextInput
-                style={authStyles.inputField}
-                placeholder="E-mail ID"
-                placeholderTextColor="#9CA3AF"
-                value={form.email}
-                onChangeText={(text) => updateField("email", text)}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-
-            <View style={authStyles.inputRow}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={18}
-                color="#2563EB"
-                style={authStyles.inputIcon}
-              />
-              <TextInput
-                style={authStyles.inputField}
-                placeholder="Password"
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry
-                value={form.password}
-                onChangeText={(text) => updateField("password", text)}
-              />
-            </View>
-          </View>
-        );
-      case 2:
-        return (
-          <View>
-            <Text style={[authStyles.label, isLight && authStyles.labelLight]}>
-              Gender
-            </Text>
-            <View style={authStyles.genderCardsContainer}>
-              {renderGenderOption("male", "Male")}
-              {renderGenderOption("female", "Female")}
-              {renderGenderOption("other", "Other")}
-            </View>
-          </View>
-        );
-      case 3:
-        return (
-          <NumberPicker
-            label="Age"
-            min={16}
-            max={80}
-            value={form.age}
-            onChange={(value) => updateField("age", value)}
-            isLight={isLight}
-          />
-        );
-      case 4:
-        return (
-          <NumberPicker
-            label="Height"
-            min={120}
-            max={220}
-            value={form.heightCm}
-            onChange={(value) => updateField("heightCm", value)}
-            isLight={isLight}
-          />
-        );
-      case 5:
-        return (
-          <NumberPicker
-            label="Weight"
-            min={40}
-            max={160}
-            value={form.weightKg}
-            onChange={(value) => updateField("weightKg", value)}
-            isLight={isLight}
-          />
-        );
-      case 6:
-        return (
-          <View style={authStyles.goalList}>
-            {renderGoalOption("weight_loss", "Weight Loss")}
-            {renderGoalOption("muscle_gain", "Muscle Gain")}
-            {renderGoalOption("endurance", "Endurance")}
-            {renderGoalOption("strength_gain", "Gain Strength")}
-            {renderGoalOption("flexibility_mobility", "Flexibility & Mobility")}
-            {renderGoalOption("maintain_shape", "Maintain Shape")}
-            {renderGoalOption("longevity", "General Health / Longevity")}
-            {renderGoalOption("recovery", "Rehab / Recovery")}
-          </View>
-        );
-      default:
-        return null;
+    if (step === 1) {
+      return (
+        <View>
+          {renderTextInput("person-outline", "Username", form.username, (text) =>
+            updateField("username", text),
+          )}
+          {renderTextInput(
+            "mail-outline",
+            "Email",
+            form.email,
+            (text) => updateField("email", text),
+            {
+              autoCapitalize: "none",
+              keyboardType: "email-address",
+            },
+          )}
+          {renderTextInput(
+            "lock-closed-outline",
+            "Password",
+            form.password,
+            (text) => updateField("password", text),
+            {
+              secureTextEntry: true,
+            },
+          )}
+        </View>
+      );
     }
+
+    if (step === 2) {
+      return (
+        <View>
+          <View style={authStyles.compactOptionRow}>
+            {(["male", "female", "other"] as Gender[]).map((gender) => {
+              const selected = form.gender === gender;
+              const icon =
+                gender === "male"
+                  ? "male-outline"
+                  : gender === "female"
+                    ? "female-outline"
+                    : "person-outline";
+              return (
+                <TouchableOpacity
+                  key={gender}
+                  style={[
+                    authStyles.compactOptionCard,
+                    isLight && authStyles.compactOptionCardLight,
+                    selected && authStyles.compactOptionCardSelected,
+                  ]}
+                  activeOpacity={0.9}
+                  onPress={() => updateField("gender", gender)}
+                >
+                  <Ionicons
+                    name={icon}
+                    size={21}
+                    color={
+                      selected ? "#FFFFFF" : isLight ? "#111827" : "#D9E4F2"
+                    }
+                  />
+                  <Text
+                    style={[
+                      authStyles.compactOptionText,
+                      isLight && authStyles.compactOptionTextLight,
+                      selected && authStyles.compactOptionTextSelected,
+                    ]}
+                  >
+                    {gender === "male"
+                      ? "Male"
+                      : gender === "female"
+                        ? "Female"
+                        : "Other"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <ScrollValuePicker
+            label="Age"
+            value={form.age}
+            values={ageValues}
+            isLight={isLight}
+            icon="calendar-outline"
+            onChange={(value) => updateField("age", value)}
+          />
+        </View>
+      );
+    }
+
+    if (step === 3) {
+      return (
+        <View>
+          <ScrollValuePicker
+            label="Height"
+            value={form.heightCm}
+            values={heightValues}
+            unit="cm"
+            isLight={isLight}
+            icon="resize-outline"
+            onChange={(value) => updateField("heightCm", value)}
+          />
+          <ScrollValuePicker
+            label="Weight"
+            value={form.weightKg}
+            values={weightValues}
+            unit="kg"
+            isLight={isLight}
+            icon="scale-outline"
+            onChange={(value) => updateField("weightKg", value)}
+          />
+        </View>
+      );
+    }
+
+    if (step === 4) {
+      return (
+        <View>
+          <ScrollValuePicker
+            label="Pushups in one go"
+            value={form.pushups}
+            values={pushupValues}
+            isLight={isLight}
+            icon="body-outline"
+            onChange={(value) => updateField("pushups", value)}
+          />
+          <ScrollValuePicker
+            label="Workouts per week"
+            value={form.workoutsPerWeek}
+            values={workoutValues}
+            unit="/ wk"
+            isLight={isLight}
+            icon="barbell-outline"
+            onChange={(value) => updateField("workoutsPerWeek", value)}
+          />
+
+          <Text
+            style={[
+              authStyles.authSectionLabel,
+              isLight && authStyles.authSectionLabelLight,
+            ]}
+          >
+            Current level
+          </Text>
+          {FITNESS_LEVELS.map((level) => {
+            const selected = form.fitnessLevel === level.key;
+            return (
+              <TouchableOpacity
+                key={level.key}
+                style={[
+                  authStyles.levelCard,
+                  isLight && authStyles.levelCardLight,
+                  selected && authStyles.levelCardSelected,
+                ]}
+                activeOpacity={0.9}
+                onPress={() => updateField("fitnessLevel", level.key)}
+              >
+                <View
+                  style={[
+                    authStyles.levelIconCircle,
+                    selected && authStyles.levelIconCircleSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={level.icon as keyof typeof Ionicons.glyphMap}
+                    size={18}
+                    color={selected ? "#FFFFFF" : isLight ? "#0070cc" : "#7DD3FC"}
+                  />
+                </View>
+                <View style={authStyles.levelTextBlock}>
+                  <Text
+                    style={[
+                      authStyles.levelTitle,
+                      isLight && authStyles.levelTitleLight,
+                      selected && authStyles.levelTitleSelected,
+                    ]}
+                  >
+                    {level.title}
+                  </Text>
+                  <Text
+                    style={[
+                      authStyles.levelSubtitle,
+                      isLight && authStyles.levelSubtitleLight,
+                      selected && authStyles.levelSubtitleSelected,
+                    ]}
+                  >
+                    {level.subtitle}
+                  </Text>
+                </View>
+                {selected && (
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView
+        style={authStyles.goalListFrame}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+      >
+        {GOAL_OPTIONS.map((goal) => {
+          const selected = form.goals.includes(goal.key);
+          return (
+            <TouchableOpacity
+              key={goal.key}
+              style={[
+                authStyles.goalListItem,
+                isLight && authStyles.goalListItemLight,
+                selected && authStyles.goalListItemSelected,
+              ]}
+              activeOpacity={0.88}
+              onPress={() => toggleGoal(goal.key)}
+            >
+              <View
+                style={[
+                  authStyles.goalListIcon,
+                  selected && authStyles.goalListIconSelected,
+                ]}
+              >
+                <Ionicons
+                  name={goal.icon as keyof typeof Ionicons.glyphMap}
+                  size={18}
+                  color={selected ? "#FFFFFF" : isLight ? "#0070cc" : "#7DD3FC"}
+                />
+              </View>
+              <Text
+                style={[
+                  authStyles.goalListText,
+                  isLight && authStyles.goalListTextLight,
+                  selected && authStyles.goalListTextSelected,
+                ]}
+              >
+                {goal.label}
+              </Text>
+              <View
+                style={[
+                  authStyles.goalListCheck,
+                  selected && authStyles.goalListCheckSelected,
+                ]}
+              >
+                {selected && (
+                  <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
   };
 
   return (
-    <View
-      style={[
-        authStyles.container,
-        !isFirstStep && authStyles.containerWizard,
-        isLight && authStyles.containerLight,
-      ]}
-    >
-      {isFirstStep && <ThemeToggle isLight={isLight} onToggle={toggle} />}
+    <View style={[authStyles.onboardingRoot, isLight && authStyles.containerLight]}>
+      <View style={authStyles.onboardingTopBar}>
+        <TouchableOpacity
+          style={[
+            authStyles.onboardingIconButton,
+            isLight && authStyles.onboardingIconButtonLight,
+          ]}
+          activeOpacity={0.85}
+          onPress={handleBack}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color={isLight ? "#111827" : "#FFFFFF"}
+          />
+        </TouchableOpacity>
+        <ThemeToggle isLight={isLight} onToggle={toggle} />
+      </View>
 
-      {isFirstStep ? (
-        <>
-          <View style={[authStyles.authCard, authStyles.authCardShadow]}>
-            <View style={authStyles.segmentContainer}>
-              <TouchableOpacity
-                style={authStyles.segmentButton}
-                onPress={() => navigation.navigate("Login")}
-              >
-                <Text style={authStyles.segmentButtonText}>Login</Text>
-              </TouchableOpacity>
-              <View
-                style={[
-                  authStyles.segmentButton,
-                  authStyles.segmentButtonActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    authStyles.segmentButtonText,
-                    authStyles.segmentButtonTextActive,
-                  ]}
-                >
-                  Register
-                </Text>
-              </View>
-            </View>
-
-            <View style={authStyles.wizardDotsRow}>
-              {[1, 2, 3, 4, 5, 6].map((dotStep) => (
-                <View
-                  key={dotStep}
-                  style={[
-                    authStyles.wizardDot,
-                    step === dotStep && authStyles.wizardDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 4 }}
-              nestedScrollEnabled
-            >
-              {renderStepContent()}
-            </ScrollView>
-
-            {error && <Text style={authStyles.errorText}>{error}</Text>}
-
-            <View style={authStyles.wizardButtonRow}>
-              <TouchableOpacity
-                style={authStyles.secondaryButton}
-                onPress={handleBack}
-                disabled={loading}
-              >
-                <Text style={authStyles.secondaryButtonText}>
-                  {step === 1 ? "Back to Login" : "Back"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  authStyles.primaryButton,
-                  authStyles.wizardPrimaryButton,
-                  isLight && authStyles.primaryButtonLight,
-                  loading && authStyles.primaryButtonDisabled,
-                ]}
-                onPress={handleNext}
-                disabled={loading}
-              >
-                <Text style={authStyles.primaryButtonText}>Next</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity onPress={() => navigation.replace("Login")}>
-            <Text
-              style={[authStyles.linkText, isLight && authStyles.linkTextLight]}
-            >
-              Back to login
-            </Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <View style={authStyles.fullscreenWizard}>
-          <View style={authStyles.progressBarContainer}>
-            <View
-              style={[
-                authStyles.progressBarTrack,
-                !isLight && authStyles.progressBarTrackDark,
-              ]}
-            >
-              <View
-                style={[
-                  authStyles.progressBarFill,
-                  { width: `${(step / 6) * 100}%` },
-                ]}
-              />
-            </View>
-          </View>
-
-          <ScrollView
-            style={authStyles.fullscreenScroll}
-            contentContainerStyle={authStyles.fullscreenScrollContent}
-            showsVerticalScrollIndicator={false}
-            // On iOS, disable outer scrolling on NumberPicker steps so that
-            // vertical gestures are fully handled by the inner picker.
-            scrollEnabled={!(step === 3 || step === 4 || step === 5)}
-            nestedScrollEnabled
-            scrollEventThrottle={16}
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={authStyles.onboardingContent}
+      >
+        <View style={authStyles.onboardingHeader}>
+          <Text
+            style={[authStyles.onboardingTitle, isLight && authStyles.titleLight]}
           >
-            <View style={authStyles.fullscreenHeader}>
-              {!!getStepTitle() && (
-                <Text
-                  style={[
-                    authStyles.stepTitle,
-                    !isLight && authStyles.stepTitleDark,
-                  ]}
-                >
-                  {getStepTitle()}
-                </Text>
-              )}
-              {!!getStepSubtitle() && (
-                <Text
-                  style={[
-                    authStyles.stepSubtitle,
-                    !isLight && authStyles.stepSubtitleDark,
-                  ]}
-                >
-                  {getStepSubtitle()}
-                </Text>
-              )}
+            {stepMeta.title}
+          </Text>
+          <Text
+            style={[
+              authStyles.onboardingSubtitle,
+              isLight && authStyles.subtitleLight,
+            ]}
+          >
+            {stepMeta.subtitle}
+          </Text>
+        </View>
+
+        <View
+          style={[
+            authStyles.authCard,
+            authStyles.authCardShadow,
+            authStyles.registerCard,
+            isLight && authStyles.authCardLight,
+          ]}
+        >
+          <View style={authStyles.segmentContainer}>
+            <TouchableOpacity
+              style={authStyles.segmentButton}
+              onPress={() => navigation.replace("Login")}
+            >
+              <Text style={authStyles.segmentButtonText}>Login</Text>
+            </TouchableOpacity>
+            <View
+              style={[authStyles.segmentButton, authStyles.segmentButtonActive]}
+            >
+              <Text
+                style={[
+                  authStyles.segmentButtonText,
+                  authStyles.segmentButtonTextActive,
+                ]}
+              >
+                Register
+              </Text>
             </View>
+          </View>
 
-            <View style={authStyles.fullscreenBody}>{renderStepContent()}</View>
-          </ScrollView>
-
+          {renderStepContent()}
           {error && <Text style={authStyles.errorText}>{error}</Text>}
 
-          <View style={authStyles.wizardButtonRow}>
-            <TouchableOpacity
-              style={[
-                authStyles.secondaryButton,
-                isLight && authStyles.secondaryButtonLight,
-              ]}
-              onPress={handleBack}
-              disabled={loading}
-            >
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+          <View style={authStyles.registerFooter}>
+            <View style={authStyles.wizardDotsRow}>
+              {Array.from({ length: STEP_COUNT }, (_, index) => {
+                const dotStep = index + 1;
+                return (
+                  <View
+                    key={dotStep}
+                    style={[
+                      authStyles.wizardDot,
+                      dotStep <= step && authStyles.wizardDotActive,
+                    ]}
+                  />
+                );
+              })}
+            </View>
             <TouchableOpacity
               style={[
                 authStyles.primaryButton,
                 authStyles.wizardPrimaryButton,
-                isLight && authStyles.wizardPrimaryButtonLight,
                 loading && authStyles.primaryButtonDisabled,
               ]}
-              onPress={step === 6 ? onSubmit : handleNext}
+              activeOpacity={0.9}
+              onPress={step === STEP_COUNT ? onSubmit : handleNext}
               disabled={loading}
             >
               <Text
@@ -861,18 +753,30 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                   authStyles.wizardPrimaryButtonText,
                 ]}
               >
-                {step === 6 ? (loading ? "Creating…" : "Next") : "Next"}
+                {step === STEP_COUNT
+                  ? loading
+                    ? "Creating..."
+                    : "Create account"
+                  : "Next"}
               </Text>
               <Ionicons
                 name="arrow-forward"
-                size={20}
-                color="#1F2937"
-                style={{ marginLeft: 8 }}
+                size={18}
+                color="#FFFFFF"
+                style={authStyles.buttonEndIcon}
               />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => navigation.replace("Login")}>
+              <Text
+                style={[authStyles.linkText, isLight && authStyles.linkTextLight]}
+              >
+                Already have an account? Login
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      </ScrollView>
     </View>
   );
 };

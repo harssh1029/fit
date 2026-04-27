@@ -21,7 +21,7 @@ const RaceReadinessDetailScreen: React.FC<RaceReadinessDetailScreenProps> = ({
       style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
-      <View style={styles.homeHeaderRow}>
+      <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
         <View>
           <Text
             style={[

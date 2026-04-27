@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -14,31 +15,30 @@ import {
   LIGHT_TEXT_MUTED,
   DARK_TEXT_MUTED,
 } from "../../styles/theme";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlans } from "../../hooks/usePlans";
-import { useThemeMode, HeaderAvatar, styles } from "../../App";
+import { useThemeMode, styles } from "../../App";
 import type { PlansHomeProps } from "../../App";
 
 type PlanCardStatus = "preview" | "enrolled" | "completed";
 
 type PlanCardProps = {
   title: string;
-  tag: string;
   duration: string;
   level: string;
-  equipment: string[];
   enrolledCount: string;
   status: PlanCardStatus;
   onPress?: () => void;
 };
 
+const AnimatedTouchableOpacity =
+  Animated.createAnimatedComponent(TouchableOpacity);
+
 const PlanCard: React.FC<PlanCardProps> = ({
   title,
-  tag,
   duration,
   level,
-  equipment,
   enrolledCount,
   status,
   onPress,
@@ -46,17 +46,59 @@ const PlanCard: React.FC<PlanCardProps> = ({
   const { mode } = useThemeMode();
   const isLight = mode === "light";
   const metaIconColor = isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED;
+  const pressProgress = useRef(new Animated.Value(0)).current;
   const buttonLabel =
     status === "completed"
       ? "View completion details"
       : status === "enrolled"
-        ? "Switch to this plan"
+        ? "Current plan"
         : "Preview plan";
 
-  const iconColor = status === "enrolled" ? "#FFFFFF" : "#0F172A";
+  const iconColor =
+    status === "completed"
+      ? "#0F172A"
+      : status === "enrolled" && !isLight
+        ? "#0F172A"
+        : "#FFFFFF";
+
+  const animatePress = (toValue: number) => {
+    Animated.spring(pressProgress, {
+      toValue,
+      friction: 7,
+      tension: 90,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const animatedCardStyle = {
+    transform: [
+      {
+        translateY: pressProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -3],
+        }),
+      },
+      {
+        scale: pressProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.01],
+        }),
+      },
+    ],
+  };
 
   return (
-    <View style={[styles.planCard, isLight && styles.planCardLight]}>
+    <AnimatedTouchableOpacity
+      style={[
+        styles.planCard,
+        isLight && styles.planCardLight,
+        animatedCardStyle,
+      ]}
+      activeOpacity={0.96}
+      onPress={onPress}
+      onPressIn={() => animatePress(1)}
+      onPressOut={() => animatePress(0)}
+    >
       {status === "completed" && (
         <View style={styles.planCardCompletedBadge}>
           <Ionicons
@@ -67,87 +109,56 @@ const PlanCard: React.FC<PlanCardProps> = ({
         </View>
       )}
 
-      <View style={styles.planCardHeaderRow}>
-        <View>
+      <View
+        style={[
+          styles.planCardAccent,
+          status === "enrolled" && styles.planCardAccentEnrolled,
+        ]}
+      />
+
+      <View style={styles.planCardTitleBlock}>
+        <Text
+          style={[
+            styles.planCardTitle,
+            isLight ? styles.planCardTitleLight : styles.planCardTitleDark,
+          ]}
+        >
+          {title}
+        </Text>
+        <View style={styles.planCardDurationRow}>
+          <Ionicons name="calendar-outline" size={15} color={metaIconColor} />
           <Text
             style={[
-              styles.planCardTitle,
-              isLight ? styles.planCardTitleLight : styles.planCardTitleDark,
+              styles.planCardDurationText,
+              isLight
+                ? styles.planCardDurationTextLight
+                : styles.planCardDurationTextDark,
             ]}
           >
-            {title}
+            {duration}
           </Text>
-          <View style={styles.planCardTagPill}>
-            <Text
-              style={[
-                styles.planCardTagLabel,
-                isLight
-                  ? styles.planCardTagLabelLight
-                  : styles.planCardTagLabelDark,
-              ]}
-            >
-              {tag}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.planCardMetaColumn}>
-          <View style={styles.planCardMetaRow}>
-            <Ionicons name="time-outline" size={14} color={metaIconColor} />
-            <Text
-              style={[
-                styles.planCardMetaText,
-                isLight
-                  ? styles.planCardMetaTextLight
-                  : styles.planCardMetaTextDark,
-              ]}
-            >
-              {duration}
-            </Text>
-          </View>
-          <View style={styles.planCardMetaRow}>
-            <Ionicons name="flame-outline" size={14} color={metaIconColor} />
-            <Text
-              style={[
-                styles.planCardMetaText,
-                isLight
-                  ? styles.planCardMetaTextLight
-                  : styles.planCardMetaTextDark,
-              ]}
-            >
-              {level}
-            </Text>
-          </View>
         </View>
       </View>
 
-      <View style={styles.planCardFooterRow}>
-        <View style={styles.planCardEquipmentRow}>
-          {equipment.includes("dumbbells") && (
-            <View style={styles.planCardEquipIcon}>
-              <Ionicons
-                name="barbell-outline"
-                size={16}
-                color={metaIconColor}
-              />
-            </View>
-          )}
-          {equipment.includes("bodyweight") && (
-            <View style={styles.planCardEquipIcon}>
-              <Ionicons name="person-outline" size={16} color={metaIconColor} />
-            </View>
-          )}
-          {equipment.includes("barbell") && (
-            <View style={styles.planCardEquipIcon}>
-              <Ionicons
-                name="barbell-outline"
-                size={16}
-                color={metaIconColor}
-              />
-            </View>
-          )}
+      <View style={styles.planCardMetaStrip}>
+        <View
+          style={[
+            styles.planCardMetaChip,
+            isLight && styles.planCardMetaChipLight,
+          ]}
+        >
+          <Ionicons name="flame-outline" size={14} color={metaIconColor} />
+          <Text
+            style={[
+              styles.planCardMetaText,
+              isLight
+                ? styles.planCardMetaTextLight
+                : styles.planCardMetaTextDark,
+            ]}
+          >
+            {level}
+          </Text>
         </View>
-
         <View style={styles.planCardEnrolledRow}>
           <Ionicons name="people-outline" size={14} color={metaIconColor} />
           <Text
@@ -163,31 +174,34 @@ const PlanCard: React.FC<PlanCardProps> = ({
         </View>
       </View>
 
-      <TouchableOpacity
+      <View
         style={[
           styles.planCardButton,
           status === "completed"
             ? styles.planCardButtonCompleted
             : status === "enrolled"
-              ? styles.planCardButtonEnrolled
+              ? isLight
+                ? styles.planCardButtonEnrolledLight
+                : styles.planCardButtonEnrolledDark
               : styles.planCardButtonPreview,
         ]}
-        activeOpacity={0.9}
-        onPress={onPress}
       >
         <Text
           style={[
             styles.planCardButtonLabel,
             status === "completed" && styles.planCardButtonLabelCompleted,
-            status === "enrolled" && styles.planCardButtonLabelEnrolled,
+            status === "enrolled" &&
+              (isLight
+                ? styles.planCardButtonLabelEnrolledLight
+                : styles.planCardButtonLabelEnrolledDark),
             status === "preview" && styles.planCardButtonLabelPreview,
           ]}
         >
           {buttonLabel}
         </Text>
         <Ionicons name="chevron-forward" size={16} color={iconColor} />
-      </TouchableOpacity>
-    </View>
+      </View>
+    </AnimatedTouchableOpacity>
   );
 };
 
@@ -203,16 +217,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
   const { plans, loading: plansLoading, error: plansError } = usePlans();
 
   const [activeFilter, setActiveFilter] = useState<string>("All");
-  const planFilters = [
-    "All",
-    "Most enrolled",
-    "New",
-    "Running/Cardio",
-    "Strength",
-    "Bodyweight",
-    "Home",
-    "Completed",
-  ];
+  const planFilters = ["All", "Popular", "New", "Cardio", "Strength"];
 
   const activePlanId = profile?.profile.active_plan_id;
   const activePlan = activePlanId
@@ -224,30 +229,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your plans
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plans"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
           <Text style={styles.loadingText}>Loading plans…</Text>
@@ -261,30 +248,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your plans
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plans"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Plans
         </Text>
@@ -298,30 +267,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your plans
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plans"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Plans
         </Text>
@@ -344,31 +295,18 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
       contentContainerStyle={styles.plansScrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <View style={{ paddingHorizontal: 20 }}>
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your plans
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+      <View
+        style={[
+          styles.plansTopHeader,
+          isLight && styles.plansTopHeaderLight,
+        ]}
+      >
+        <AppHeader
+          isLight={isLight}
+          title="Your plans"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+        />
       </View>
 
       {activePlan && (
@@ -378,25 +316,36 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
             isLight && styles.plansHeaderContainerLight,
           ]}
         >
-          <View style={styles.plansHeaderRow}>
-            <Text
-              style={[
-                styles.plansHeaderTitle,
-                isLight
-                  ? styles.plansHeaderTitleLight
-                  : styles.plansHeaderTitleDark,
-              ]}
-            >
-              Your Plan
-            </Text>
-          </View>
-
           <View
             style={[
               styles.plansActiveCard,
               isLight && styles.plansActiveCardLight,
             ]}
           >
+            <View style={styles.plansActiveKickerRow}>
+              <View
+                style={[
+                  styles.plansActiveKickerPill,
+                  isLight && styles.plansActiveKickerPillLight,
+                ]}
+              >
+                <Ionicons
+                  name="navigate-circle-outline"
+                  size={15}
+                  color={isLight ? "#0070cc" : "#7DD3FC"}
+                />
+                <Text
+                  style={[
+                    styles.plansActiveKickerText,
+                    isLight
+                      ? styles.plansActiveKickerTextLight
+                      : styles.plansActiveKickerTextDark,
+                  ]}
+                >
+                  Current guide
+                </Text>
+              </View>
+            </View>
             <View style={styles.plansActiveTitleRow}>
               <View style={styles.plansActiveTitlePillRow}>
                 <Text
@@ -406,6 +355,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                       ? styles.plansActiveTitleLight
                       : styles.plansActiveTitleDark,
                   ]}
+                  numberOfLines={2}
                 >
                   {activePlan.name}
                 </Text>
@@ -446,6 +396,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                       ? styles.plansNextValueLight
                       : styles.plansNextValueDark,
                   ]}
+                  numberOfLines={1}
                 >
                   Tomorrow • Full body
                 </Text>
@@ -477,7 +428,10 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
 
             <View style={styles.plansActiveButtonsRow}>
               <TouchableOpacity
-                style={styles.plansPrimaryButton}
+                style={[
+                  styles.plansPrimaryButton,
+                  isLight && styles.plansPrimaryButtonLight,
+                ]}
                 activeOpacity={0.9}
                 onPress={() =>
                   navigation.navigate("PlanDetail", { planId: activePlan.id })
@@ -486,7 +440,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text style={styles.plansPrimaryButtonLabel}>View plan</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.plansSecondaryButton}
+                style={[
+                  styles.plansSecondaryButton,
+                  isLight
+                    ? styles.plansSecondaryButtonLight
+                    : styles.plansSecondaryButtonDark,
+                ]}
                 activeOpacity={0.9}
               >
                 <Text
@@ -517,6 +476,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               key={filter}
               style={[
                 styles.planFilterPill,
+                isLight
+                  ? styles.planFilterPillLight
+                  : styles.planFilterPillDark,
                 isActive && styles.planFilterPillActive,
               ]}
               activeOpacity={0.9}
@@ -525,6 +487,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <Text
                 style={[
                   styles.planFilterLabel,
+                  isLight
+                    ? styles.planFilterLabelLight
+                    : styles.planFilterLabelDark,
                   isActive && styles.planFilterLabelActive,
                 ]}
               >
@@ -539,7 +504,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
         <View style={styles.planSection}>
           <View style={styles.planSectionHeader}>
             <Ionicons
-              name="ribbon-outline"
+              name="compass-outline"
               size={20}
               color={sectionIconColor}
               style={styles.planSectionHeaderIcon}
@@ -552,7 +517,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   : styles.planSectionTitleDark,
               ]}
             >
-              Available plans
+              Workout guides
             </Text>
           </View>
 
@@ -561,10 +526,8 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <PlanCard
                 key={plan.id}
                 title={plan.name}
-                tag={plan.goal}
                 duration={`${plan.durationWeeks} weeks · ${plan.sessionsPerWeek} days/wk`}
                 level={plan.level.charAt(0).toUpperCase() + plan.level.slice(1)}
-                equipment={["Full program"]}
                 enrolledCount="–"
                 status={activePlanId === plan.id ? "enrolled" : "preview"}
                 onPress={() =>

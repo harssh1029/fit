@@ -20,7 +20,7 @@ import {
   LIGHT_TEXT_MUTED,
   GLASS_TEXT_MUTED,
 } from "../../styles/theme";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
 import { API_BASE_URL } from "../../api/client";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import { useWorkoutHistory } from "../../hooks/useWorkoutHistory";
@@ -33,7 +33,6 @@ import {
   useThemeMode,
   useExercisePrs,
   useAuth,
-  HeaderAvatar,
   styles,
   type PlanDayDetail,
   SAMPLE_ACTIVE_WORKOUTS,
@@ -1412,30 +1411,12 @@ const HomeScreen: React.FC = () => {
         contentContainerStyle={styles.homeScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              Good morning,
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Ready to train?
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Ready to train?"
+          greetingText="Good morning,"
+          onThemeToggle={toggle}
+        />
 
         {/* Active workouts / nutrition hero card */}
         <View
@@ -1812,7 +1793,11 @@ const HomeScreen: React.FC = () => {
                   }
                 }
                 const iconSize = isActive ? 24 : 22;
-                const iconColor = isLight ? "#1E293B" : "#F9FAFB";
+                const iconColor = isActive
+                  ? "#FFFFFF"
+                  : isLight
+                    ? "#1E293B"
+                    : "#F9FAFB";
                 return (
                   <View
                     key={key}

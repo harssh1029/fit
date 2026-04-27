@@ -2,12 +2,8 @@ import { StyleSheet } from "react-native";
 
 import {
   DARK_BG,
-  DARK_TEXT_PRIMARY,
-  DARK_TEXT_MUTED,
   LIGHT_BG,
-  LIGHT_TEXT_PRIMARY,
   LIGHT_TEXT_MUTED,
-  GLASS_BORDER_DARK,
   GLASS_TEXT_PRIMARY,
   GLASS_TEXT_MUTED,
   GLASS_ACCENT_GREEN,
@@ -22,13 +18,83 @@ export const authStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 32,
   },
+  onboardingRoot: {
+    flex: 1,
+    backgroundColor: "#050814",
+    paddingHorizontal: 20,
+    paddingTop: 18,
+  },
+  onboardingTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  authBrandPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#101624",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  authBrandPillLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+  },
+  authBrandText: {
+    marginLeft: 7,
+    color: "#F5F7FA",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  authBrandTextLight: {
+    color: "#111827",
+  },
+  onboardingIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#101624",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  onboardingIconButtonLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+  },
+  onboardingHeader: {
+    alignItems: "center",
+    paddingTop: 46,
+    paddingHorizontal: 12,
+    paddingBottom: 18,
+  },
+  onboardingTitle: {
+    color: "#F5F7FA",
+    fontSize: 26,
+    fontWeight: "700",
+    textAlign: "center",
+    letterSpacing: 0,
+  },
+  onboardingSubtitle: {
+    marginTop: 10,
+    color: "#A7B0C3",
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  onboardingContent: {
+    paddingBottom: 24,
+  },
+  onboardingFooter: {
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
   containerLight: {
     backgroundColor: LIGHT_BG,
-  },
-  containerWizard: {
-    paddingTop: 4,
-    paddingHorizontal: 0,
-    paddingBottom: 0,
   },
   title: {
     fontSize: 28,
@@ -50,10 +116,16 @@ export const authStyles = StyleSheet.create({
   // Shared auth card used for the new Login / Register layouts
   authCard: {
     marginTop: 24,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#101624",
     borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  authCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
   },
   authCardShadow: {
     shadowColor: "#000000",
@@ -62,13 +134,21 @@ export const authStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  registerCard: {
+    marginTop: 6,
+  },
+  registerFooter: {
+    paddingTop: 14,
+  },
   // Segmented control for Login / Register toggle inside the card
   segmentContainer: {
     flexDirection: "row",
-    backgroundColor: "#EEF2FF",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 999,
     padding: 4,
-    marginBottom: 24,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.12)",
   },
   segmentButton: {
     flex: 1,
@@ -87,47 +167,27 @@ export const authStyles = StyleSheet.create({
   },
   segmentButtonText: {
     fontSize: 14,
-    fontWeight: "500",
-    color: "#6B7280",
+    fontWeight: "700",
+    color: "#A7B0C3",
   },
   segmentButtonTextActive: {
     color: "#FFFFFF",
-  },
-  fieldGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    color: DARK_TEXT_MUTED,
-    marginBottom: 4,
-  },
-  labelLight: {
-    color: LIGHT_TEXT_MUTED,
-  },
-  input: {
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: "#CCCCCC",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#1F1F1F",
-    backgroundColor: "#FFFFFF",
-  },
-  inputLight: {
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-    color: "#111827",
   },
   // Input row with leading icon used in the new card design
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 3,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#CCCCCC",
+    borderColor: "rgba(125,211,252,0.18)",
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+    backgroundColor: "#101624",
+  },
+  inputRowLight: {
     backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
   },
   inputIcon: {
     marginRight: 12,
@@ -136,7 +196,10 @@ export const authStyles = StyleSheet.create({
   inputField: {
     flex: 1,
     fontSize: 16,
-    color: "#1F1F1F",
+    color: "#111827",
+  },
+  inputFieldDark: {
+    color: "#F5F7FA",
   },
   errorText: {
     color: PS_WARNING_RED,
@@ -161,357 +224,288 @@ export const authStyles = StyleSheet.create({
     color: GLASS_TEXT_PRIMARY,
     fontWeight: "500",
   },
-  // Wizard-specific layout inside the auth card
-  progressBarContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    paddingTop: 0,
-  },
-  progressBarTrack: {
-    height: 4,
-    width: "100%",
-    backgroundColor: "#E5E7EB",
-    borderRadius: 0,
-    overflow: "hidden",
-  },
-  progressBarTrackDark: {
-    backgroundColor: "#374151",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-    borderRadius: 0,
-  },
   wizardDotsRow: {
     flexDirection: "row",
     justifyContent: "center",
-    marginBottom: 32,
-    paddingTop: 8,
+    marginBottom: 14,
+    paddingTop: 0,
   },
   wizardDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 999,
-    backgroundColor: "#4B5563",
-    marginHorizontal: 5,
+    backgroundColor: "rgba(148,163,184,0.38)",
+    marginHorizontal: 4,
   },
   wizardDotActive: {
-    width: 8,
-    height: 8,
-    backgroundColor: "#3B82F6",
-  },
-  stepTitle: {
-    fontSize: 28,
-    fontWeight: "300", // Mid Display per DESIGN.md
-    letterSpacing: 0.1,
-    color: "#111827",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  stepTitleDark: {
-    color: "#FFFFFF",
-  },
-  stepSubtitle: {
-    fontSize: 15,
-    color: "#6B7280",
-    lineHeight: 22,
-    textAlign: "center",
-  },
-  stepSubtitleDark: {
-    color: "#9CA3AF",
-  },
-  wizardButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 16,
-  },
-  fullscreenHeader: {
-    paddingHorizontal: 32,
-    paddingTop: 24,
-    paddingBottom: 0,
-    alignItems: "center",
-  },
-  fullscreenBody: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 0,
-  },
-  secondaryButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 0,
-    backgroundColor: "#6B7280",
-  },
-  secondaryButtonLight: {
-    backgroundColor: "#9CA3AF",
-  },
-  secondaryButtonText: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    fontWeight: "500",
+    width: 18,
+    backgroundColor: PS_BLUE,
   },
   wizardPrimaryButton: {
-    flex: 1,
     marginTop: 0,
-    marginLeft: 16,
-    paddingVertical: 16,
-    backgroundColor: "#2563EB",
+    paddingVertical: 15,
+    backgroundColor: PS_BLUE,
     borderColor: "transparent",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: PS_BLUE,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   wizardPrimaryButtonLight: {
     backgroundColor: "#2563EB",
   },
   wizardPrimaryButtonText: {
     color: "#FFFFFF",
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  fullscreenWizard: {
-    flex: 1,
-    position: "relative",
-    overflow: "hidden",
-    paddingTop: 4,
-  },
-  fullscreenScroll: {
-    flex: 1,
-  },
-  fullscreenScrollContent: {
-    flexGrow: 1,
-  },
-  goalList: {
-    marginTop: 16,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  goalItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginHorizontal: 6,
-    marginVertical: 8,
-    minWidth: 150,
-  },
-  goalItemLight: {
-    borderColor: "#E5E7EB",
-    backgroundColor: "#EEF2FF",
-  },
-  goalItemDark: {
-    borderColor: "#1F2937",
-    backgroundColor: "#111827",
-  },
-  goalItemSelected: {
-    borderColor: "#2563EB",
-    backgroundColor: "#2563EB",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  goalItemLabel: {
-    marginLeft: 10,
-    fontSize: 17,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  goalItemLabelDark: {
-    color: "#E5E7EB",
-  },
-  goalItemLabelSelected: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  genderCardsContainer: {
-    marginTop: 8,
-    marginBottom: 8,
-    alignItems: "center",
-  },
-  genderCard: {
-    width: "80%",
-    borderRadius: 24,
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-    marginBottom: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  genderCardSelected: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
-  },
-  genderCardDark: {
-    backgroundColor: "#1F2937",
-    borderColor: "#4B5563",
-  },
-  genderCardSelectedDark: {
-    backgroundColor: "#DC2626",
-    borderColor: "#F97373",
-  },
-  genderIcon: {
-    marginBottom: 4,
-  },
-  genderLabel: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  genderLabelSelected: {
-    color: "#FFFFFF",
-  },
-  numberPickerContainer: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  numberPickerLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#9CA3AF",
-    marginBottom: 32,
-    textAlign: "center",
-  },
-  numberPickerLabelLight: {
-    color: "#6B7280",
-  },
-  numberPickerFrame: {
-    marginTop: 0,
-    width: "100%",
-    height: 280,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    overflow: "hidden",
-    position: "relative",
-  },
-  numberPickerFrameDark: {
-    backgroundColor: "transparent",
-  },
-  numberPickerActiveContainer: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "center",
-  },
-  numberPickerItem: {
-    fontSize: 32,
-    fontWeight: "400",
-  },
-  numberPickerItemLight: {
-    color: "rgba(0, 0, 0, 0.35)",
-  },
-  numberPickerItemDark: {
-    color: "rgba(255, 255, 255, 0.4)",
-  },
-  numberPickerItemNear: {
-    fontSize: 48,
-    fontWeight: "600",
-  },
-  numberPickerItemFar: {
-    opacity: 0.25,
-  },
-  numberPickerItemActive: {
-    fontSize: 80,
-    fontWeight: "800",
-  },
-  numberPickerItemActiveLight: {
-    color: "#1F2937",
-  },
-  numberPickerItemActiveDark: {
-    color: "#FFFFFF",
-  },
-  numberPickerUnit: {
-    fontSize: 18,
-    fontWeight: "500",
+  buttonEndIcon: {
     marginLeft: 8,
   },
-  numberPickerUnitLight: {
-    color: "#6B7280",
-  },
-  numberPickerUnitDark: {
-    color: "#9CA3AF",
-  },
-  // Selection lines framing the active area (replaces old highlight band)
-  numberPickerSelectionLine: {
-    position: "absolute",
-    left: 32,
-    right: 32,
-    height: 2,
-    backgroundColor: "rgba(148, 163, 184, 0.7)",
-  },
-  numberPickerSelectionLineDark: {
-    backgroundColor: "rgba(209, 213, 219, 0.95)",
-  },
-  // With frame height 280 and item height 64, these positions
-  // place the lines exactly at the top and bottom of the active row.
-  numberPickerSelectionLineTop: {
-    top: 108, // (280 - 64) / 2
-  },
-  numberPickerSelectionLineBottom: {
-    top: 172, // (280 + 64) / 2
-  },
-  numberPickerSeparator: {
-    fontSize: 72,
-    fontWeight: "800",
-  },
-  numberPickerSeparatorLight: {
-    color: "#1F2937",
-  },
-  numberPickerSeparatorDark: {
-    color: "#FFFFFF",
-  },
-  unitToggleContainer: {
-    marginTop: 24,
+  compactOptionRow: {
     flexDirection: "row",
-    backgroundColor: "#374151",
-    borderRadius: 999,
-    padding: 4,
-    alignSelf: "center",
+    marginHorizontal: -4,
+    marginBottom: 14,
   },
-  unitToggleContainerLight: {
-    backgroundColor: "#E5E7EB",
-  },
-  unitToggleButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 999,
-    minWidth: 60,
+  compactOptionCard: {
+    flex: 1,
+    minHeight: 82,
+    marginHorizontal: 4,
+    borderRadius: 20,
+    backgroundColor: "#101624",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
-  unitToggleButtonActive: {
-    backgroundColor: "#1F2937",
-  },
-  unitToggleButtonActiveLight: {
+  compactOptionCardLight: {
     backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
   },
-  unitToggleText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#9CA3AF",
+  compactOptionCardSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
   },
-  unitToggleTextActive: {
+  compactOptionText: {
+    marginTop: 7,
+    color: "#D9E4F2",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  compactOptionTextLight: {
+    color: "#111827",
+  },
+  compactOptionTextSelected: {
     color: "#FFFFFF",
   },
-  unitToggleTextActiveLight: {
-    color: "#1F2937",
+  scrollPickerBlock: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    backgroundColor: "#0B1020",
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  scrollPickerBlockLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+  },
+  scrollPickerHeader: {
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  scrollPickerLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scrollPickerLabel: {
+    marginLeft: 7,
+    color: "#A7B0C3",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  scrollPickerLabelLight: {
+    color: "#64748B",
+  },
+  scrollPickerValue: {
+    color: "#F5F7FA",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  scrollPickerValueLight: {
+    color: "#111827",
+  },
+  scrollPickerUnit: {
+    color: "#A7B0C3",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  scrollPickerUnitLight: {
+    color: "#64748B",
+  },
+  scrollPickerTrack: {
+    paddingHorizontal: 12,
+  },
+  scrollPickerChip: {
+    width: 56,
+    height: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.14)",
+  },
+  scrollPickerChipLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+  },
+  scrollPickerChipSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
+  },
+  scrollPickerChipText: {
+    color: "#C8D2E3",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  scrollPickerChipTextLight: {
+    color: "#475569",
+  },
+  scrollPickerChipTextSelected: {
+    color: "#FFFFFF",
+  },
+  authSectionLabel: {
+    marginTop: 14,
+    marginBottom: 8,
+    color: "#D9E4F2",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  authSectionLabelLight: {
+    color: "#111827",
+  },
+  levelCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    padding: 13,
+    marginBottom: 9,
+    backgroundColor: "#101624",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  levelCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+  },
+  levelCardSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
+  },
+  levelIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(125,211,252,0.1)",
+    marginRight: 11,
+  },
+  levelIconCircleSelected: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  levelTextBlock: {
+    flex: 1,
+  },
+  levelTitle: {
+    color: "#F5F7FA",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  levelTitleLight: {
+    color: "#111827",
+  },
+  levelTitleSelected: {
+    color: "#FFFFFF",
+  },
+  levelSubtitle: {
+    marginTop: 2,
+    color: "#A7B0C3",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  levelSubtitleLight: {
+    color: "#64748B",
+  },
+  levelSubtitleSelected: {
+    color: "rgba(255,255,255,0.82)",
+  },
+  goalListFrame: {
+    maxHeight: 330,
+  },
+  goalListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 9,
+    backgroundColor: "#0B1020",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  goalListItemLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+  },
+  goalListItemSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
+  },
+  goalListIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(125,211,252,0.1)",
+    marginRight: 10,
+  },
+  goalListIconSelected: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  goalListText: {
+    flex: 1,
+    color: "#D9E4F2",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  goalListTextLight: {
+    color: "#111827",
+  },
+  goalListTextSelected: {
+    color: "#FFFFFF",
+  },
+  goalListCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.42)",
+  },
+  goalListCheckSelected: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.42)",
   },
   linkText: {
     color: GLASS_ACCENT_GREEN,
@@ -550,6 +544,9 @@ export const authStyles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
   },
+  rememberLabelDark: {
+    color: "#A7B0C3",
+  },
   forgotPasswordText: {
     fontSize: 13,
     color: "#2563EB",
@@ -564,7 +561,7 @@ export const authStyles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "rgba(148,163,184,0.2)",
   },
   dividerText: {
     marginHorizontal: 12,
@@ -586,6 +583,10 @@ export const authStyles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: "#FFFFFF",
   },
+  socialButtonDark: {
+    backgroundColor: "#0B1020",
+    borderColor: "rgba(125,211,252,0.16)",
+  },
   socialButtonLeft: {
     marginRight: 12,
   },
@@ -594,5 +595,8 @@ export const authStyles = StyleSheet.create({
     fontSize: 14,
     color: "#111827",
     fontWeight: "500",
+  },
+  socialButtonTextDark: {
+    color: "#F5F7FA",
   },
 });

@@ -2,10 +2,7 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import {
-	GLASS_BORDER_DARK,
-	GLASS_CARD_DARK,
-} from "../styles/theme";
+import { PS_BLUE } from "../styles/theme";
 
 type ThemeToggleProps = {
 	isLight: boolean;
@@ -56,16 +53,23 @@ const styles = StyleSheet.create({
 	themeToggle: {
 		alignSelf: "flex-end",
 		paddingHorizontal: 12,
-		paddingVertical: 6,
+		paddingVertical: 7,
 		borderRadius: 999,
 		borderWidth: 1,
-		borderColor: GLASS_BORDER_DARK,
-		backgroundColor: GLASS_CARD_DARK,
+		borderColor: "rgba(125,211,252,0.18)",
+		backgroundColor: "#182238",
 		marginBottom: 12,
+		shadowColor: "#000000",
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
+		shadowOffset: { width: 0, height: 3 },
+		elevation: 2,
 	},
 	themeToggleLight: {
-		borderColor: "rgba(148, 163, 184, 0.45)",
-		backgroundColor: "rgba(15, 23, 42, 0.04)",
+		borderColor: "#DDE3ED",
+		backgroundColor: "#F8FAFC",
+		shadowColor: "#94A3B8",
+		shadowOpacity: 0.06,
 	},
 	themeToggleInHeader: {
 		alignSelf: "center",
@@ -81,9 +85,9 @@ const styles = StyleSheet.create({
 	themeToggleLabel: {
 		color: "#e5e7eb",
 		fontSize: 12,
-		fontWeight: "500",
+		fontWeight: "700",
 	},
 	themeToggleLabelLight: {
-		color: "#111827",
+		color: PS_BLUE,
 	},
 });

@@ -31,13 +31,12 @@ import {
   PS_BLUE,
   PS_CYAN,
 } from "../../styles/theme";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useChallenges } from "../../hooks/useChallenges";
 import type { ApiChallenge, ChallengeStatus } from "../../types/challenges";
 import {
   useThemeMode,
-  HeaderAvatar,
   styles,
   type ViewWorkoutWeek,
   type ViewWorkoutDay,
@@ -750,30 +749,12 @@ const ChallengesScreen: React.FC = () => {
       <SafeAreaView
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {challengesUserName ? `Hi ${challengesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Body Battle challenges
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={challengesUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Body Battle challenges"
+          userName={challengesUserName}
+          onThemeToggle={toggle}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
           <Text style={styles.loadingText}>Loading challenges…</Text>
@@ -787,30 +768,12 @@ const ChallengesScreen: React.FC = () => {
       <SafeAreaView
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {challengesUserName ? `Hi ${challengesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Body Battle challenges
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={challengesUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Body Battle challenges"
+          userName={challengesUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={styles.errorText}>{error}</Text>
       </SafeAreaView>
     );
@@ -821,30 +784,12 @@ const ChallengesScreen: React.FC = () => {
       <SafeAreaView
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {challengesUserName ? `Hi ${challengesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Body Battle challenges
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={challengesUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Body Battle challenges"
+          userName={challengesUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Challenges
         </Text>
@@ -864,40 +809,12 @@ const ChallengesScreen: React.FC = () => {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {challengesUserName ? `Hi ${challengesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your challenges
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={challengesUserName} />
-          </View>
-        </View>
-
-        <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
-          Challenges
-        </Text>
-        <Text
-          style={[styles.screenSubtitle, isLight && styles.screenSubtitleLight]}
-        >
-          Pick a challenge, follow the steps, then mark it complete for this
-          session.
-        </Text>
+        <AppHeader
+          isLight={isLight}
+          title="Your challenges"
+          userName={challengesUserName}
+          onThemeToggle={toggle}
+        />
 
         {/* Circular progress gauge card above difficulty filters */}
         <View
@@ -1142,14 +1059,14 @@ const challengeStyles = StyleSheet.create({
     alignItems: "center",
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   progressCard: {
-    marginTop: 24,
-    borderRadius: 24,
-    backgroundColor: "rgba(15,23,42,0.9)",
+    marginTop: 2,
+    borderRadius: 20,
+    backgroundColor: "#111A2B",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(15,23,42,0.35)",
+    borderColor: "rgba(125,211,252,0.2)",
     overflow: "hidden",
   },
   progressCardLight: {
@@ -1157,8 +1074,8 @@ const challengeStyles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   progressCardInner: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     position: "relative",
   },
   progressCardHeaderRow: {
@@ -1189,7 +1106,7 @@ const challengeStyles = StyleSheet.create({
     fontSize: 12,
   },
   difficultySection: {
-    marginTop: 24,
+    marginTop: 14,
   },
   progressGaugeRow: {
     flexDirection: "row",
@@ -1197,17 +1114,17 @@ const challengeStyles = StyleSheet.create({
     justifyContent: "space-between",
   },
   progressGaugeSideBlock: {
-    width: 72,
+    width: 64,
   },
   progressGaugeSideBlockRight: {
     alignItems: "flex-end",
   },
   progressGaugeSideLabel: {
-    fontSize: 12,
-    marginBottom: 4,
+    fontSize: 11,
+    marginBottom: 2,
   },
   progressGaugeSideValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
   },
   progressGaugeSideSubLabel: {
@@ -1220,8 +1137,8 @@ const challengeStyles = StyleSheet.create({
     justifyContent: "center",
   },
   progressGaugeSvgWrapper: {
-    width: 160,
-    height: 160,
+    width: 132,
+    height: 132,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1235,7 +1152,7 @@ const challengeStyles = StyleSheet.create({
     justifyContent: "center",
   },
   progressGaugeCenterPrimary: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "300", // light, numeric focus
   },
   progressGaugeCenterSecondary: {
@@ -1243,7 +1160,7 @@ const challengeStyles = StyleSheet.create({
     fontSize: 12,
   },
   progressGaugeTipBlock: {
-    marginTop: 16,
+    marginTop: 12,
   },
   progressGaugeTipTitle: {
     fontSize: 12,
@@ -1254,8 +1171,8 @@ const challengeStyles = StyleSheet.create({
     fontSize: 12,
   },
   progressSectionDivider: {
-    marginTop: 24,
-    marginBottom: 24,
+    marginTop: 14,
+    marginBottom: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderStyle: "dashed",
     borderColor: "rgba(148,163,184,0.55)",
@@ -1263,12 +1180,12 @@ const challengeStyles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     marginTop: 0,
-    marginBottom: 24,
+    marginBottom: 14,
     borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.9)",
-    padding: 4,
+    backgroundColor: "#111A2B",
+    padding: 3,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(15,23,42,0.5)",
+    borderColor: "rgba(125,211,252,0.18)",
   },
   filterRowLight: {
     backgroundColor: LIGHT_CARD,
@@ -1276,19 +1193,19 @@ const challengeStyles = StyleSheet.create({
   filterPill: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 999,
   },
   filterPillActiveDark: {
     backgroundColor: PS_BLUE,
     shadowColor: "#000000",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   filterPillActiveLight: {
-    backgroundColor: "#0F172A",
+    backgroundColor: PS_BLUE,
     shadowColor: "#000000",
     shadowOpacity: 0.12,
     shadowRadius: 8,
@@ -1296,9 +1213,9 @@ const challengeStyles = StyleSheet.create({
     elevation: 2,
   },
   filterPillLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
   },
   filterPillLabelLight: {
     color: LIGHT_TEXT_MUTED,
@@ -1307,7 +1224,8 @@ const challengeStyles = StyleSheet.create({
     color: DARK_TEXT_MUTED,
   },
   filterPillLabelActive: {
-    color: "#F9FAFB",
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   modalBackdrop: {
     flex: 1,
@@ -1393,33 +1311,33 @@ const challengeStyles = StyleSheet.create({
     color: LIGHT_TEXT_PRIMARY,
   },
   headerTitleDark: {
-    color: DARK_TEXT_PRIMARY,
+    color: "#F5F7FA",
   },
   headerSubtitleLight: {
     color: LIGHT_TEXT_MUTED,
   },
   headerSubtitleDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   cardsGrid: {
     flexDirection: "column",
-    marginTop: 16,
+    marginTop: 8,
   },
   cardGridItem: {
     width: "100%",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 7,
   },
   cardTitleBlock: {
     flex: 1,
   },
   cardRoleLabel: {
-    marginTop: 4,
-    fontSize: 13,
+    marginTop: 3,
+    fontSize: 12,
     fontWeight: "600",
   },
   cardTitleRow: {
@@ -1443,14 +1361,14 @@ const challengeStyles = StyleSheet.create({
   cardTagPillRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 4,
+    marginTop: 3,
   },
   cardTagPill: {
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     marginRight: 6,
-    marginTop: 4,
+    marginTop: 3,
   },
   cardTagPillChest: {
     backgroundColor: "#FEE2E2",
@@ -1465,15 +1383,15 @@ const challengeStyles = StyleSheet.create({
     backgroundColor: "#E5E7EB",
   },
   cardTagPillText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: "#111827",
   },
   challengeCardBase: {
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(15,23,42,0.35)",
-    backgroundColor: "rgba(15,23,42,0.9)",
+    borderColor: "rgba(125,211,252,0.2)",
+    backgroundColor: "#111A2B",
     overflow: "hidden",
   },
   challengeCardBaseLight: {
@@ -1485,8 +1403,9 @@ const challengeStyles = StyleSheet.create({
     opacity: 0.8,
   },
   challengeCardLockedDark: {
-    backgroundColor: "rgba(15,23,42,0.95)",
-    opacity: 0.6,
+    backgroundColor: "#0B1020",
+    borderColor: "rgba(148,163,184,0.2)",
+    opacity: 0.72,
   },
   cardLockBadge: {
     position: "absolute",
@@ -1504,9 +1423,9 @@ const challengeStyles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   cardLockBadgeDark: {
-    backgroundColor: "rgba(15,23,42,0.9)",
+    backgroundColor: "rgba(24,34,56,0.95)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(148,163,184,0.8)",
+    borderColor: "rgba(125,211,252,0.22)",
   },
   cardRightColumn: {
     alignItems: "center",
@@ -1537,7 +1456,7 @@ const challengeStyles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   cardCompletionCircleDark: {
-    borderColor: "rgba(148,163,184,0.85)",
+    borderColor: "rgba(125,211,252,0.35)",
   },
   cardCompletionCircleCompleted: {
     borderColor: GLASS_ACCENT_GREEN,
@@ -1552,7 +1471,7 @@ const challengeStyles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   cardSubtitleDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   cardProgressSection: {
     marginTop: 10,
@@ -1578,7 +1497,7 @@ const challengeStyles = StyleSheet.create({
     backgroundColor: GLASS_ACCENT_GREEN,
   },
   cardBottomRow: {
-    marginTop: 10,
+    marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1605,7 +1524,7 @@ const challengeStyles = StyleSheet.create({
     fontWeight: "500",
   },
   cardLevelRow: {
-    marginTop: 8,
+    marginTop: 6,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -1631,9 +1550,9 @@ const challengeStyles = StyleSheet.create({
     fontWeight: "500",
   },
   cardArrowCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1641,21 +1560,21 @@ const challengeStyles = StyleSheet.create({
     backgroundColor: "#EEF2FF",
   },
   cardArrowCircleDark: {
-    backgroundColor: "rgba(15,23,42,0.85)",
+    backgroundColor: "rgba(125,211,252,0.1)",
   },
   progressCardMeterSection: {
-    marginTop: 14,
+    marginTop: 12,
   },
   progressCardMeterLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     letterSpacing: 0.2,
-    marginBottom: 6,
+    marginBottom: 5,
   },
   progressCardMeterBarTrack: {
     height: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.85)",
+    backgroundColor: "rgba(5,8,20,0.95)",
     overflow: "hidden",
   },
   progressCardMeterBarTrackLight: {

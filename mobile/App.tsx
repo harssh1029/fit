@@ -121,6 +121,7 @@ import {
 import {
   createBottomTabNavigator,
   BottomTabNavigationProp,
+  BottomTabBarProps,
 } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -2195,22 +2196,18 @@ type TabBarIconProps = {
   routeName: string;
   focused: boolean;
   isLight: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  accessibilityLabel?: string;
+  testID?: string;
 };
 
-const TabBarIcon: React.FC<TabBarIconProps> = ({
-  routeName,
-  focused,
-  isLight,
-}) => {
+const getTabConfig = (routeName: string) => {
   let iconName: keyof typeof Ionicons.glyphMap;
   let label: string;
 
   switch (routeName) {
     case "Home":
-      // Use outline variants that are guaranteed to exist in
-      // @expo/vector-icons/Ionicons so icons always render on
-      // device (some solid names can be missing on certain
-      // versions).
       iconName = "home-outline";
       label = "Home";
       break;
@@ -2235,13 +2232,73 @@ const TabBarIcon: React.FC<TabBarIconProps> = ({
       label = routeName;
   }
 
-  const activeIconColor = isLight ? "#0F172A" : "#ffffff";
-  const inactiveIconColor = isLight ? "#6b7280" : "#cbd5f5";
+  return { iconName, label };
+};
+
+const AppTabBarItem: React.FC<TabBarIconProps> = ({
+  routeName,
+  focused,
+  isLight,
+  onPress,
+  onLongPress,
+  accessibilityLabel,
+  testID,
+}) => {
+  const selectionProgress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const { iconName, label } = getTabConfig(routeName);
+
+  useEffect(() => {
+    Animated.spring(selectionProgress, {
+      toValue: focused ? 1 : 0,
+      friction: 7,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [focused, selectionProgress]);
+
+  const activeIconColor = "#FFFFFF";
+  const inactiveIconColor = isLight ? "#64748B" : "#94A3B8";
   const iconColor = focused ? activeIconColor : inactiveIconColor;
+  const iconAnimatedStyle = {
+    transform: [
+      {
+        translateY: selectionProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -2],
+        }),
+      },
+      {
+        scale: selectionProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.08],
+        }),
+      },
+    ],
+  };
+  const dotAnimatedStyle = {
+    opacity: selectionProgress,
+    transform: [
+      {
+        scaleX: selectionProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.35, 1],
+        }),
+      },
+    ],
+  };
 
   return (
-    <View style={styles.tabBarItem}>
-      <View
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityState={focused ? { selected: true } : {}}
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+      activeOpacity={0.88}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={[styles.tabBarItem, focused && styles.tabBarItemActive]}
+    >
+      <Animated.View
         style={[
           styles.tabBarIconContainer,
           isLight && styles.tabBarIconContainerLight,
@@ -2249,22 +2306,74 @@ const TabBarIcon: React.FC<TabBarIconProps> = ({
             (isLight
               ? styles.tabBarIconContainerActiveLight
               : styles.tabBarIconContainerActive),
+          iconAnimatedStyle,
         ]}
       >
-        <Ionicons name={iconName} size={22} color={iconColor} />
-      </View>
-      <Text
+        <Ionicons name={iconName} size={21} color={iconColor} />
+        {focused && (
+          <Text style={styles.tabBarActiveLabel} numberOfLines={1}>
+            {label}
+          </Text>
+        )}
+      </Animated.View>
+      <Animated.View
         style={[
-          styles.tabBarLabel,
-          isLight && styles.tabBarLabelLight,
-          focused && styles.tabBarLabelActive,
-          focused && isLight && styles.tabBarLabelActiveLight,
+          styles.tabBarActiveDot,
+          focused && styles.tabBarActiveDotVisible,
+          focused && isLight && styles.tabBarActiveDotVisibleLight,
+          dotAnimatedStyle,
         ]}
-        numberOfLines={1}
-        ellipsizeMode="clip"
-      >
-        {label}
-      </Text>
+      />
+    </TouchableOpacity>
+  );
+};
+
+const AppTabBar: React.FC<BottomTabBarProps & { isLight: boolean }> = ({
+  state,
+  descriptors,
+  navigation,
+  isLight,
+}) => {
+  const visibleRoutes = state.routes.filter((route) => route.name !== "Account");
+
+  return (
+    <View style={[styles.tabBar, isLight && styles.tabBarLight]}>
+      {visibleRoutes.map((route) => {
+        const options = descriptors[route.key]?.options ?? {};
+        const isFocused = state.routes[state.index]?.key === route.key;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name as never);
+          }
+        };
+
+        const onLongPress = () => {
+          navigation.emit({
+            type: "tabLongPress",
+            target: route.key,
+          });
+        };
+
+        return (
+          <AppTabBarItem
+            key={route.key}
+            routeName={route.name}
+            focused={isFocused}
+            isLight={isLight}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            accessibilityLabel={options.tabBarAccessibilityLabel}
+            testID={options.tabBarButtonTestID}
+          />
+        );
+      })}
     </View>
   );
 };
@@ -2275,27 +2384,11 @@ const MainTabsNavigator: React.FC = () => {
 
   return (
     <MainTabs.Navigator
-      screenOptions={({ route }) => ({
+      tabBar={(props) => <AppTabBar {...props} isLight={isLight} />}
+      screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: [
-          styles.tabBar,
-          isLight && styles.tabBarLight,
-          isLight && {
-            backgroundColor: LIGHT_CARD,
-            borderTopColor: "#E5E7EB",
-          },
-        ],
-        tabBarActiveTintColor: isLight ? GLASS_ACCENT_GREEN : "#F9FAFB",
-        tabBarInactiveTintColor: isLight ? "#6b7280" : "#6b7280",
-        tabBarIcon: ({ focused }) => (
-          <TabBarIcon
-            routeName={route.name}
-            focused={focused}
-            isLight={isLight}
-          />
-        ),
-      })}
+      }}
     >
       <MainTabs.Screen name="Home" component={HomeStackNavigator} />
       <MainTabs.Screen name="Plans" component={PlansStackNavigator} />
@@ -2324,6 +2417,7 @@ export const HeaderAvatar: React.FC<{
 }> = ({ isLight, name }) => {
   const navigation = useNavigation<RootTabNavigation>();
   const initials = getInitials(name) ?? "FIT";
+  const compactInitials = initials.length > 2 ? initials.slice(0, 2) : initials;
 
   return (
     <TouchableOpacity
@@ -2335,13 +2429,19 @@ export const HeaderAvatar: React.FC<{
       activeOpacity={0.8}
       onPress={() => navigation.navigate("Account")}
     >
+      <View
+        style={[
+          styles.homeAvatarStatusDot,
+          isLight && styles.homeAvatarStatusDotLight,
+        ]}
+      />
       <Text
         style={[
           styles.homeAvatarInitials,
           isLight && styles.homeAvatarInitialsLight,
         ]}
       >
-        {initials}
+        {compactInitials}
       </Text>
     </TouchableOpacity>
   );
@@ -2665,7 +2765,7 @@ const LegacyAccountScreen_REMOVED: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
+        <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
           <View>
             <Text
               style={[
@@ -2702,7 +2802,7 @@ const LegacyAccountScreen_REMOVED: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
+        <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
           <View>
             <Text
               style={[
@@ -2743,7 +2843,7 @@ const LegacyAccountScreen_REMOVED: React.FC = () => {
         contentContainerStyle={styles.plansScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.homeHeaderRow}>
+        <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
           <View>
             <Text
               style={[

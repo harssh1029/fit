@@ -12,13 +12,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import {
-  useThemeMode,
-  styles,
-  BODY_BATTLE_GROUP_ORDER,
-  BODY_BATTLE_RANK_COLORS,
-  MetricGauge,
-} from "../../App";
+import { AppHeader } from "../../components/AppHeader";
+import { FilterChipRow } from "../../components/FilterChipRow";
+import { useThemeMode, styles, MetricGauge } from "../../App";
 import {
   PS_BLUE,
   GLASS_CARD_DARK,
@@ -26,14 +22,6 @@ import {
   GLASS_TEXT_PRIMARY,
   GLASS_TEXT_MUTED,
 } from "../../styles/theme";
-
-const BODY_BATTLE_RANK_ORDER: string[] = [
-  "Recruit",
-  "Soldier",
-  "Warrior",
-  "Beast",
-  "Legend",
-];
 
 export type CommunityFriendSummary = {
   id: string;
@@ -46,8 +34,6 @@ export type CommunityFriendSummary = {
   streakDays?: number;
   recentSessionsThisWeek?: number;
   fitnessAgeYears?: number | null;
-  // Optional rank info per body battle group for mini body map visuals.
-  rankByGroup?: Record<string, { rank: string }>;
 };
 
 type CommunityLeaderboards = {
@@ -56,6 +42,8 @@ type CommunityLeaderboards = {
   challengeChampions: CommunityFriendSummary[];
   mostActive: CommunityFriendSummary[];
 };
+
+type LeaderboardFilterKey = "consistent" | "balanced" | "challenges" | "active";
 
 const MOCK_FRIENDS: CommunityFriendSummary[] = [
   {
@@ -69,15 +57,6 @@ const MOCK_FRIENDS: CommunityFriendSummary[] = [
     streakDays: 12,
     recentSessionsThisWeek: 5,
     fitnessAgeYears: 26,
-    rankByGroup: {
-      shoulders: { rank: "Beast" },
-      chest: { rank: "Warrior" },
-      arms: { rank: "Warrior" },
-      core: { rank: "Soldier" },
-      back: { rank: "Legend" },
-      glutes: { rank: "Soldier" },
-      legs: { rank: "Warrior" },
-    },
   },
   {
     id: "2",
@@ -90,17 +69,50 @@ const MOCK_FRIENDS: CommunityFriendSummary[] = [
     streakDays: 7,
     recentSessionsThisWeek: 3,
     fitnessAgeYears: 29,
-    rankByGroup: {
-      shoulders: { rank: "Soldier" },
-      chest: { rank: "Beast" },
-      arms: { rank: "Soldier" },
-      core: { rank: "Warrior" },
-      back: { rank: "Soldier" },
-      glutes: { rank: "Recruit" },
-      legs: { rank: "Warrior" },
-    },
   },
 ];
+
+const LEADERBOARD_FILTERS: {
+  key: LeaderboardFilterKey;
+  label: string;
+}[] = [
+  { key: "consistent", label: "Most consistent" },
+  { key: "balanced", label: "Most balanced" },
+  { key: "challenges", label: "Challenge champions" },
+  { key: "active", label: "Most active" },
+];
+
+const getFriendInitials = (friend: CommunityFriendSummary) =>
+  friend.avatarInitials ?? friend.name.slice(0, 2).toUpperCase();
+
+const getFriendOverallScore = (friend: CommunityFriendSummary) =>
+  friend.bodyBalancePercent ?? friend.consistencyScore;
+
+const getFriendScoreLabel = (friend: CommunityFriendSummary) =>
+  Math.round(getFriendOverallScore(friend)).toString();
+
+const getFriendScoreProgress = (friend: CommunityFriendSummary) =>
+  getFriendOverallScore(friend) / 100;
+
+const buildLeaderboards = (
+  friends: CommunityFriendSummary[],
+): CommunityLeaderboards => {
+  return {
+    mostConsistent: [...friends].sort(
+      (a, b) => (b.streakDays || 0) - (a.streakDays || 0),
+    ),
+    mostBalanced: [...friends].sort(
+      (a, b) => (b.bodyBalancePercent || 0) - (a.bodyBalancePercent || 0),
+    ),
+    challengeChampions: [...friends].sort(
+      (a, b) => b.challengesCompleted - a.challengesCompleted,
+    ),
+    mostActive: [...friends].sort(
+      (a, b) =>
+        (b.recentSessionsThisWeek || 0) - (a.recentSessionsThisWeek || 0),
+    ),
+  };
+};
 
 const CommunityScreen: React.FC = () => {
   const { mode } = useThemeMode();
@@ -114,28 +126,7 @@ const CommunityScreen: React.FC = () => {
   // In a later pass, replace this with a hook that fetches from the backend.
   const friends = useMemo(() => MOCK_FRIENDS, []);
 
-  const leaderboards: CommunityLeaderboards = useMemo(() => {
-    const byStreak = [...friends].sort(
-      (a, b) => (b.streakDays || 0) - (a.streakDays || 0),
-    );
-    const byBalance = [...friends].sort(
-      (a, b) => (b.bodyBalancePercent || 0) - (a.bodyBalancePercent || 0),
-    );
-    const byChallenges = [...friends].sort(
-      (a, b) => b.challengesCompleted - a.challengesCompleted,
-    );
-    const byActive = [...friends].sort(
-      (a, b) =>
-        (b.recentSessionsThisWeek || 0) - (a.recentSessionsThisWeek || 0),
-    );
-
-    return {
-      mostConsistent: byStreak,
-      mostBalanced: byBalance,
-      challengeChampions: byChallenges,
-      mostActive: byActive,
-    };
-  }, [friends]);
+  const leaderboards = useMemo(() => buildLeaderboards(friends), [friends]);
 
   return (
     <>
@@ -144,28 +135,12 @@ const CommunityScreen: React.FC = () => {
         contentContainerStyle={styles.homeScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.homeHeaderRow}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              See how you stack up
-            </Text>
-            <Text
-              style={[
-                styles.metricCaption,
-                isLight && styles.metricCaptionLight,
-                { marginTop: 4 },
-              ]}
-            >
-              Get inspired by your friends' progress
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
+        <AppHeader
+          isLight={isLight}
+          title="Community"
+          subtitle="Friends and leaderboards"
+          rightContent={
+            <>
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => {
@@ -174,7 +149,7 @@ const CommunityScreen: React.FC = () => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 18,
+                paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 999,
                 backgroundColor: PS_BLUE,
@@ -186,7 +161,7 @@ const CommunityScreen: React.FC = () => {
                 style={{
                   marginLeft: 6,
                   color: "#F9FAFB",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: "600",
                 }}
               >
@@ -199,9 +174,9 @@ const CommunityScreen: React.FC = () => {
                 // TODO: open community filters
               }}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
                 alignItems: "center",
                 justifyContent: "center",
                 borderWidth: 1,
@@ -215,8 +190,9 @@ const CommunityScreen: React.FC = () => {
                 color={isLight ? "#4B5563" : "#E5E7EB"}
               />
             </TouchableOpacity>
-          </View>
-        </View>
+            </>
+          }
+        />
 
         {/* Tabs row */}
         <View
@@ -235,7 +211,6 @@ const CommunityScreen: React.FC = () => {
             isLight={isLight}
             isActive={activeTab === "friends"}
             onPress={() => setActiveTab("friends")}
-            alignment="left"
             badgeLabel={String(friends.length)}
             badgeVariant="primary"
           />
@@ -244,7 +219,6 @@ const CommunityScreen: React.FC = () => {
             isLight={isLight}
             isActive={activeTab === "leaderboard"}
             onPress={() => setActiveTab("leaderboard")}
-            alignment="right"
             badgeLabel="Top 100"
             badgeVariant="secondary"
           />
@@ -279,7 +253,6 @@ const TabButton: React.FC<{
   isLight: boolean;
   isActive: boolean;
   onPress: () => void;
-  alignment?: "left" | "right";
   badgeLabel?: string;
   badgeVariant?: "primary" | "secondary";
 }> = ({
@@ -287,7 +260,6 @@ const TabButton: React.FC<{
   isLight,
   isActive,
   onPress,
-  alignment = "left",
   badgeLabel,
   badgeVariant = "primary",
 }) => {
@@ -373,6 +345,12 @@ const FriendsTab: React.FC<{
 }> = ({ isLight, friends, onSelectFriend }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
+  const filteredFriends = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return friends;
+    return friends.filter((friend) => friend.name.toLowerCase().includes(q));
+  }, [friends, searchQuery]);
+
   if (!friends.length) {
     return (
       <View style={{ marginTop: 24 }}>
@@ -384,12 +362,6 @@ const FriendsTab: React.FC<{
       </View>
     );
   }
-
-  const filteredFriends = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return friends;
-    return friends.filter((friend) => friend.name.toLowerCase().includes(q));
-  }, [friends, searchQuery]);
 
   return (
     <View style={{ marginTop: 8, paddingBottom: 16 }}>
@@ -496,101 +468,133 @@ const FriendSummaryCard: React.FC<{
   friend: CommunityFriendSummary;
   isLight: boolean;
   onPress: () => void;
-}> = ({ friend, isLight, onPress }) => (
-  <TouchableOpacity
-    activeOpacity={0.9}
-    onPress={onPress}
-    style={[
-      styles.metricCardLarge,
-      isLight && styles.metricCardLargeLight,
-      { borderRadius: 24, paddingVertical: 14, marginTop: 10 },
-    ]}
-  >
-    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <View
-          style={[
-            styles.homeAvatar,
-            isLight && styles.homeAvatarLight,
-            { width: 40, height: 40 },
-          ]}
-        >
-          <Text
-            style={[
-              styles.homeAvatarInitials,
-              isLight && styles.homeAvatarInitialsLight,
-            ]}
-          >
-            {friend.avatarInitials ?? friend.name.slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
-        <View style={{ marginLeft: 10 }}>
-          <Text
-            style={[
-              styles.homeGreetingLabel,
-              isLight && styles.homeGreetingLabelLight,
-            ]}
-          >
-            {friend.name}
-          </Text>
-        </View>
-      </View>
-    </View>
+}> = ({ friend, isLight, onPress }) => {
+  const progress = getFriendScoreProgress(friend);
+  const scoreLabel = getFriendScoreLabel(friend);
+  const avatarInitials = getFriendInitials(friend);
 
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-end",
-        marginTop: 12,
-      }}
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={[
+        styles.metricCardLarge,
+        isLight && styles.metricCardLargeLight,
+        { borderRadius: 24, paddingVertical: 14, marginTop: 10 },
+      ]}
     >
-      <View>
-        <Text
-          style={[styles.metricCaption, isLight && styles.metricCaptionLight]}
-        >
-          Consistency
-        </Text>
-        <Text
-          style={[
-            styles.homeSectionTitle,
-            isLight && styles.homeSectionTitleLight,
-            { fontSize: 18 },
-          ]}
-        >
-          {Math.round(friend.consistencyScore)}
-        </Text>
-      </View>
-      <View>
-        <Text
-          style={[styles.metricCaption, isLight && styles.metricCaptionLight]}
-        >
-          Challenges
-        </Text>
-        <Text
-          style={[
-            styles.homeSectionTitle,
-            isLight && styles.homeSectionTitleLight,
-            { fontSize: 18 },
-          ]}
-        >
-          {friend.challengesCompleted}
-        </Text>
-      </View>
-      <Text
-        style={[
-          styles.metricCaption,
-          isLight && styles.metricCaptionLight,
-          { color: "#2563EB", fontWeight: "600" },
-        ]}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+        }}
       >
-        View stats
-      </Text>
-    </View>
-  </TouchableOpacity>
-);
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flex: 1,
+          }}
+        >
+          <View
+            style={[
+              styles.homeAvatar,
+              isLight && styles.homeAvatarLight,
+              { width: 40, height: 40 },
+            ]}
+          >
+            <Text
+              style={[
+                styles.homeAvatarInitials,
+                isLight && styles.homeAvatarInitialsLight,
+              ]}
+            >
+              {avatarInitials}
+            </Text>
+          </View>
+          <View style={{ marginLeft: 10 }}>
+            <Text
+              style={[
+                styles.homeGreetingLabel,
+                isLight && styles.homeGreetingLabelLight,
+              ]}
+            >
+              {friend.name}
+            </Text>
+            <Text
+              style={[
+                styles.metricCaption,
+                isLight && styles.metricCaptionLight,
+                { marginTop: 2 },
+              ]}
+              numberOfLines={1}
+            >
+              Overall score
+            </Text>
+          </View>
+        </View>
+        <MetricGauge
+          progress={progress}
+          isLight={isLight}
+          size="small"
+          centerText={scoreLabel}
+          centerSubText="Score"
+        />
+      </View>
 
-type LeaderboardFilterKey = "consistent" | "balanced" | "challenges" | "active";
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          marginTop: 12,
+        }}
+      >
+        <View>
+          <Text
+            style={[styles.metricCaption, isLight && styles.metricCaptionLight]}
+          >
+            Consistency
+          </Text>
+          <Text
+            style={[
+              styles.homeSectionTitle,
+              isLight && styles.homeSectionTitleLight,
+              { fontSize: 18 },
+            ]}
+          >
+            {Math.round(friend.consistencyScore)}
+          </Text>
+        </View>
+        <View>
+          <Text
+            style={[styles.metricCaption, isLight && styles.metricCaptionLight]}
+          >
+            Challenges
+          </Text>
+          <Text
+            style={[
+              styles.homeSectionTitle,
+              isLight && styles.homeSectionTitleLight,
+              { fontSize: 18 },
+            ]}
+          >
+            {friend.challengesCompleted}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.metricCaption,
+            isLight && styles.metricCaptionLight,
+            { color: "#2563EB", fontWeight: "600" },
+          ]}
+        >
+          View stats
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const LeaderboardTab: React.FC<{
   isLight: boolean;
@@ -617,48 +621,12 @@ const LeaderboardTab: React.FC<{
 
   return (
     <View style={{ marginTop: 8, paddingBottom: 16 }}>
-      {/* Filter chips row, mirroring Exercise screen style */}
-      <View style={styles.exerciseFilterChipRow}>
-        {(
-          [
-            { key: "consistent", label: "Most consistent" },
-            { key: "balanced", label: "Most balanced" },
-            { key: "challenges", label: "Challenge champions" },
-            { key: "active", label: "Most active" },
-          ] as const
-        ).map((chip) => {
-          const isActiveChip = activeFilter === chip.key;
-          return (
-            <TouchableOpacity
-              key={chip.key}
-              style={[
-                styles.exerciseFilterChip,
-                isLight && styles.exerciseFilterChipLight,
-                isActiveChip && styles.exerciseFilterChipActive,
-                isActiveChip &&
-                  isLight && {
-                    backgroundColor: PS_BLUE,
-                    borderColor: PS_BLUE,
-                  },
-              ]}
-              activeOpacity={0.9}
-              onPress={() => setActiveFilter(chip.key)}
-            >
-              <Text
-                style={[
-                  styles.exerciseFilterChipLabel,
-                  isLight && styles.exerciseFilterChipLabelLight,
-                  isActiveChip && {
-                    color: isLight ? "#FFFFFF" : "#F9FAFB",
-                  },
-                ]}
-              >
-                {chip.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <FilterChipRow
+        items={LEADERBOARD_FILTERS}
+        isLight={isLight}
+        isActive={(chip) => activeFilter === chip.key}
+        onPress={(chip) => setActiveFilter(chip.key)}
+      />
 
       {/* List of friend cards for the selected leaderboard filter */}
       {listForFilter.length === 0 ? (
@@ -699,11 +667,9 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
 }) => {
   if (!friend) return null;
 
-  const rankByGroup = friend.rankByGroup || {};
-  const overallScore =
-    friend.bodyBalancePercent != null
-      ? friend.bodyBalancePercent
-      : friend.consistencyScore;
+  const progress = getFriendScoreProgress(friend);
+  const scoreLabel = getFriendScoreLabel(friend);
+  const avatarInitials = getFriendInitials(friend);
 
   return (
     <Modal
@@ -712,28 +678,28 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={[styles.viewWorkoutModalRoot, { justifyContent: "center" }]}>
+      <View
+        style={[
+          styles.communityFriendModalRoot,
+          isLight && styles.communityFriendModalRootLight,
+        ]}
+      >
         <TouchableOpacity
-          style={styles.viewWorkoutModalBackdrop}
+          style={styles.communityFriendModalBackdrop}
           activeOpacity={1}
           onPress={onClose}
         />
         <View
           style={[
-            styles.viewWorkoutModalCard,
-            isLight && styles.viewWorkoutModalCardLight,
-            {
-              maxHeight: "80%",
-              borderRadius: 28,
-              paddingTop: 20,
-              paddingBottom: 20,
-            },
+            styles.communityFriendModalCard,
+            isLight && styles.communityFriendModalCardLight,
           ]}
         >
           <TouchableOpacity
             style={[
               styles.viewWorkoutCloseButton,
               isLight && styles.viewWorkoutCloseButtonLight,
+              { top: 16, right: 16 },
             ]}
             onPress={onClose}
             accessibilityRole="button"
@@ -746,47 +712,29 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
             />
           </TouchableOpacity>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.viewWorkoutScrollContent}
-          >
-            {/* Header: icon + Friend snapshot */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              <Ionicons name="people-outline" size={18} color={PS_BLUE} />
-              <Text
-                style={[
-                  styles.homeSectionTitle,
-                  isLight && styles.homeSectionTitleLight,
-                  { marginLeft: 6, fontSize: 16, fontWeight: "700" },
-                ]}
-              >
-                Friend snapshot
-              </Text>
-            </View>
-
-            {/* Profile row: avatar + name + subtitle + active pill */}
+          <View>
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                marginBottom: 20,
+                marginBottom: 12,
+                paddingRight: 44,
               }}
             >
               <View
-                style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flex: 1,
+                  marginRight: 12,
+                }}
               >
                 <View
                   style={[
                     styles.homeAvatar,
                     isLight && styles.homeAvatarLight,
-                    { width: 56, height: 56, marginRight: 12 },
+                    { width: 52, height: 52 },
                   ]}
                 >
                   <Text
@@ -795,29 +743,19 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
                       isLight && styles.homeAvatarInitialsLight,
                     ]}
                   >
-                    {friend.avatarInitials ??
-                      friend.name.slice(0, 2).toUpperCase()}
+                    {avatarInitials}
                   </Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text
-                      style={[
-                        styles.homeSectionTitle,
-                        isLight && styles.homeSectionTitleLight,
-                        { fontSize: 22 },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {friend.name}
-                    </Text>
-                    <Ionicons
-                      name="shield-checkmark"
-                      size={16}
-                      color={PS_BLUE}
-                      style={{ marginLeft: 6 }}
-                    />
-                  </View>
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.filterSheetTitle,
+                      isLight && styles.filterSheetTitleLight,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {friend.name}
+                  </Text>
                   <Text
                     style={[
                       styles.metricCaption,
@@ -825,145 +763,45 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
                       { marginTop: 2 },
                     ]}
                   >
-                    On a fitness journey
+                    Overall score
                   </Text>
                 </View>
               </View>
+              <MetricGauge
+                progress={progress}
+                isLight={isLight}
+                size="small"
+                centerText={scoreLabel}
+                centerSubText="Score"
+              />
+            </View>
 
+            {friend.activePlanName && (
               <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: isLight ? "#DCFCE7" : "#064E3B",
-                }}
+                style={[
+                  styles.communityFriendPlanPill,
+                  isLight && styles.communityFriendPlanPillLight,
+                  { alignSelf: "flex-start", marginBottom: 4 },
+                ]}
               >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    backgroundColor: "#22C55E",
-                    marginRight: 6,
-                  }}
+                <Ionicons
+                  name="fitness-outline"
+                  size={13}
+                  color={isLight ? PS_BLUE : "#7DD3FC"}
                 />
                 <Text
                   style={[
-                    styles.metricCaption,
-                    isLight && styles.metricCaptionLight,
-                    {
-                      fontWeight: "600",
-                      marginTop: 0,
-                      fontSize: 12,
-                      lineHeight: 16,
-                      color: isLight ? "#15803D" : "#4ADE80",
-                    },
+                    styles.communityFriendPlanText,
+                    isLight && styles.communityFriendPlanTextLight,
                   ]}
+                  numberOfLines={1}
                 >
-                  Active
+                  {friend.activePlanName}
                 </Text>
               </View>
-            </View>
+            )}
 
-            {/* Overall score gauge on the left, metric cards on the right */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 4,
-                marginBottom: 16,
-              }}
-            >
-              {/* Left: big overall score circle */}
-              <View
-                style={{
-                  width: 150,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  marginRight: 12,
-                }}
-              >
-                <MetricGauge
-                  progress={overallScore / 100}
-                  isLight={isLight}
-                  size="xlarge"
-                  centerText={String(Math.round(overallScore))}
-                  centerSubText="Overall score"
-                />
-                <Text
-                  style={[
-                    styles.metricCaption,
-                    isLight && styles.metricCaptionLight,
-                    { marginTop: 6, color: PS_BLUE, fontWeight: "600" },
-                  ]}
-                >
-                  Great job! 💪
-                </Text>
-              </View>
-
-              {/* Right: metric cards grid */}
-              <View style={{ flex: 1 }}>
-                {/* First row: streak + fitness age (short labels that fit narrower cards) */}
-                <View style={[styles.metricsRow, { marginTop: 0 }]}>
-                  <FriendMetricCard
-                    label="Streak"
-                    value={
-                      friend.streakDays != null
-                        ? `${friend.streakDays} days`
-                        : "--"
-                    }
-                    iconName="flame-outline"
-                    iconColor="#FB923C"
-                    caption="On fire! 🔥"
-                    captionColor="#F97316"
-                    isLight={isLight}
-                    containerStyle={{ marginRight: 8, marginTop: 0 }}
-                  />
-                  <FriendMetricCard
-                    label="Fitness age"
-                    value={
-                      typeof friend.fitnessAgeYears === "number"
-                        ? `${friend.fitnessAgeYears} yrs`
-                        : "--"
-                    }
-                    iconName="person-outline"
-                    iconColor="#4B5563"
-                    caption="Younger than avg. 👏"
-                    captionColor={PS_BLUE}
-                    isLight={isLight}
-                    containerStyle={{ marginTop: 0 }}
-                  />
-                </View>
-
-                {/* Second row: current plan (full width) */}
-                <View style={{ marginTop: 12 }}>
-                  <FriendMetricCard
-                    label="Current plan"
-                    value={friend.activePlanName ?? "—"}
-                    iconName="calendar-outline"
-                    iconColor="#22C55E"
-                    isLight={isLight}
-                    containerStyle={{ paddingRight: 32, marginTop: 0 }}
-                  />
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={isLight ? "#9CA3AF" : "#6B7280"}
-                    style={{
-                      position: "absolute",
-                      right: 16,
-                      top: "50%",
-                      marginTop: -9,
-                    }}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Consistency + Challenges cards (full-width row so cards are larger) */}
-            <View style={[styles.metricsRow, { marginTop: 4 }]}>
+            <View style={[styles.metricsRow, { marginTop: 12 }]}>
               <FriendMetricCard
                 label="Consistency"
                 value={`${Math.round(friend.consistencyScore)}`}
@@ -972,47 +810,36 @@ const FriendDetailModal: React.FC<FriendDetailModalProps> = ({
                 caption="Excellent"
                 captionColor="#16A34A"
                 isLight={isLight}
+                containerStyle={{ marginTop: 0 }}
+              />
+            </View>
+
+            <View style={[styles.metricsRow, { marginTop: 10 }]}>
+              <FriendMetricCard
+                label="Streak"
+                value={
+                  friend.streakDays != null ? `${friend.streakDays}d` : "--"
+                }
+                iconName="flame-outline"
+                iconColor="#FB923C"
+                isLight={isLight}
                 containerStyle={{ marginRight: 8, marginTop: 0 }}
               />
               <FriendMetricCard
-                label="Challenges completed"
+                label="Challenges"
                 value={`${friend.challengesCompleted}`}
                 iconName="trophy-outline"
                 iconColor="#A855F7"
-                caption="Keep it up!"
-                captionColor="#7C3AED"
                 isLight={isLight}
                 containerStyle={{ marginTop: 0 }}
               />
             </View>
-          </ScrollView>
+          </View>
         </View>
       </View>
     </Modal>
   );
 };
-
-const DetailStat: React.FC<{
-  label: string;
-  value: string;
-  isLight: boolean;
-}> = ({ label, value, isLight }) => (
-  <View style={{ flex: 1, marginRight: 8 }}>
-    <Text style={[styles.metricCaption, isLight && styles.metricCaptionLight]}>
-      {label}
-    </Text>
-    <Text
-      style={[
-        styles.homeSectionTitle,
-        isLight && styles.homeSectionTitleLight,
-        { fontSize: 16 },
-      ]}
-      numberOfLines={1}
-    >
-      {value}
-    </Text>
-  </View>
-);
 
 const FriendMetricCard: React.FC<{
   label: string;

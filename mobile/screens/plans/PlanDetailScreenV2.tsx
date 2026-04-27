@@ -10,19 +10,17 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   GLASS_ACCENT_GREEN,
-  DARK_CARD,
   LIGHT_CARD,
   DARK_TEXT_PRIMARY,
   LIGHT_TEXT_PRIMARY,
-  DARK_TEXT_MUTED,
+  PS_BLUE,
 } from "../../styles/theme";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
 import { usePlanDetail } from "../../hooks/usePlanDetail";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import {
   useThemeMode,
-  HeaderAvatar,
   styles,
   type PlanDetailProps,
   type ViewWorkoutWeek,
@@ -57,42 +55,26 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     !!profile?.profile.active_plan_id &&
     profile.profile.active_plan_id === plan?.id;
 
+  const backToPlansLink = (
+    <TouchableOpacity onPress={() => navigation.goBack()}>
+      <Text style={[styles.linkText, isLight && styles.linkTextLight]}>
+        {"\u2039 Back to plans"}
+      </Text>
+    </TouchableOpacity>
+  );
+
   if (loading) {
     return (
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={[styles.linkText, isLight && styles.linkTextLight]}>
-                {"\u2039 Back to plans"}
-              </Text>
-            </TouchableOpacity>
-            <View style={{ marginTop: 8 }}>
-              <Text
-                style={[
-                  styles.homeGreetingLabel,
-                  isLight && styles.homeGreetingLabelLight,
-                ]}
-              >
-                {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-              </Text>
-              <Text
-                style={[
-                  styles.homeGreetingTitle,
-                  isLight && styles.homeGreetingTitleLight,
-                ]}
-              >
-                Your plan
-              </Text>
-            </View>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plan"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+          topContent={backToPlansLink}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
           <Text style={styles.loadingText}>Loading plan…</Text>
@@ -106,37 +88,13 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={[styles.linkText, isLight && styles.linkTextLight]}>
-                {"\u2039 Back to plans"}
-              </Text>
-            </TouchableOpacity>
-            <View style={{ marginTop: 8 }}>
-              <Text
-                style={[
-                  styles.homeGreetingLabel,
-                  isLight && styles.homeGreetingLabelLight,
-                ]}
-              >
-                {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-              </Text>
-              <Text
-                style={[
-                  styles.homeGreetingTitle,
-                  isLight && styles.homeGreetingTitleLight,
-                ]}
-              >
-                Your plan
-              </Text>
-            </View>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plan"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+          topContent={backToPlansLink}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Plan Details
         </Text>
@@ -152,37 +110,13 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         contentContainerStyle={styles.plansScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.homeHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={[styles.linkText, isLight && styles.linkTextLight]}>
-                {"\u2039 Back to plans"}
-              </Text>
-            </TouchableOpacity>
-            <View style={{ marginTop: 8 }}>
-              <Text
-                style={[
-                  styles.homeGreetingLabel,
-                  isLight && styles.homeGreetingLabelLight,
-                ]}
-              >
-                {plansUserName ? `Hi ${plansUserName},` : "Hi,"}
-              </Text>
-              <Text
-                style={[
-                  styles.homeGreetingTitle,
-                  isLight && styles.homeGreetingTitleLight,
-                ]}
-              >
-                Your plan
-              </Text>
-            </View>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={plansUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your plan"
+          userName={plansUserName}
+          onThemeToggle={toggle}
+          topContent={backToPlansLink}
+        />
 
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           {plan.name}
@@ -393,11 +327,11 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                     style={{
                       padding: 16,
                       borderRadius: 18,
-                      backgroundColor: isLight ? LIGHT_CARD : DARK_CARD,
+                      backgroundColor: isLight ? LIGHT_CARD : "#111A2B",
                       borderWidth: 1,
                       borderColor: isLight
                         ? "#E2E8F0"
-                        : "rgba(148, 163, 184, 0.35)",
+                        : "rgba(125,211,252,0.2)",
                       marginBottom: 12,
                     }}
                   >
@@ -413,7 +347,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                           width: 32,
                           height: 32,
                           borderRadius: 16,
-                          backgroundColor: isLight ? "#0F172A" : "#1E293B",
+                          backgroundColor: PS_BLUE,
                           alignItems: "center",
                           justifyContent: "center",
                           marginRight: 8,
@@ -448,7 +382,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                       style={{
                         fontSize: 13,
                         lineHeight: 19,
-                        color: isLight ? "#4B5563" : DARK_TEXT_MUTED,
+                        color: isLight ? "#4B5563" : "#B8C0D4",
                         marginBottom: 12,
                       }}
                     >

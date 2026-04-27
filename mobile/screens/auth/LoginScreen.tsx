@@ -33,18 +33,54 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <View style={[authStyles.container, isLight && authStyles.containerLight]}>
-      <ThemeToggle isLight={isLight} onToggle={toggle} />
-      <Text style={[authStyles.title, isLight && authStyles.titleLight]}>
-        Go ahead and set up
-        {"\n"}
-        your account
-      </Text>
-      <Text style={[authStyles.subtitle, isLight && authStyles.subtitleLight]}>
-        Sign in to enjoy the best managing experience.
-      </Text>
+    <View style={[authStyles.onboardingRoot, isLight && authStyles.containerLight]}>
+      <View style={authStyles.onboardingTopBar}>
+        <View
+          style={[
+            authStyles.authBrandPill,
+            isLight && authStyles.authBrandPillLight,
+          ]}
+        >
+          <Ionicons
+            name="barbell-outline"
+            size={17}
+            color={isLight ? "#0070cc" : "#7DD3FC"}
+          />
+          <Text
+            style={[
+              authStyles.authBrandText,
+              isLight && authStyles.authBrandTextLight,
+            ]}
+          >
+            Fit
+          </Text>
+        </View>
+        <ThemeToggle isLight={isLight} onToggle={toggle} />
+      </View>
 
-      <View style={[authStyles.authCard, authStyles.authCardShadow]}>
+      <View style={authStyles.onboardingHeader}>
+        <Text
+          style={[authStyles.onboardingTitle, isLight && authStyles.titleLight]}
+        >
+          Welcome back
+        </Text>
+        <Text
+          style={[
+            authStyles.onboardingSubtitle,
+            isLight && authStyles.subtitleLight,
+          ]}
+        >
+          Sign in and jump straight into your training.
+        </Text>
+      </View>
+
+      <View
+        style={[
+          authStyles.authCard,
+          authStyles.authCardShadow,
+          isLight && authStyles.authCardLight,
+        ]}
+      >
         <View style={authStyles.segmentContainer}>
           <View
             style={[authStyles.segmentButton, authStyles.segmentButtonActive]}
@@ -66,17 +102,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={authStyles.inputRow}>
+        <View style={[authStyles.inputRow, isLight && authStyles.inputRowLight]}>
           <Ionicons
             name="mail-outline"
             size={18}
-            color="#2563EB"
+            color={isLight ? "#0070cc" : "#7DD3FC"}
             style={authStyles.inputIcon}
           />
           <TextInput
-            style={authStyles.inputField}
-            placeholder="E-mail ID"
-            placeholderTextColor="#9CA3AF"
+            style={[authStyles.inputField, !isLight && authStyles.inputFieldDark]}
+            placeholder="Email or username"
+            placeholderTextColor={isLight ? "#9CA3AF" : "#6B7280"}
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"
@@ -84,17 +120,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           />
         </View>
 
-        <View style={authStyles.inputRow}>
+        <View style={[authStyles.inputRow, isLight && authStyles.inputRowLight]}>
           <Ionicons
             name="lock-closed-outline"
             size={18}
-            color="#2563EB"
+            color={isLight ? "#0070cc" : "#7DD3FC"}
             style={authStyles.inputIcon}
           />
           <TextInput
-            style={authStyles.inputField}
+            style={[authStyles.inputField, !isLight && authStyles.inputFieldDark]}
             placeholder="Password"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={isLight ? "#9CA3AF" : "#6B7280"}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -117,7 +153,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 <Ionicons name="checkmark" size={12} color="#FFFFFF" />
               )}
             </View>
-            <Text style={authStyles.rememberLabel}>Remember me</Text>
+            <Text
+              style={[
+                authStyles.rememberLabel,
+                !isLight && authStyles.rememberLabelDark,
+              ]}
+            >
+              Remember me
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity>
             <Text style={authStyles.forgotPasswordText}>Forget Password?</Text>
@@ -129,13 +172,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         <TouchableOpacity
           style={[
             authStyles.primaryButton,
-            isLight && authStyles.primaryButtonLight,
+            authStyles.wizardPrimaryButton,
             loading && authStyles.primaryButtonDisabled,
           ]}
           onPress={onSubmit}
           disabled={loading}
         >
-          <Text style={authStyles.primaryButtonText}>
+          <Text
+            style={[
+              authStyles.primaryButtonText,
+              authStyles.wizardPrimaryButtonText,
+            ]}
+          >
             {loading ? "Logging in…" : "Login"}
           </Text>
         </TouchableOpacity>
@@ -148,17 +196,50 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
         <View style={authStyles.socialRow}>
           <TouchableOpacity
-            style={[authStyles.socialButton, authStyles.socialButtonLeft]}
+            style={[
+              authStyles.socialButton,
+              authStyles.socialButtonLeft,
+              !isLight && authStyles.socialButtonDark,
+            ]}
           >
             <Ionicons name="logo-google" size={18} color="#DB4437" />
-            <Text style={authStyles.socialButtonText}>Google</Text>
+            <Text
+              style={[
+                authStyles.socialButtonText,
+                !isLight && authStyles.socialButtonTextDark,
+              ]}
+            >
+              Google
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={authStyles.socialButton}>
-            <Ionicons name="logo-apple" size={18} color="#111827" />
-            <Text style={authStyles.socialButtonText}>Apple</Text>
+          <TouchableOpacity
+            style={[
+              authStyles.socialButton,
+              !isLight && authStyles.socialButtonDark,
+            ]}
+          >
+            <Ionicons
+              name="logo-apple"
+              size={18}
+              color={isLight ? "#111827" : "#FFFFFF"}
+            />
+            <Text
+              style={[
+                authStyles.socialButtonText,
+                !isLight && authStyles.socialButtonTextDark,
+              ]}
+            >
+              Apple
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+        <Text style={[authStyles.linkText, isLight && authStyles.linkTextLight]}>
+          New here? Create your training profile
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };

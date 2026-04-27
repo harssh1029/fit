@@ -16,7 +16,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../api/client";
 import BodyMuscleFront, { MuscleName } from "../../BodyMuscleFront";
 import BodyMuscleBack from "../../BodyMuscleBack";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
+import { FilterChipRow } from "../../components/FilterChipRow";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { GLASS_ACCENT_GREEN } from "../../styles/theme";
 import {
@@ -25,7 +26,6 @@ import {
   buildExercisesUrl,
   getMuscleIdsForSelection,
   useThemeMode,
-  HeaderAvatar,
   styles,
 } from "../../App";
 import type {
@@ -40,6 +40,16 @@ import type {
 
 const CHEST_PRESS_IMAGE_UP = require("../../assets/chest/0.jpg");
 const CHEST_PRESS_IMAGE_DOWN = require("../../assets/chest/1.jpg");
+
+const EXERCISE_FILTER_CHIPS: {
+  key: Exclude<FilterSheetKey, null>;
+  label: string;
+}[] = [
+  { key: "muscles", label: "Muscles" },
+  { key: "level", label: "Level" },
+  { key: "mechanic", label: "Mechanic" },
+  { key: "force", label: "Force" },
+];
 
 const ExerciseListScreen: React.FC = () => {
   const { mode, toggle } = useThemeMode();
@@ -69,6 +79,9 @@ const ExerciseListScreen: React.FC = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [activeFilterSheet, setActiveFilterSheet] =
     useState<FilterSheetKey>(null);
+  const [draftFilterMuscleNames, setDraftFilterMuscleNames] = useState<
+    MuscleName[]
+  >([]);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [mechanicFilter, setMechanicFilter] = useState<MechanicFilter>("all");
   const [forceFilter, setForceFilter] = useState<ForceFilter>("all");
@@ -214,6 +227,13 @@ const ExerciseListScreen: React.FC = () => {
       return;
     }
 
+    // Avoid firing a new network request on every tap while the Muscles
+    // sheet is open. Let the user finish selecting, then refresh once when
+    // the sheet closes.
+    if (activeFilterSheet === "muscles") {
+      return;
+    }
+
     const filterMuscleNames = activeFilterMuscleNames ?? [];
     const hasMuscleFilter = filterMuscleNames.length > 0;
     const hasSearchFilter = debouncedSearchQuery.length > 0;
@@ -276,6 +296,7 @@ const ExerciseListScreen: React.FC = () => {
     activeFilterMuscleNames,
     debouncedSearchQuery,
     muscleGroups,
+    activeFilterSheet,
   ]);
 
   const handleViewExercisesPress = () => {
@@ -303,6 +324,42 @@ const ExerciseListScreen: React.FC = () => {
     setLevelFilter("all");
     setMechanicFilter("all");
     setForceFilter("all");
+    setActiveFilterSheet(null);
+  };
+
+  const handleFilterChipPress = (
+    chipKey: Exclude<FilterSheetKey, null>,
+    isActiveChip: boolean,
+  ) => {
+    if (chipKey === "muscles") {
+      setDraftFilterMuscleNames(activeFilterMuscleNames ?? []);
+      setActiveFilterSheet("muscles");
+      return;
+    }
+
+    if (!isActiveChip) {
+      setActiveFilterSheet(chipKey);
+      return;
+    }
+
+    setActiveFilterSheet(null);
+    if (chipKey === "level") {
+      setLevelFilter("all");
+    } else if (chipKey === "mechanic") {
+      setMechanicFilter("all");
+    } else if (chipKey === "force") {
+      setForceFilter("all");
+    }
+  };
+
+  const handleCloseFilterSheet = () => {
+    setActiveFilterSheet(null);
+  };
+
+  const handleApplyMuscleFilter = () => {
+    setActiveFilterMuscleNames(
+      draftFilterMuscleNames.length > 0 ? draftFilterMuscleNames : null,
+    );
     setActiveFilterSheet(null);
   };
 
@@ -358,6 +415,68 @@ const ExerciseListScreen: React.FC = () => {
     [],
   );
 
+  const renderSingleSelectFilterSheet = <T extends string,>({
+    title,
+    subtitle,
+    options,
+    value,
+    onSelect,
+  }: {
+    title: string;
+    subtitle: string;
+    options: { key: T; label: string }[];
+    value: T;
+    onSelect: (value: T) => void;
+  }) => (
+    <>
+      <Text
+        style={[
+          styles.filterSheetTitle,
+          isLight && styles.filterSheetTitleLight,
+        ]}
+      >
+        {title}
+      </Text>
+      <Text
+        style={[
+          styles.filterSheetSubtitle,
+          isLight && styles.filterSheetSubtitleLight,
+        ]}
+      >
+        {subtitle}
+      </Text>
+      {options.map((option) => {
+        const isActive = value === option.key;
+        return (
+          <TouchableOpacity
+            key={option.key}
+            style={[
+              styles.exerciseFilterRow,
+              isLight && styles.exerciseFilterRowLight,
+              isActive && styles.exerciseFilterRowActive,
+              isLight && isActive && styles.exerciseFilterRowActiveLight,
+            ]}
+            onPress={() => {
+              onSelect(option.key);
+              setActiveFilterSheet(null);
+            }}
+          >
+            <Text
+              style={[
+                styles.exerciseFilterLabel,
+                isLight && styles.exerciseFilterLabelLight,
+                isActive && styles.exerciseFilterLabelActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+            {isActive && <Text style={styles.exerciseFilterCheck}>✓</Text>}
+          </TouchableOpacity>
+        );
+      })}
+    </>
+  );
+
   const renderFilterSheetContent = () => {
     if (!activeFilterSheet) {
       return null;
@@ -371,55 +490,13 @@ const ExerciseListScreen: React.FC = () => {
         { key: "advanced", label: "Advanced" },
       ];
 
-      return (
-        <>
-          <Text
-            style={[
-              styles.filterSheetTitle,
-              isLight && styles.filterSheetTitleLight,
-            ]}
-          >
-            Select level
-          </Text>
-          <Text
-            style={[
-              styles.filterSheetSubtitle,
-              isLight && styles.filterSheetSubtitleLight,
-            ]}
-          >
-            Filter by beginner, intermediate, or advanced difficulty.
-          </Text>
-          {options.map((option) => {
-            const isActive = levelFilter === option.key;
-            return (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.exerciseFilterRow,
-                  isLight && styles.exerciseFilterRowLight,
-                  isActive && styles.exerciseFilterRowActive,
-                  isLight && isActive && styles.exerciseFilterRowActiveLight,
-                ]}
-                onPress={() => {
-                  setLevelFilter(option.key);
-                  setActiveFilterSheet(null);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.exerciseFilterLabel,
-                    isLight && styles.exerciseFilterLabelLight,
-                    isActive && styles.exerciseFilterLabelActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                {isActive && <Text style={styles.exerciseFilterCheck}>✓</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </>
-      );
+      return renderSingleSelectFilterSheet({
+        title: "Select level",
+        subtitle: "Filter by beginner, intermediate, or advanced difficulty.",
+        options,
+        value: levelFilter,
+        onSelect: setLevelFilter,
+      });
     }
 
     if (activeFilterSheet === "mechanic") {
@@ -429,55 +506,13 @@ const ExerciseListScreen: React.FC = () => {
         { key: "isolation", label: "Isolation" },
       ];
 
-      return (
-        <>
-          <Text
-            style={[
-              styles.filterSheetTitle,
-              isLight && styles.filterSheetTitleLight,
-            ]}
-          >
-            Select mechanic
-          </Text>
-          <Text
-            style={[
-              styles.filterSheetSubtitle,
-              isLight && styles.filterSheetSubtitleLight,
-            ]}
-          >
-            Filter by compound vs isolation exercises.
-          </Text>
-          {options.map((option) => {
-            const isActive = mechanicFilter === option.key;
-            return (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.exerciseFilterRow,
-                  isLight && styles.exerciseFilterRowLight,
-                  isActive && styles.exerciseFilterRowActive,
-                  isLight && isActive && styles.exerciseFilterRowActiveLight,
-                ]}
-                onPress={() => {
-                  setMechanicFilter(option.key);
-                  setActiveFilterSheet(null);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.exerciseFilterLabel,
-                    isLight && styles.exerciseFilterLabelLight,
-                    isActive && styles.exerciseFilterLabelActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                {isActive && <Text style={styles.exerciseFilterCheck}>✓</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </>
-      );
+      return renderSingleSelectFilterSheet({
+        title: "Select mechanic",
+        subtitle: "Filter by compound vs isolation exercises.",
+        options,
+        value: mechanicFilter,
+        onSelect: setMechanicFilter,
+      });
     }
 
     if (activeFilterSheet === "force") {
@@ -488,59 +523,17 @@ const ExerciseListScreen: React.FC = () => {
         { key: "hold", label: "Hold" },
       ];
 
-      return (
-        <>
-          <Text
-            style={[
-              styles.filterSheetTitle,
-              isLight && styles.filterSheetTitleLight,
-            ]}
-          >
-            Select force
-          </Text>
-          <Text
-            style={[
-              styles.filterSheetSubtitle,
-              isLight && styles.filterSheetSubtitleLight,
-            ]}
-          >
-            Filter by push, pull, or hold.
-          </Text>
-          {options.map((option) => {
-            const isActive = forceFilter === option.key;
-            return (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.exerciseFilterRow,
-                  isLight && styles.exerciseFilterRowLight,
-                  isActive && styles.exerciseFilterRowActive,
-                  isLight && isActive && styles.exerciseFilterRowActiveLight,
-                ]}
-                onPress={() => {
-                  setForceFilter(option.key);
-                  setActiveFilterSheet(null);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.exerciseFilterLabel,
-                    isLight && styles.exerciseFilterLabelLight,
-                    isActive && styles.exerciseFilterLabelActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                {isActive && <Text style={styles.exerciseFilterCheck}>✓</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </>
-      );
+      return renderSingleSelectFilterSheet({
+        title: "Select force",
+        subtitle: "Filter by push, pull, or hold.",
+        options,
+        value: forceFilter,
+        onSelect: setForceFilter,
+      });
     }
 
     if (activeFilterSheet === "muscles") {
-      const selectedSet = new Set(activeFilterMuscleNames ?? []);
+      const selectedSet = new Set(draftFilterMuscleNames);
 
       return (
         <>
@@ -586,8 +579,8 @@ const ExerciseListScreen: React.FC = () => {
                           styles.exerciseFilterRowActiveLight,
                       ]}
                       onPress={() => {
-                        setActiveFilterMuscleNames((prev) => {
-                          const current = new Set(prev ?? []);
+                        setDraftFilterMuscleNames((prev) => {
+                          const current = new Set(prev);
                           if (current.has(muscle)) {
                             current.delete(muscle);
                           } else {
@@ -619,12 +612,22 @@ const ExerciseListScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.filterSheetFooterButton}
               onPress={() => {
-                setActiveFilterMuscleNames(null);
-                setActiveFilterSheet(null);
+                setDraftFilterMuscleNames([]);
               }}
             >
               <Text style={styles.filterSheetFooterButtonText}>
                 Clear selection
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterSheetFooterButton,
+                styles.filterSheetFooterButtonPrimary,
+              ]}
+              onPress={handleApplyMuscleFilter}
+            >
+              <Text style={styles.filterSheetFooterButtonTextPrimary}>
+                Apply
               </Text>
             </TouchableOpacity>
           </View>
@@ -640,30 +643,12 @@ const ExerciseListScreen: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {exercisesUserName ? `Hi ${exercisesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Exercise library
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={exercisesUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Exercise library"
+          userName={exercisesUserName}
+          onThemeToggle={toggle}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
           <Text style={styles.loadingText}>Loading exercises…</Text>
@@ -677,30 +662,12 @@ const ExerciseListScreen: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {exercisesUserName ? `Hi ${exercisesUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Exercise library
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={exercisesUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Exercise library"
+          userName={exercisesUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Exercises
         </Text>
@@ -757,33 +724,41 @@ const ExerciseListScreen: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
+        <AppHeader
+          isLight={isLight}
+          title="Exercise library"
+          userName={exercisesUserName}
+          onThemeToggle={toggle}
+        />
+        <View style={styles.exerciseListTitleRow}>
+          <Text
+            style={[styles.screenTitle, isLight && styles.screenTitleLight]}
+          >
+            All exercises
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.exerciseBodyMapButton,
+              isLight && styles.exerciseBodyMapButtonLight,
+            ]}
+            activeOpacity={0.9}
+            onPress={handleBackToBodyMap}
+          >
+            <Ionicons
+              name="body-outline"
+              size={14}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+            />
             <Text
               style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
+                styles.exerciseBodyMapButtonLabel,
+                isLight && styles.exerciseBodyMapButtonLabelLight,
               ]}
             >
-              {exercisesUserName ? `Hi ${exercisesUserName},` : "Hi,"}
+              Body map
             </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Exercise library
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={exercisesUserName} />
-          </View>
+          </TouchableOpacity>
         </View>
-        <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
-          All exercises
-        </Text>
         <View style={styles.exerciseSearchContainer}>
           <TextInput
             style={[
@@ -798,16 +773,10 @@ const ExerciseListScreen: React.FC = () => {
             returnKeyType="search"
           />
         </View>
-        <View style={styles.exerciseFilterChipRow}>
-          {(
-            [
-              { key: "muscles", label: "Muscles" },
-              { key: "level", label: "Level" },
-              { key: "mechanic", label: "Mechanic" },
-              { key: "force", label: "Force" },
-            ] as const
-          ).map((chip) => {
-            const isActiveChip = (() => {
+        <FilterChipRow
+          items={EXERCISE_FILTER_CHIPS}
+          isLight={isLight}
+          isActive={(chip) => {
               if (chip.key === "muscles") {
                 return (
                   (activeFilterMuscleNames?.length ?? 0) > 0 ||
@@ -830,48 +799,23 @@ const ExerciseListScreen: React.FC = () => {
               }
 
               return false;
-            })();
-            return (
-              <TouchableOpacity
-                key={chip.key}
-                style={[
-                  styles.exerciseFilterChip,
-                  isLight && styles.exerciseFilterChipLight,
-                  isActiveChip && styles.exerciseFilterChipActive,
-                ]}
-                onPress={() => setActiveFilterSheet(chip.key)}
-              >
-                <Text
-                  style={[
-                    styles.exerciseFilterChipLabel,
-                    isLight && styles.exerciseFilterChipLabelLight,
-                  ]}
-                >
-                  {chip.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.exerciseFilterChipCaret,
-                    isLight && styles.exerciseFilterChipCaretLight,
-                  ]}
-                >
-                  ▾
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          }}
+          onPress={(chip, isActiveChip) =>
+            handleFilterChipPress(chip.key, isActiveChip)
+          }
+          getSuffix={(_, isActiveChip) => (isActiveChip ? "×" : "▾")}
+        />
         <Modal
           visible={activeFilterSheet !== null}
           transparent
           animationType="slide"
-          onRequestClose={() => setActiveFilterSheet(null)}
+          onRequestClose={handleCloseFilterSheet}
         >
           <View style={styles.filterSheetRoot}>
             <TouchableOpacity
               style={styles.filterSheetBackdrop}
               activeOpacity={1}
-              onPress={() => setActiveFilterSheet(null)}
+              onPress={handleCloseFilterSheet}
             />
             <View
               style={[
@@ -1333,30 +1277,12 @@ const ExerciseListScreen: React.FC = () => {
     <View
       style={[styles.screenContainer, isLight && styles.screenContainerLight]}
     >
-      <View style={styles.homeHeaderRow}>
-        <View>
-          <Text
-            style={[
-              styles.homeGreetingLabel,
-              isLight && styles.homeGreetingLabelLight,
-            ]}
-          >
-            {exercisesUserName ? `Hi ${exercisesUserName},` : "Hi,"}
-          </Text>
-          <Text
-            style={[
-              styles.homeGreetingTitle,
-              isLight && styles.homeGreetingTitleLight,
-            ]}
-          >
-            Exercise library
-          </Text>
-        </View>
-        <View style={styles.homeHeaderRightRow}>
-          <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-          <HeaderAvatar isLight={isLight} name={exercisesUserName} />
-        </View>
-      </View>
+      <AppHeader
+        isLight={isLight}
+        title="Exercise library"
+        userName={exercisesUserName}
+        onThemeToggle={toggle}
+      />
       <TouchableOpacity
         style={[styles.primaryButton, isLight && styles.primaryButtonLight]}
         onPress={() => {
@@ -1371,6 +1297,40 @@ const ExerciseListScreen: React.FC = () => {
       >
         <Text style={styles.primaryButtonText}>All exercises</Text>
       </TouchableOpacity>
+      {hasSelection && (
+        <TouchableOpacity
+          style={[
+            styles.bodyMapSelectionFilter,
+            isLight && styles.bodyMapSelectionFilterLight,
+          ]}
+          activeOpacity={0.9}
+          onPress={handleViewExercisesPress}
+        >
+          <View style={styles.bodyMapSelectionFilterTextCol}>
+            <Text
+              style={[
+                styles.bodyMapSelectionFilterLabel,
+                isLight && styles.bodyMapSelectionFilterLabelLight,
+              ]}
+            >
+              Body map filter
+            </Text>
+            <Text
+              style={[
+                styles.bodyMapSelectionFilterValue,
+                isLight && styles.bodyMapSelectionFilterValueLight,
+              ]}
+              numberOfLines={1}
+            >
+              {selectedMuscles.join(", ")}
+            </Text>
+          </View>
+          <View style={styles.bodyMapSelectionFilterButton}>
+            <Text style={styles.bodyMapSelectionFilterButtonText}>Apply</Text>
+            <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+      )}
       <View
         style={[
           styles.premiumSideToggle,
@@ -1391,8 +1351,8 @@ const ExerciseListScreen: React.FC = () => {
           <Text
             style={[
               styles.premiumSideLabel,
-              bodySide === "front" && styles.premiumSideLabelActive,
               isLight && styles.premiumSideLabelLight,
+              bodySide === "front" && styles.premiumSideLabelActive,
             ]}
           >
             Front
@@ -1412,8 +1372,8 @@ const ExerciseListScreen: React.FC = () => {
           <Text
             style={[
               styles.premiumSideLabel,
-              bodySide === "back" && styles.premiumSideLabelActive,
               isLight && styles.premiumSideLabelLight,
+              bodySide === "back" && styles.premiumSideLabelActive,
             ]}
           >
             Back

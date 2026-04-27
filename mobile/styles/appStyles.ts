@@ -75,17 +75,36 @@ export const styles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   homeScrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 112,
   },
   homeHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 24,
+    minHeight: 72,
+    marginBottom: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+    backgroundColor: "#0A0F1D",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  homeHeaderRowLight: {
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#94A3B8",
+    shadowOpacity: 0.08,
   },
   homeHeaderRightRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginLeft: 12,
   },
   homeHeaderRefreshButton: {
     marginRight: 12,
@@ -93,17 +112,21 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
   },
   homeGreetingLabel: {
-    color: DARK_TEXT_MUTED,
-    fontSize: 13,
-    marginBottom: 4,
+    color: "#A7B0C3",
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.1,
+    marginBottom: 2,
   },
   homeGreetingLabelLight: {
     color: LIGHT_TEXT_MUTED,
   },
   homeGreetingTitle: {
     color: DARK_TEXT_PRIMARY,
-    fontSize: 22,
+    fontSize: 23,
+    lineHeight: 28,
     fontWeight: "700",
+    letterSpacing: 0,
   },
   homeGreetingTitleLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -112,24 +135,44 @@ export const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: DARK_CARD,
+    backgroundColor: "#182238",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(125,211,252,0.18)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   homeAvatarLight: {
     backgroundColor: LIGHT_CARD,
-    borderColor: "#e5e7eb",
+    borderColor: "#DDE3ED",
+    shadowOpacity: 0.08,
   },
   homeAvatarInitials: {
     color: DARK_TEXT_PRIMARY,
     fontWeight: "700",
-    fontSize: 14,
+    fontSize: 13,
     letterSpacing: 0.5,
   },
   homeAvatarInitialsLight: {
     color: LIGHT_TEXT_PRIMARY,
+  },
+  homeAvatarStatusDot: {
+    position: "absolute",
+    right: 3,
+    bottom: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: "#22C55E",
+    borderWidth: 2,
+    borderColor: "#182238",
+  },
+  homeAvatarStatusDotLight: {
+    borderColor: "#FFFFFF",
   },
   homePillRow: {
     flexDirection: "row",
@@ -154,7 +197,7 @@ export const styles = StyleSheet.create({
     backgroundColor: PS_BLUE,
   },
   homePillActiveLight: {
-    backgroundColor: "#0F172A",
+    backgroundColor: PS_BLUE,
   },
   homePillLabel: {
     color: DARK_TEXT_MUTED,
@@ -947,21 +990,21 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#8FA4D4",
+    backgroundColor: PS_BLUE,
   },
   trainingLegendItemActiveDark: {
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#4B5563",
+    backgroundColor: PS_BLUE,
   },
   trainingLegendLabelActiveLight: {
     fontWeight: "700",
-    color: "#0F172A",
+    color: "#FFFFFF",
   },
   trainingLegendLabelActiveDark: {
-    fontWeight: "600",
-    color: "#E5E7EB",
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   trainingLegendLabel: {
     marginTop: -2,
@@ -1131,40 +1174,97 @@ export const styles = StyleSheet.create({
     marginTop: 8,
   },
   tabBar: {
-    backgroundColor: "rgba(5, 8, 20, 0.95)",
-    borderTopColor: "rgba(15, 23, 42, 0.85)",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    height: 72,
-    paddingBottom: 10,
-    paddingTop: 6,
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    height: 58,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+    borderTopWidth: 0,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.22)",
+    backgroundColor: "#252834",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000000",
+    shadowOpacity: 0.34,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
   },
   tabBarLight: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderTopColor: "rgba(148, 163, 184, 0.45)",
+    backgroundColor: "#F8FAFC",
+    borderColor: "#D5DDEB",
+    shadowColor: "#64748B",
+    shadowOpacity: 0.2,
+  },
+  tabBarNativeItem: {
+    height: 58,
+    padding: 0,
+    marginHorizontal: 2,
   },
   tabBarItem: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    width: 46,
+    height: 48,
+  },
+  tabBarItemActive: {
+    width: 116,
   },
   tabBarIconContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "transparent",
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    backgroundColor: "#303340",
     borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.35)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   tabBarIconContainerLight: {
-    borderColor: "#e5e7eb",
+    backgroundColor: "#EEF2F7",
+    borderColor: "#E2E8F0",
   },
   tabBarIconContainerActive: {
-    backgroundColor: GLASS_CARD_DARK,
-    borderColor: PS_BLUE,
+    width: 114,
+    backgroundColor: PS_BLUE,
+    borderColor: "rgba(255,255,255,0.24)",
+    shadowColor: PS_BLUE,
+    shadowOpacity: 0.32,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   tabBarIconContainerActiveLight: {
-    backgroundColor: GLASS_CARD_DARK,
+    width: 114,
+    backgroundColor: PS_BLUE,
     borderColor: PS_BLUE,
+    shadowColor: PS_BLUE,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  tabBarActiveDot: {
+    display: "none",
+  },
+  tabBarActiveDotVisible: {
+    backgroundColor: "transparent",
+  },
+  tabBarActiveDotVisibleLight: {
+    backgroundColor: "transparent",
+  },
+  tabBarActiveLabel: {
+    marginLeft: 7,
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.1,
   },
   tabBarLabel: {
     marginTop: 4,
@@ -1236,6 +1336,58 @@ export const styles = StyleSheet.create({
     color: GLASS_TEXT_PRIMARY,
     fontWeight: "500",
   },
+  bodyMapSelectionFilter: {
+    marginTop: 10,
+    marginBottom: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.28)",
+    backgroundColor: "rgba(125,211,252,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  bodyMapSelectionFilterLight: {
+    borderColor: "#D5E9FF",
+    backgroundColor: "#EEF6FF",
+  },
+  bodyMapSelectionFilterTextCol: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  bodyMapSelectionFilterLabel: {
+    color: "#7DD3FC",
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 3,
+  },
+  bodyMapSelectionFilterLabelLight: {
+    color: PS_BLUE,
+  },
+  bodyMapSelectionFilterValue: {
+    color: DARK_TEXT_PRIMARY,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  bodyMapSelectionFilterValueLight: {
+    color: LIGHT_TEXT_PRIMARY,
+  },
+  bodyMapSelectionFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: PS_BLUE,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  bodyMapSelectionFilterButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+    marginRight: 5,
+  },
   linkText: {
     color: PS_BLUE,
     marginTop: 16,
@@ -1245,58 +1397,90 @@ export const styles = StyleSheet.create({
     color: PS_BLUE,
   },
   profileCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: GLASS_CARD_DARK,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: "#101624",
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   profileCardLight: {
-    backgroundColor: LIGHT_CARD,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderColor: "#E2E8F0",
-    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    borderColor: "transparent",
+    shadowColor: "#94A3B8",
+    shadowOpacity: 0.1,
+  },
+  profileHeroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: GLASS_CARD_DARK,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: PS_BLUE,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 16,
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
   },
   avatarCircleLight: {
-    backgroundColor: LIGHT_CARD,
+    backgroundColor: PS_BLUE,
   },
   avatarInitials: {
-    color: "#F5F7FA",
-    fontSize: 20,
+    color: "#FFFFFF",
+    fontSize: 18,
     fontWeight: "700",
   },
   avatarInitialsLight: {
-    color: "#111827",
+    color: "#FFFFFF",
   },
   profileTextBlock: {
     flex: 1,
   },
   profileName: {
     color: "#F5F7FA",
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
   },
   profileNameLight: {
     color: "#111827",
   },
   profileGoal: {
-    color: "#9ca3af",
-    marginTop: 2,
+    color: "#B8C0D4",
+    marginTop: 3,
+    fontSize: 13,
   },
   profileGoalLight: {
     color: "#4b5563",
+  },
+  profileHeroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(148,163,184,0.18)",
+  },
+  profileHeroMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  profileHeroMetaText: {
+    marginLeft: 6,
+    color: "#D9E4F2",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  profileHeroMetaTextLight: {
+    color: LIGHT_TEXT_PRIMARY,
   },
   profilePrCard: {
     backgroundColor: GLASS_CARD_DARK,
@@ -1365,16 +1549,16 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: GLASS_CARD_DARK,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: "#101624",
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
-    marginBottom: 16,
+    borderColor: "rgba(125,211,252,0.18)",
+    marginBottom: 18,
   },
   profilePrTriggerCardLight: {
-    backgroundColor: LIGHT_CARD,
+    backgroundColor: "#FFFFFF",
     borderColor: "#E2E8F0",
   },
   profilePrTriggerTextCol: {
@@ -1402,48 +1586,49 @@ export const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
   },
   premiumPill: {
-    backgroundColor: GLASS_CARD_DARK,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: PS_BLUE,
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: PS_BLUE,
   },
   premiumPillLight: {
-    backgroundColor: LIGHT_CARD,
-    borderColor: "#E2E8F0",
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
   },
   premiumText: {
-    color: "#F5F7FA",
-    fontSize: 10,
+    color: "#FFFFFF",
+    fontSize: 11,
     fontWeight: "700",
   },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 24,
+    marginHorizontal: -4,
+    marginBottom: 22,
   },
   statCard: {
     flex: 1,
-    backgroundColor: GLASS_CARD_DARK,
-    borderRadius: 16,
+    backgroundColor: "#101624",
+    borderRadius: 18,
     padding: 12,
     marginHorizontal: 4,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: "rgba(125,211,252,0.16)",
     borderWidth: 1,
   },
   statCardLight: {
-    flex: 1,
-    backgroundColor: LIGHT_CARD,
-    borderRadius: 16,
-    padding: 12,
-    marginHorizontal: 4,
+    backgroundColor: "#FFFFFF",
     borderColor: "#E2E8F0",
-    borderWidth: 1,
   },
   statLabel: {
-    color: GLASS_TEXT_MUTED,
+    color: "#9AA6BB",
     fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    marginTop: 8,
     marginBottom: 4,
   },
   statLabelLight: {
@@ -1451,15 +1636,16 @@ export const styles = StyleSheet.create({
   },
   statValue: {
     color: GLASS_TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
   },
   statValueLight: {
     color: LIGHT_TEXT_PRIMARY,
   },
   statDelta: {
-    color: PS_BLUE,
+    color: "#7DD3FC",
     fontSize: 11,
+    fontWeight: "600",
     marginTop: 2,
   },
   statDeltaLight: {
@@ -1500,6 +1686,106 @@ export const styles = StyleSheet.create({
   metricCardSmallLight: {
     backgroundColor: LIGHT_CARD,
     borderColor: "#E2E8F0",
+  },
+  communityFriendModalRoot: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(5,8,20,0.86)",
+  },
+  communityFriendModalRootLight: {
+    backgroundColor: "rgba(15,23,42,0.34)",
+  },
+  communityFriendModalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  communityFriendModalCard: {
+    width: "100%",
+    maxWidth: 430,
+    borderRadius: 26,
+    padding: 18,
+    backgroundColor: "#101624",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.22)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.26,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  communityFriendModalCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(226,232,240,0.95)",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.14,
+  },
+  communityFriendPlanPill: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "rgba(125,211,252,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  communityFriendPlanPillLight: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  communityFriendPlanText: {
+    marginLeft: 6,
+    color: "#DFF6FF",
+    fontSize: 12,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  communityFriendPlanTextLight: {
+    color: PS_BLUE,
+  },
+  communityFriendScoreStrip: {
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: "rgba(125,211,252,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.16)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  communityFriendScoreValue: {
+    marginTop: 2,
+    color: DARK_TEXT_PRIMARY,
+    fontSize: 30,
+    fontWeight: "800",
+  },
+  communityFriendScoreValueLight: {
+    color: LIGHT_TEXT_PRIMARY,
+  },
+  communityFriendStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: "#16A34A",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  communityFriendStatusPillLight: {
+    backgroundColor: "#16A34A",
+  },
+  communityFriendStatusText: {
+    marginLeft: 5,
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
   },
   metricCardTitle: {
     color: GLASS_TEXT_MUTED,
@@ -2142,42 +2428,49 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   sectionHeader: {
-    marginTop: 8,
-    marginBottom: 8,
-    color: "#6b7280",
+    marginTop: 10,
+    marginBottom: 10,
+    color: "#B8C0D4",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
   sectionHeaderLight: {
     color: "#6b7280",
   },
   settingsCard: {
-    backgroundColor: GLASS_CARD_DARK,
-    borderRadius: 12,
+    backgroundColor: "#101624",
+    borderRadius: 18,
     padding: 14,
-    marginBottom: 8,
-    borderColor: GLASS_BORDER_DARK,
+    marginBottom: 10,
+    borderColor: "rgba(125,211,252,0.16)",
     borderWidth: 1,
   },
   settingsCardLight: {
-    backgroundColor: LIGHT_CARD,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    backgroundColor: "#FFFFFF",
     borderColor: "#E2E8F0",
-    borderWidth: 1,
+  },
+  settingsItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  settingsItemIcon: {
+    marginRight: 12,
+  },
+  settingsItemTextCol: {
+    flex: 1,
   },
   settingsItemPrimary: {
     color: "#F5F7FA",
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "700",
   },
   settingsItemPrimaryLight: {
     color: "#111827",
   },
   settingsItemSecondary: {
-    color: "#9ca3af",
-    marginTop: 2,
+    color: "#A7B0C3",
+    marginTop: 3,
     fontSize: 12,
   },
   settingsItemSecondaryLight: {
@@ -2202,19 +2495,24 @@ export const styles = StyleSheet.create({
     color: PS_WARNING_RED,
   },
   plansScrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 112,
+  },
+  plansTopHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 0,
+    backgroundColor: "#050814",
+  },
+  plansTopHeaderLight: {
+    backgroundColor: LIGHT_BG,
   },
   plansHeaderContainer: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(148,163,184,0.35)",
-    backgroundColor: DARK_BG,
+    paddingTop: 2,
+    paddingBottom: 20,
+    backgroundColor: "#050814",
   },
   plansHeaderContainerLight: {
-    borderBottomColor: "#E2E8F0",
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: LIGHT_BG,
   },
   plansHeaderRow: {
     flexDirection: "row",
@@ -2223,7 +2521,7 @@ export const styles = StyleSheet.create({
     marginBottom: 12,
   },
   plansHeaderTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "300", // Display per DESIGN.md
     letterSpacing: 0.1,
   },
@@ -2234,35 +2532,72 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   plansActiveCard: {
-    backgroundColor: GLASS_CARD_DARK,
-    borderRadius: 32,
+    backgroundColor: "#101624",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
-    padding: 24,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    borderColor: "rgba(148,163,184,0.24)",
+    padding: 20,
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
   plansActiveCardLight: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    borderColor: "transparent",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  plansActiveKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  plansActiveKickerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(125,211,252,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.2)",
+  },
+  plansActiveKickerPillLight: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  plansActiveKickerText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  plansActiveKickerTextLight: {
+    color: PS_BLUE,
+  },
+  plansActiveKickerTextDark: {
+    color: "#DFF6FF",
   },
   plansActiveTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 14,
     marginBottom: 4,
   },
   plansActiveTitlePillRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 12,
+    flex: 1,
   },
   plansActiveTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginRight: 8,
+    flexShrink: 1,
+    fontSize: 24,
+    fontWeight: "300",
+    lineHeight: 30,
+    letterSpacing: 0.1,
   },
   plansActiveTitleLight: {
     color: "#0F172A",
@@ -2282,7 +2617,8 @@ export const styles = StyleSheet.create({
     color: "#0F172A",
   },
   plansActiveSubtitle: {
-    fontSize: 13,
+    marginTop: 4,
+    fontSize: 14,
     fontWeight: "500",
     color: "#475569",
   },
@@ -2290,28 +2626,26 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_MUTED,
   },
   plansNextRow: {
-    marginTop: 20,
+    marginTop: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+    borderRadius: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
   },
   plansNextRowLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "#F5F7FA",
+    borderColor: "transparent",
   },
   plansNextRowDark: {
-    backgroundColor: DARK_CARD_ALT,
-    borderColor: "rgba(148,163,184,0.4)",
+    backgroundColor: "#182238",
+    borderColor: "rgba(125,211,252,0.12)",
   },
   plansNextLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.1,
     marginBottom: 2,
   },
   plansNextLabelLight: {
@@ -2321,8 +2655,8 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_MUTED,
   },
   plansNextValue: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
   },
   plansNextValueLight: {
     color: "#0F172A",
@@ -2334,7 +2668,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 0,
     shadowColor: "#0F172A",
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -2343,11 +2677,9 @@ export const styles = StyleSheet.create({
   },
   plansNextButtonLight: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
   },
   plansNextButtonDark: {
-    backgroundColor: DARK_BG,
-    borderColor: "rgba(148,163,184,0.5)",
+    backgroundColor: "#FFFFFF",
   },
   plansNextButtonLabel: {
     fontSize: 13,
@@ -2357,17 +2689,17 @@ export const styles = StyleSheet.create({
     color: "#0F172A",
   },
   plansNextButtonLabelDark: {
-    color: DARK_TEXT_PRIMARY,
+    color: "#0F172A",
   },
   plansActiveButtonsRow: {
-    marginTop: 20,
+    marginTop: 18,
     flexDirection: "row",
     alignItems: "center",
   },
   plansPrimaryButton: {
     flex: 1,
     backgroundColor: PS_BLUE,
-    borderRadius: 16,
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -2378,28 +2710,42 @@ export const styles = StyleSheet.create({
     elevation: 3,
     marginRight: 12,
   },
+  plansPrimaryButtonLight: {
+    shadowOpacity: 0.1,
+  },
   plansPrimaryButtonLabel: {
     fontSize: 15,
-    fontWeight: "700",
-    color: "#050814",
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   plansSecondaryButton: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  plansSecondaryButtonLight: {
+    borderColor: "#DDE3ED",
+    backgroundColor: "#FFFFFF",
+  },
+  plansSecondaryButtonDark: {
+    borderColor: "rgba(125,211,252,0.28)",
+    backgroundColor: "rgba(125,211,252,0.08)",
   },
   plansSecondaryButtonLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   plansSecondaryButtonLabelLight: {
     color: LIGHT_TEXT_MUTED,
   },
   plansSecondaryButtonLabelDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#E5E7EB",
   },
   plansBodyContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingTop: 22,
+    paddingBottom: 24,
   },
   planSection: {
     marginBottom: 24,
@@ -2413,8 +2759,9 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   planSectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "300",
+    letterSpacing: 0.1,
   },
   planSectionTitleLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -2424,57 +2771,79 @@ export const styles = StyleSheet.create({
   },
   planFiltersScroll: {
     paddingHorizontal: 20,
-    paddingVertical: 4,
+    paddingTop: 12,
+    paddingBottom: 10,
   },
   planFilterPill: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#FFFFFF",
     marginRight: 8,
   },
+  planFilterPillLight: {
+    borderColor: "#DDE3ED",
+    backgroundColor: "#FFFFFF",
+  },
+  planFilterPillDark: {
+    borderColor: "rgba(148,163,184,0.38)",
+    backgroundColor: "#111827",
+  },
   planFilterPillActive: {
-    backgroundColor: "#0F172A",
-    borderColor: "#0F172A",
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
   },
   planFilterLabel: {
-    color: "#475569",
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
+  },
+  planFilterLabelLight: {
+    color: "#4B5563",
+  },
+  planFilterLabelDark: {
+    color: "#B8C0D4",
   },
   planFilterLabelActive: {
-    color: "#F9FAFB",
+    color: "#FFFFFF",
   },
   planCard: {
-    backgroundColor: GLASS_CARD_DARK,
-    borderRadius: 32,
+    backgroundColor: "#131A2A",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
-    padding: 24,
-    marginTop: 8,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    borderColor: "rgba(148,163,184,0.28)",
+    padding: 18,
+    marginBottom: 14,
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 3,
     overflow: "hidden",
   },
   planCardLight: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    borderColor: "transparent",
+    shadowColor: "#000000",
+    shadowOpacity: 0.06,
   },
-  planCardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+  planCardAccent: {
+    width: 44,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: PS_BLUE,
+    marginBottom: 16,
+  },
+  planCardAccentEnrolled: {
+    width: 72,
+  },
+  planCardTitleBlock: {
     marginBottom: 12,
   },
   planCardTitle: {
-    fontSize: 20,
-    fontWeight: "500",
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: "300",
+    lineHeight: 30,
+    letterSpacing: 0.1,
   },
   planCardTitleLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -2482,29 +2851,39 @@ export const styles = StyleSheet.create({
   planCardTitleDark: {
     color: DARK_TEXT_PRIMARY,
   },
-  planCardTagPill: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+  planCardDurationRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  planCardTagLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+  planCardDurationText: {
+    marginLeft: 7,
+    fontSize: 14,
+    fontWeight: "600",
   },
-  planCardTagLabelLight: {
+  planCardDurationTextLight: {
     color: LIGHT_TEXT_MUTED,
   },
-  planCardTagLabelDark: {
-    color: DARK_TEXT_MUTED,
+  planCardDurationTextDark: {
+    color: "#B8C0D4",
   },
-  planCardMetaColumn: {
-    alignItems: "flex-end",
+  planCardMetaStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  planCardMetaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "#20283A",
+  },
+  planCardMetaChipLight: {
+    backgroundColor: "#F5F7FA",
   },
   planCardMetaRow: {
     flexDirection: "row",
@@ -2513,32 +2892,15 @@ export const styles = StyleSheet.create({
   },
   planCardMetaText: {
     marginLeft: 6,
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "600",
     flexShrink: 1,
   },
   planCardMetaTextLight: {
     color: LIGHT_TEXT_MUTED,
   },
   planCardMetaTextDark: {
-    color: DARK_TEXT_MUTED,
-  },
-  planCardFooterRow: {
-    marginTop: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  planCardEquipmentRow: {
-    flexDirection: "row",
-  },
-  planCardEquipIcon: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginRight: 8,
+    color: "#B8C0D4",
   },
   planCardEnrolledRow: {
     flexDirection: "row",
@@ -2547,13 +2909,13 @@ export const styles = StyleSheet.create({
   planCardEnrolledText: {
     marginLeft: 6,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   planCardEnrolledTextLight: {
     color: LIGHT_TEXT_MUTED,
   },
   planCardEnrolledTextDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   planCardCompletedBadge: {
     position: "absolute",
@@ -2568,9 +2930,9 @@ export const styles = StyleSheet.create({
     padding: 16,
   },
   planCardButton: {
-    marginTop: 12,
+    marginTop: 16,
     paddingVertical: 14,
-    borderRadius: 16,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -2580,34 +2942,40 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  planCardButtonEnrolled: {
-    backgroundColor: "#0F172A",
+  planCardButtonEnrolledLight: {
+    backgroundColor: "#111827",
+  },
+  planCardButtonEnrolledDark: {
+    backgroundColor: "#FFFFFF",
   },
   planCardButtonPreview: {
     backgroundColor: PS_BLUE,
   },
   planCardButtonLabel: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#0F172A",
     marginRight: 6,
   },
   planCardButtonLabelCompleted: {
     color: "#0F172A",
   },
-  planCardButtonLabelEnrolled: {
+  planCardButtonLabelEnrolledLight: {
     color: "#FFFFFF",
   },
-  planCardButtonLabelPreview: {
+  planCardButtonLabelEnrolledDark: {
     color: "#0F172A",
+  },
+  planCardButtonLabelPreview: {
+    color: "#FFFFFF",
   },
   planOverviewCard: {
     marginTop: 24,
     padding: 16,
     borderRadius: 24,
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: "#101624",
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: "rgba(125,211,252,0.18)",
   },
   planOverviewCardLight: {
     backgroundColor: "#F8FAFC",
@@ -2623,8 +2991,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: PS_BLUE,
-    backgroundColor: "rgba(0,112,204,0.08)",
+    borderColor: "rgba(125,211,252,0.28)",
+    backgroundColor: "rgba(125,211,252,0.1)",
     marginRight: 8,
     marginBottom: 8,
   },
@@ -2641,7 +3009,7 @@ export const styles = StyleSheet.create({
     color: PS_BLUE,
   },
   planMetaChipTextDark: {
-    color: "#22C55E",
+    color: "#7DD3FC",
   },
   planOverviewInfoRow: {
     flexDirection: "row",
@@ -2695,9 +3063,9 @@ export const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 20,
     padding: 12,
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: "#101624",
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: "rgba(125,211,252,0.18)",
   },
   planInfoCardLight: {
     backgroundColor: "#FFFFFF",
@@ -2767,7 +3135,7 @@ export const styles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   planDetailHeadingDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#D9E4F2",
   },
   planTimeline: {
     position: "relative",
@@ -2794,8 +3162,8 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   planWeekTagActive: {
-    borderColor: "#0F172A",
-    backgroundColor: "#0F172A",
+    borderColor: PS_BLUE,
+    backgroundColor: PS_BLUE,
   },
   planWeekTagLabel: {
     color: "#475569",
@@ -2857,10 +3225,10 @@ export const styles = StyleSheet.create({
   },
   planTimelineVerticalLineFill: {
     width: "100%",
-    backgroundColor: "#0F172A",
+    backgroundColor: PS_BLUE,
   },
   planTimelineVerticalLineFillLight: {
-    backgroundColor: "#0F172A",
+    backgroundColor: PS_BLUE,
   },
   planTimelineVerticalCards: {
     // Let the ScrollView size itself to its content instead of stretching
@@ -2938,16 +3306,16 @@ export const styles = StyleSheet.create({
     padding: 16,
   },
   planWeekBlockActive: {
-    borderColor: "#0F172A",
-    backgroundColor: "#F8FAFC",
+    borderColor: PS_BLUE,
+    backgroundColor: "#EEF6FF",
   },
   planWeekBlockLight: {
     backgroundColor: "#FFFFFF",
     borderColor: "#E2E8F0",
   },
   planWeekBlockActiveLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#0F172A",
+    backgroundColor: "#EEF6FF",
+    borderColor: PS_BLUE,
   },
   planWeekBlockTitle: {
     color: "#0F172A",
@@ -2999,7 +3367,7 @@ export const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 999,
-    backgroundColor: "#0F172A",
+    backgroundColor: PS_BLUE,
     marginTop: 6,
     marginRight: 8,
   },
@@ -3065,9 +3433,8 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    // Dark theme default: glass card + border so text/icons stay readable
-    borderColor: GLASS_BORDER_DARK,
-    backgroundColor: GLASS_CARD_DARK,
+    borderColor: "rgba(125,211,252,0.28)",
+    backgroundColor: "rgba(125,211,252,0.1)",
     flexDirection: "row",
     alignItems: "center",
   },
@@ -3084,7 +3451,7 @@ export const styles = StyleSheet.create({
     color: "#0F172A",
   },
   planWeekViewFullButtonLabelDark: {
-    color: DARK_TEXT_PRIMARY,
+    color: "#DFF6FF",
   },
   planWeekViewFullButtonIcon: {
     marginLeft: 6,
@@ -3211,8 +3578,7 @@ export const styles = StyleSheet.create({
   viewWorkoutModalRoot: {
     flex: 1,
     justifyContent: "flex-end",
-    // Slightly deeper navy backdrop to better match Friend snapshot design
-    backgroundColor: "rgba(5,8,20,0.96)",
+    backgroundColor: "rgba(5,8,20,0.92)",
   },
   viewWorkoutModalBackdrop: {
     position: "absolute",
@@ -3223,11 +3589,11 @@ export const styles = StyleSheet.create({
   },
   viewWorkoutModalCard: {
     maxHeight: "90%",
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: "#0F172A",
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: "rgba(125,211,252,0.2)",
     paddingTop: 12,
     paddingBottom: 24,
   },
@@ -3258,7 +3624,7 @@ export const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 999,
-    backgroundColor: "#D1D5DB",
+    backgroundColor: "rgba(148,163,184,0.85)",
     alignSelf: "center",
     marginBottom: 12,
   },
@@ -3276,7 +3642,7 @@ export const styles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   viewWorkoutWeekLabelDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   viewWorkoutDayRow: {
     paddingVertical: 12,
@@ -3361,9 +3727,9 @@ export const styles = StyleSheet.create({
     elevation: 4,
   },
   viewWorkoutCardDark: {
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: "#111A2B",
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
+    borderColor: "rgba(125,211,252,0.18)",
   },
   viewWorkoutCardHeaderRow: {
     flexDirection: "row",
@@ -3409,7 +3775,7 @@ export const styles = StyleSheet.create({
     color: "#111827",
   },
   viewWorkoutHeaderTitleDark: {
-    color: GLASS_TEXT_PRIMARY,
+    color: "#F5F7FA",
   },
   viewWorkoutHeaderSubtitle: {
     marginTop: 2,
@@ -3420,7 +3786,7 @@ export const styles = StyleSheet.create({
     color: "#6B7280",
   },
   viewWorkoutHeaderSubtitleDark: {
-    color: DARK_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   viewWorkoutHeaderTagsRow: {
     marginTop: 12,
@@ -3448,7 +3814,7 @@ export const styles = StyleSheet.create({
   viewWorkoutSegmentHeaderText: {
     fontSize: 12,
     fontWeight: "600",
-    color: GLASS_TEXT_MUTED,
+    color: "#A7B0C3",
   },
   viewWorkoutSegmentHeaderTextLight: {
     color: LIGHT_TEXT_MUTED,
@@ -3458,7 +3824,7 @@ export const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "rgba(148,163,184,0.2)",
   },
   viewWorkoutSegmentColLabel: {
     flex: 1.2,
@@ -3478,7 +3844,7 @@ export const styles = StyleSheet.create({
   viewWorkoutSegmentLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: GLASS_TEXT_PRIMARY,
+    color: "#F5F7FA",
   },
   viewWorkoutSegmentLabelLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -3489,7 +3855,7 @@ export const styles = StyleSheet.create({
   },
   viewWorkoutSegmentPrimary: {
     fontSize: 14,
-    color: GLASS_TEXT_PRIMARY,
+    color: "#F5F7FA",
     textAlign: "right",
   },
   viewWorkoutSegmentPrimaryLight: {
@@ -3502,7 +3868,7 @@ export const styles = StyleSheet.create({
   },
   viewWorkoutSegmentSecondary: {
     fontSize: 13,
-    color: GLASS_TEXT_MUTED,
+    color: "#A7B0C3",
     textAlign: "right",
   },
   viewWorkoutSegmentSecondaryLight: {
@@ -3512,7 +3878,7 @@ export const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13,
     lineHeight: 18,
-    color: GLASS_TEXT_MUTED,
+    color: "#B8C0D4",
   },
   viewWorkoutNotesLight: {
     color: LIGHT_TEXT_MUTED,
@@ -3521,14 +3887,14 @@ export const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     lineHeight: 18,
-    color: GLASS_TEXT_PRIMARY,
+    color: "#F5F7FA",
   },
   viewWorkoutExercisesLight: {
     color: LIGHT_TEXT_PRIMARY,
   },
   viewWorkoutDayDivider: {
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "rgba(148,163,184,0.18)",
     marginLeft: 0,
   },
   // Additional styles for modals
@@ -3756,6 +4122,35 @@ export const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
   },
+  exerciseListTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  exerciseBodyMapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.28)",
+    backgroundColor: "rgba(125,211,252,0.08)",
+  },
+  exerciseBodyMapButtonLight: {
+    borderColor: "#D5E9FF",
+    backgroundColor: "#EEF6FF",
+  },
+  exerciseBodyMapButtonLabel: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#DFF6FF",
+  },
+  exerciseBodyMapButtonLabelLight: {
+    color: PS_BLUE,
+  },
   exerciseSearchInput: {
     borderRadius: 12,
     borderWidth: 1,
@@ -3792,8 +4187,15 @@ export const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   exerciseFilterChipActive: {
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: PS_BLUE,
     borderColor: PS_BLUE,
+  },
+  exerciseFilterChipLabelActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  exerciseFilterChipCaretActive: {
+    color: "#FFFFFF",
   },
   exerciseFilterChipLabel: {
     color: "#e5e7eb",
@@ -3831,11 +4233,11 @@ export const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   exerciseFilterRowActive: {
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: PS_BLUE,
     borderColor: PS_BLUE,
   },
   exerciseFilterRowActiveLight: {
-    backgroundColor: "rgba(0,112,204,0.08)",
+    backgroundColor: PS_BLUE,
     borderColor: PS_BLUE,
   },
   exerciseFilterLabel: {
@@ -3846,11 +4248,11 @@ export const styles = StyleSheet.create({
     color: "#111827",
   },
   exerciseFilterLabelActive: {
-    color: "#ecfeff",
-    fontWeight: "600",
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   exerciseFilterCheck: {
-    color: PS_BLUE,
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -3926,10 +4328,20 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  filterSheetFooterButtonPrimary: {
+    marginLeft: 8,
+    borderRadius: 999,
+    backgroundColor: PS_BLUE,
+  },
   filterSheetFooterButtonText: {
     fontSize: 13,
     color: PS_BLUE,
     fontWeight: "500",
+  },
+  filterSheetFooterButtonTextPrimary: {
+    fontSize: 13,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   exerciseTabsToggle: {
     flexDirection: "row",
@@ -3954,10 +4366,7 @@ export const styles = StyleSheet.create({
     alignItems: "center",
   },
   exerciseTabButtonActive: {
-    // Dark-theme active state: keep the green as an accent,
-    // not the whole background, so the toggle doesn't look
-    // like a light green slab.
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: PS_BLUE,
     borderWidth: 1,
     borderColor: PS_BLUE,
   },
@@ -3965,7 +4374,9 @@ export const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   exerciseTabButtonActiveLight: {
-    backgroundColor: "rgba(0,112,204,0.08)",
+    backgroundColor: PS_BLUE,
+    borderWidth: 1,
+    borderColor: PS_BLUE,
   },
   exerciseTabLabel: {
     color: "#9ca3af",
@@ -3973,9 +4384,8 @@ export const styles = StyleSheet.create({
     fontWeight: "500",
   },
   exerciseTabLabelActive: {
-    // Use PS blue for active label so it is legible on both
-    // dark and light toggle backgrounds.
-    color: PS_BLUE,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   exerciseTabLabelLight: {
     color: "#111827",
@@ -4054,10 +4464,7 @@ export const styles = StyleSheet.create({
     alignItems: "center",
   },
   premiumSideButtonActive: {
-    // In dark mode, keep the toggle background aligned with
-    // the rest of the glass UI and use the accent only as a
-    // border so it doesn't become a bright green block.
-    backgroundColor: GLASS_CARD_DARK,
+    backgroundColor: PS_BLUE,
     borderWidth: 1,
     borderColor: PS_BLUE,
   },
@@ -4065,7 +4472,9 @@ export const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   premiumSideButtonActiveLight: {
-    backgroundColor: "rgba(0,112,204,0.08)",
+    backgroundColor: PS_BLUE,
+    borderWidth: 1,
+    borderColor: PS_BLUE,
   },
   premiumSideLabel: {
     color: "#9ca3af",
@@ -4073,7 +4482,8 @@ export const styles = StyleSheet.create({
     fontWeight: "500",
   },
   premiumSideLabelActive: {
-    color: "#F5F7FA",
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   premiumSideLabelLight: {
     color: "#111827",

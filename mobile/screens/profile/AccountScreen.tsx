@@ -10,13 +10,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { API_BASE_URL } from "../../api/client";
-import { ThemeToggle } from "../../components/ThemeToggle";
+import { AppHeader } from "../../components/AppHeader";
 import { GLASS_ACCENT_GREEN } from "../../styles/theme";
 import {
   useAuth,
   useExercisePrs,
   useThemeMode,
-  HeaderAvatar,
   styles,
 } from "../../App";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
@@ -97,30 +96,12 @@ const AccountScreen: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {accountUserName ? `Hi ${accountUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your profile
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={accountUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your profile"
+          userName={accountUserName}
+          onThemeToggle={toggle}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
           <Text style={styles.loadingText}>Loading profile…</Text>
@@ -134,30 +115,12 @@ const AccountScreen: React.FC = () => {
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {accountUserName ? `Hi ${accountUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your profile
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={accountUserName} />
-          </View>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Your profile"
+          userName={accountUserName}
+          onThemeToggle={toggle}
+        />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           My Profile
         </Text>
@@ -175,76 +138,98 @@ const AccountScreen: React.FC = () => {
         contentContainerStyle={styles.plansScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text
-              style={[
-                styles.homeGreetingLabel,
-                isLight && styles.homeGreetingLabelLight,
-              ]}
-            >
-              {accountUserName ? `Hi ${accountUserName},` : "Hi,"}
-            </Text>
-            <Text
-              style={[
-                styles.homeGreetingTitle,
-                isLight && styles.homeGreetingTitleLight,
-              ]}
-            >
-              Your profile
-            </Text>
-          </View>
-          <View style={styles.homeHeaderRightRow}>
-            <ThemeToggle inHeader isLight={isLight} onToggle={toggle} />
-            <HeaderAvatar isLight={isLight} name={accountUserName} />
-          </View>
-        </View>
-
-        {/* Header */}
-        <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
-          My Profile
-        </Text>
+        <AppHeader
+          isLight={isLight}
+          title="Your profile"
+          userName={accountUserName}
+          onThemeToggle={toggle}
+        />
 
         {/* Profile card */}
         <View style={[styles.profileCard, isLight && styles.profileCardLight]}>
-          <View
-            style={[styles.avatarCircle, isLight && styles.avatarCircleLight]}
-          >
-            <Text
-              style={[
-                styles.avatarInitials,
-                isLight && styles.avatarInitialsLight,
-              ]}
+          <View style={styles.profileHeroTopRow}>
+            <View
+              style={[styles.avatarCircle, isLight && styles.avatarCircleLight]}
             >
-              {name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .toUpperCase()}
-            </Text>
+              <Text
+                style={[
+                  styles.avatarInitials,
+                  isLight && styles.avatarInitialsLight,
+                ]}
+              >
+                {name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.profileTextBlock}>
+              <Text
+                style={[styles.profileName, isLight && styles.profileNameLight]}
+                numberOfLines={1}
+              >
+                {name}
+              </Text>
+              <Text
+                style={[styles.profileGoal, isLight && styles.profileGoalLight]}
+                numberOfLines={1}
+              >
+                Hypertrophy & longevity
+              </Text>
+            </View>
+            <View
+              style={[styles.premiumPill, isLight && styles.premiumPillLight]}
+            >
+              <Ionicons name="sparkles" size={12} color="#FFFFFF" />
+              <Text style={[styles.premiumText, { marginLeft: 5 }]}>
+                Premium
+              </Text>
+            </View>
           </View>
-          <View style={styles.profileTextBlock}>
-            <Text
-              style={[styles.profileName, isLight && styles.profileNameLight]}
-            >
-              {name}
-            </Text>
-            <Text
-              style={[styles.profileGoal, isLight && styles.profileGoalLight]}
-            >
-              Goal: Hypertrophy & Longevity
-            </Text>
-          </View>
-          <View
-            style={[styles.premiumPill, isLight && styles.premiumPillLight]}
-          >
-            <Text style={styles.premiumText}>PREMIUM</Text>
+
+          <View style={styles.profileHeroMetaRow}>
+            <View style={styles.profileHeroMetaItem}>
+              <Ionicons
+                name="barbell-outline"
+                size={15}
+                color={isLight ? "#0070cc" : "#7DD3FC"}
+              />
+              <Text
+                style={[
+                  styles.profileHeroMetaText,
+                  isLight && styles.profileHeroMetaTextLight,
+                ]}
+              >
+                Training ready
+              </Text>
+            </View>
+            <View style={styles.profileHeroMetaItem}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={15}
+                color={isLight ? "#16A34A" : "#86EFAC"}
+              />
+              <Text
+                style={[
+                  styles.profileHeroMetaText,
+                  isLight && styles.profileHeroMetaTextLight,
+                ]}
+              >
+                Synced
+              </Text>
+            </View>
           </View>
         </View>
 
         {/* Stats row – placeholder values for now */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, isLight && styles.statCardLight]}>
+            <Ionicons
+              name="scale-outline"
+              size={18}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+            />
             <Text style={[styles.statLabel, isLight && styles.statLabelLight]}>
               WEIGHT
             </Text>
@@ -256,6 +241,11 @@ const AccountScreen: React.FC = () => {
             </Text>
           </View>
           <View style={[styles.statCard, isLight && styles.statCardLight]}>
+            <Ionicons
+              name="moon-outline"
+              size={18}
+              color={isLight ? "#7C3AED" : "#C4B5FD"}
+            />
             <Text style={[styles.statLabel, isLight && styles.statLabelLight]}>
               SLEEP
             </Text>
@@ -267,6 +257,11 @@ const AccountScreen: React.FC = () => {
             </Text>
           </View>
           <View style={[styles.statCard, isLight && styles.statCardLight]}>
+            <Ionicons
+              name="heart-outline"
+              size={18}
+              color={isLight ? "#DC2626" : "#FCA5A5"}
+            />
             <Text style={[styles.statLabel, isLight && styles.statLabelLight]}>
               HEART
             </Text>
@@ -314,7 +309,11 @@ const AccountScreen: React.FC = () => {
                   : `${exercisePrs.length} exercise records saved`}
             </Text>
           </View>
-          <Text style={styles.profilePrTriggerChevron}>⌃</Text>
+          <Ionicons
+            name="chevron-forward"
+            size={18}
+            color={isLight ? "#4B5563" : "#B8C0D4"}
+          />
         </TouchableOpacity>
 
         {/* Settings sections – simplified */}
@@ -331,30 +330,45 @@ const AccountScreen: React.FC = () => {
             setIsWorkoutHistorySheetVisible(true);
           }}
         >
-          <Text
-            style={[
-              styles.settingsItemPrimary,
-              isLight && styles.settingsItemPrimaryLight,
-            ]}
-          >
-            Workout History
-          </Text>
-          <Text
-            style={[
-              styles.settingsItemSecondary,
-              isLight && styles.settingsItemSecondaryLight,
-            ]}
-          >
-            {allWorkoutHistoryLoading
-              ? "Loading…"
-              : allWorkoutHistoryError
-                ? allWorkoutHistoryError
-                : allWorkoutHistoryItems.length === 0
-                  ? "No workouts logged yet"
-                  : allWorkoutHistoryItems.length === 1
-                    ? "1 workout logged"
-                    : `${allWorkoutHistoryItems.length} workouts logged`}
-          </Text>
+          <View style={styles.settingsItemRow}>
+            <Ionicons
+              name="time-outline"
+              size={20}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+              style={styles.settingsItemIcon}
+            />
+            <View style={styles.settingsItemTextCol}>
+              <Text
+                style={[
+                  styles.settingsItemPrimary,
+                  isLight && styles.settingsItemPrimaryLight,
+                ]}
+              >
+                Workout History
+              </Text>
+              <Text
+                style={[
+                  styles.settingsItemSecondary,
+                  isLight && styles.settingsItemSecondaryLight,
+                ]}
+              >
+                {allWorkoutHistoryLoading
+                  ? "Loading…"
+                  : allWorkoutHistoryError
+                    ? allWorkoutHistoryError
+                    : allWorkoutHistoryItems.length === 0
+                      ? "No workouts logged yet"
+                      : allWorkoutHistoryItems.length === 1
+                        ? "1 workout logged"
+                        : `${allWorkoutHistoryItems.length} workouts logged`}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={isLight ? "#4B5563" : "#B8C0D4"}
+            />
+          </View>
         </TouchableOpacity>
 
         <Text
@@ -365,42 +379,62 @@ const AccountScreen: React.FC = () => {
         <View
           style={[styles.settingsCard, isLight && styles.settingsCardLight]}
         >
-          <Text
-            style={[
-              styles.settingsItemPrimary,
-              isLight && styles.settingsItemPrimaryLight,
-            ]}
-          >
-            Notifications
-          </Text>
-          <Text
-            style={[
-              styles.settingsItemSecondary,
-              isLight && styles.settingsItemSecondaryLight,
-            ]}
-          >
-            Daily reminders & alerts
-          </Text>
+          <View style={styles.settingsItemRow}>
+            <Ionicons
+              name="notifications-outline"
+              size={20}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+              style={styles.settingsItemIcon}
+            />
+            <View style={styles.settingsItemTextCol}>
+              <Text
+                style={[
+                  styles.settingsItemPrimary,
+                  isLight && styles.settingsItemPrimaryLight,
+                ]}
+              >
+                Notifications
+              </Text>
+              <Text
+                style={[
+                  styles.settingsItemSecondary,
+                  isLight && styles.settingsItemSecondaryLight,
+                ]}
+              >
+                Daily reminders & alerts
+              </Text>
+            </View>
+          </View>
         </View>
         <View
           style={[styles.settingsCard, isLight && styles.settingsCardLight]}
         >
-          <Text
-            style={[
-              styles.settingsItemPrimary,
-              isLight && styles.settingsItemPrimaryLight,
-            ]}
-          >
-            Privacy & Security
-          </Text>
-          <Text
-            style={[
-              styles.settingsItemSecondary,
-              isLight && styles.settingsItemSecondaryLight,
-            ]}
-          >
-            Data sharing & permissions
-          </Text>
+          <View style={styles.settingsItemRow}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+              style={styles.settingsItemIcon}
+            />
+            <View style={styles.settingsItemTextCol}>
+              <Text
+                style={[
+                  styles.settingsItemPrimary,
+                  isLight && styles.settingsItemPrimaryLight,
+                ]}
+              >
+                Privacy & Security
+              </Text>
+              <Text
+                style={[
+                  styles.settingsItemSecondary,
+                  isLight && styles.settingsItemSecondaryLight,
+                ]}
+              >
+                Data sharing & permissions
+              </Text>
+            </View>
+          </View>
         </View>
 
         <TouchableOpacity
