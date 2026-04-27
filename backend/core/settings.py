@@ -44,7 +44,8 @@ INSTALLED_APPS = [
 	    'plans',
 	    'workouts',
 	    'insights',
-	]
+	    'challenges',
+]
 
 MIDDLEWARE = [
 	    'django.middleware.security.SecurityMiddleware',

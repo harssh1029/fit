@@ -329,12 +329,12 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 	sessions = (
 		WorkoutSession.objects.filter(
 			user=user,
-			status='completed',
+			status="completed",
 			completed_at__isnull=False,
 		)
 		.prefetch_related(
-			'session_exercises__exercise__primary_muscles',
-			'session_exercises__exercise__secondary_muscles',
+			"session_exercises__exercise__primary_muscles",
+			"session_exercises__exercise__secondary_muscles",
 		)
 	)
 
@@ -395,7 +395,7 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 			return "ready"
 		return "neglected"
 
-	group_payload = {}
+	group_payload: Dict[str, Dict] = {}
 	counts: List[int] = []
 
 	for g in CANONICAL_GROUPS:
@@ -409,59 +409,59 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 			"last": last.isoformat() if last else None,
 			"status": _status(last),
 		}
-		
-		total_sessions = sum(counts)
-		if total_sessions == 0:
-			# There are completed sessions for this user, but none of the
-			# exercises are mapped to canonical muscle groups yet. Treat this as
-			# "no data" for Body Battle Map instead of raising an error so the
-			# dashboard can still render with neutral defaults.
-			detail = {
-				"available": False,
-				"reason": "no_completed_sessions",
-				"groups": group_payload,
-				"weak_spots": [],
-				"strong_spots": [],
-				"balance_score": 0.0,
-				"updated_at": as_of.astimezone(timezone.utc).isoformat(),
-			}
-			return detail, 0.0
-		
-		mean = total_sessions / float(len(counts))
-		variance = sum((c - mean) ** 2 for c in counts) / float(len(counts))
-		stddev = sqrt(variance)
-		imbalance_ratio = stddev / (mean or 1.0)
-		balance_score = max(0.0, 100.0 - min(100.0, imbalance_ratio * 50.0))
-		
-		# Weak spots: up to 3 groups with the fewest sessions (and at least one
-		# group having more sessions so we don't flag if everything is zero).
-		max_count = max(counts) if counts else 0
-		weak_spots: List[str] = []
-		if max_count > 0:
-			ordered = sorted(CANONICAL_GROUPS, key=lambda g: stats[g]["sessions"])
-			for g in ordered:
-				if stats[g]["sessions"] < max_count and len(weak_spots) < 3:
-					weak_spots.append(g)
-		
-		# Strong spots: any groups tied for the most sessions (non-zero).
-		strong_spots: List[str] = []
-		if counts:
-			max_sessions = max(counts)
-			if max_sessions > 0:
-				strong_spots = [
-					g for g in CANONICAL_GROUPS if stats[g]["sessions"] == max_sessions
-				]
-		
+
+	total_sessions = sum(counts)
+	if total_sessions == 0:
+		# There are completed sessions for this user, but none of the
+		# exercises are mapped to canonical muscle groups yet. Treat this as
+		# "no data" for Body Battle Map instead of raising an error so the
+		# dashboard can still render with neutral defaults.
 		detail = {
-			"available": True,
+			"available": False,
+			"reason": "no_completed_sessions",
 			"groups": group_payload,
-			"weak_spots": weak_spots,
-			"strong_spots": strong_spots,
-			"balance_score": round(balance_score, 1),
+			"weak_spots": [],
+			"strong_spots": [],
+			"balance_score": 0.0,
 			"updated_at": as_of.astimezone(timezone.utc).isoformat(),
 		}
-		
-		return detail, balance_score
+		return detail, 0.0
+
+	mean = total_sessions / float(len(counts))
+	variance = sum((c - mean) ** 2 for c in counts) / float(len(counts))
+	stddev = sqrt(variance)
+	imbalance_ratio = stddev / (mean or 1.0)
+	balance_score = max(0.0, 100.0 - min(100.0, imbalance_ratio * 50.0))
+
+	# Weak spots: up to 3 groups with the fewest sessions (and at least one
+	# group having more sessions so we don't flag if everything is zero).
+	max_count = max(counts) if counts else 0
+	weak_spots: List[str] = []
+	if max_count > 0:
+		ordered = sorted(CANONICAL_GROUPS, key=lambda g: stats[g]["sessions"])
+		for g in ordered:
+			if stats[g]["sessions"] < max_count and len(weak_spots) < 3:
+				weak_spots.append(g)
+
+	# Strong spots: any groups tied for the most sessions (non-zero).
+	strong_spots: List[str] = []
+	if counts:
+		max_sessions = max(counts)
+		if max_sessions > 0:
+			strong_spots = [
+				g for g in CANONICAL_GROUPS if stats[g]["sessions"] == max_sessions
+			]
+
+	detail = {
+		"available": True,
+		"groups": group_payload,
+		"weak_spots": weak_spots,
+		"strong_spots": strong_spots,
+		"balance_score": round(balance_score, 1),
+		"updated_at": as_of.astimezone(timezone.utc).isoformat(),
+	}
+
+	return detail, balance_score
 
 
 def recalculate_user_metrics(user: User, *, as_of: Optional[datetime] = None) -> UserMetricsSnapshot:

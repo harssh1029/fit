@@ -23,17 +23,18 @@ from accounts.views import MeView, RegisterView
 
 
 urlpatterns = [
-	path('admin/', admin.site.urls),
-	# Auth
-	path('api/v1/auth/register/', RegisterView.as_view(), name='auth-register'),
-	path('api/v1/auth/jwt/create/', TokenObtainPairView.as_view(), name='jwt-create'),
-	path('api/v1/auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt-refresh'),
-	# User profile
-	path('api/v1/me/', MeView.as_view(), name='me'),
-		# Domain APIs
-		path('api/v1/', include('exercises.urls')),
-		path('api/v1/', include('plans.urls')),
-		path('api/v1/', include('insights.urls')),
-		path('api/v1/', include('workouts.urls')),
+		path('admin/', admin.site.urls),
+		# Auth
+		path('api/v1/auth/register/', RegisterView.as_view(), name='auth-register'),
+		path('api/v1/auth/jwt/create/', TokenObtainPairView.as_view(), name='jwt-create'),
+		path('api/v1/auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt-refresh'),
+		# User profile
+		path('api/v1/me/', MeView.as_view(), name='me'),
+			# Domain APIs
+			path('api/v1/', include('exercises.urls')),
+			path('api/v1/', include('plans.urls')),
+			path('api/v1/', include('insights.urls')),
+			path('api/v1/', include('workouts.urls')),
+			path('api/v1/', include('challenges.urls')),
 ]
 

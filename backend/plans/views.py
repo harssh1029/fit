@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -42,27 +44,85 @@ class CompletePlanDayView(APIView):
     def post(self, request, *args, **kwargs):
         user = request.user
         plan_day_id = request.data.get("plan_day_id")
-        if plan_day_id is None:
+        plan_day = None
+        plan = None
+
+        # We primarily identify a PlanDay by its primary key (plan_day_id), but
+        # also support a composite identity fallback of (plan_id,
+        # plan_week_number, plan_day_index) so that clients that only know the
+        # schedule position can still log completion.
+        composite_plan_id = request.data.get("plan_id")
+        composite_week_number = request.data.get("plan_week_number")
+        composite_day_index = request.data.get("plan_day_index")
+
+        if plan_day_id is None and (
+            composite_plan_id is None
+            or composite_week_number is None
+            or composite_day_index is None
+        ):
             return Response(
-                {"detail": "plan_day_id is required."},
+                {
+                    "detail": (
+                        "Either plan_day_id or (plan_id, plan_week_number, "
+                        "plan_day_index) is required."
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            plan_day_id_int = int(plan_day_id)
-        except (TypeError, ValueError):
-            return Response(
-                {"detail": "plan_day_id must be an integer."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if plan_day_id is not None:
+            try:
+                plan_day_id_int = int(plan_day_id)
+            except (TypeError, ValueError):
+                plan_day_id_int = None  # fall through to composite lookup below
+            if plan_day_id_int is not None:
+                try:
+                    plan_day = (
+                        PlanDay.objects.select_related("plan_week__plan")
+                        .prefetch_related("exercises")
+                        .get(id=plan_day_id_int)
+                    )
+                except PlanDay.DoesNotExist:
+                    plan_day = None
 
-        try:
-            plan_day = (
-                PlanDay.objects.select_related("plan_week__plan")
-                .prefetch_related("exercises")
-                .get(id=plan_day_id_int)
-            )
-        except PlanDay.DoesNotExist:
+        # Fallback: resolve by composite identity when we don't have a valid
+        # integer plan_day_id, but we do know the plan and schedule position.
+        if plan_day is None and all(
+            value is not None
+            for value in (composite_plan_id, composite_week_number, composite_day_index)
+        ):
+            try:
+                plan_id_int = int(composite_plan_id)  # type: ignore[arg-type]
+                week_number_int = int(composite_week_number)  # type: ignore[arg-type]
+                day_index_int = int(composite_day_index)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return Response(
+                    {
+                        "detail": (
+                            "plan_id, plan_week_number, and plan_day_index must all "
+                            "be integers."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                plan_day = (
+                    PlanDay.objects.select_related("plan_week__plan")
+                    .prefetch_related("exercises")
+                    .get(
+                        plan_week__plan_id=plan_id_int,
+                        plan_week__number=week_number_int,
+                        day_index=day_index_int,
+                    )
+                )
+            except PlanDay.DoesNotExist:
+                return Response(
+                    {"detail": "Plan day not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        if plan_day is None:
             return Response(
                 {"detail": "Plan day not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -81,10 +141,21 @@ class CompletePlanDayView(APIView):
             .first()
         )
         if user_plan is None:
-            # User is not currently enrolled in this plan; do not allow marking days.
-            return Response(
-                {"detail": "You are not enrolled in this plan."},
-                status=status.HTTP_403_FORBIDDEN,
+            # Lazily enroll the user into this plan the first time they mark a day
+            # complete so that workout history and metrics have a concrete
+            # UserPlan anchor. We align the start date so that the current plan day
+            # being completed is scheduled for "today".
+            started_at = timezone.now() - timedelta(
+                days=max(plan_day.day_index - 1, 0),
+            )
+            expected_end_at = started_at + timedelta(weeks=plan.duration_weeks)
+            user_plan = UserPlan.objects.create(
+                user=user,
+                plan=plan,
+                is_active=True,
+                status="active",
+                started_at=started_at,
+                expected_end_at=expected_end_at,
             )
 
         now = timezone.now()

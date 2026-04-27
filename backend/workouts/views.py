@@ -27,19 +27,34 @@ class WorkoutHistoryView(APIView):
 			limit = 30
 		limit = max(1, min(limit, 100))
 
-		# Prefer the user's active plan so we can also infer "missed" days from the
-		# plan schedule. If no active plan is found (or it has no start date), we
-		# fall back to listing recent completed sessions only.
-		user_plan = (
-			UserPlan.objects.filter(
-				user=user,
-				is_active=True,
-				status="active",
-			)
-			.select_related("plan")
-			.order_by("-created_at")
-			.first()
+		# Prefer the user's *profile* active plan so that workout history always
+		# lines up with the plan the UI considers active. If that lookup fails,
+		# fall back to the most recently created active UserPlan.
+		base_qs = UserPlan.objects.filter(
+			user=user,
+			is_active=True,
+			status="active",
 		)
+		profile = getattr(user, "profile", None)
+		active_plan = getattr(profile, "active_plan", None) if profile else None
+		active_plan_id = getattr(active_plan, "id", None)
+
+		if active_plan_id is not None:
+			user_plan = (
+				base_qs.filter(plan_id=active_plan_id)
+				.select_related("plan")
+				.order_by("-created_at")
+				.first()
+			)
+		else:
+			user_plan = None
+
+		if user_plan is None:
+			user_plan = (
+				base_qs.select_related("plan")
+				.order_by("-created_at")
+				.first()
+			)
 
 		entries = []
 		today = timezone.localdate()
@@ -110,32 +125,10 @@ class WorkoutHistoryView(APIView):
 					}
 				)
 		else:
-			# Fallback: list recent completed sessions (no "missed" inference
-			# without a plan schedule).
-			for session in (
-				WorkoutSession.objects.filter(
-					user=user, status="completed", completed_at__isnull=False
-				)
-				.select_related("plan", "user_plan")
-				.order_by("-completed_at")[:limit]
-			):
-				completed_at = session.completed_at
-				if completed_at is None:
-					continue
-				entries.append(
-					{
-						"date": completed_at.date().isoformat(),
-						"status": "completed",
-						"title": getattr(session.plan, "name", "Workout"),
-						"day_type": None,
-						"scheduled_day_index": None,
-						"week_number": None,
-						"plan_id": getattr(session.plan, "id", None),
-						"user_plan_id": getattr(session.user_plan, "id", None),
-						"workout_session_id": session.id,
-						"completed_at": completed_at.isoformat(),
-					}
-				)
+			# Product rule: when there is no active plan, the dashboard "Previous
+			# workouts" history should be empty. A separate endpoint will expose
+			# the user's full cross-plan workout log for the Profile screen.
+			entries = []
 
 		# Sort newest first by date, then trim to the requested limit.
 		entries.sort(key=lambda e: e["date"], reverse=True)
@@ -145,3 +138,56 @@ class WorkoutHistoryView(APIView):
 
 		return Response({"results": entries, "has_more": has_more})
 
+
+class FullWorkoutHistoryView(APIView):
+	"""Return all completed workout sessions for the current user.
+
+	Used by the Profile screen to show a cross-plan workout log, while the
+	dashboard history remains scoped to the currently active plan.
+	"""
+
+	permission_classes = [IsAuthenticated]
+
+	def get(self, request, *args, **kwargs):  # type: ignore[override]
+		user = request.user
+		try:
+			limit = int(request.query_params.get("limit", 100))
+		except (TypeError, ValueError):
+			limit = 100
+		limit = max(1, min(limit, 500))
+
+		# Fetch up to limit+1 sessions so we can expose a simple has_more flag
+		# without an extra COUNT query.
+		sessions = (
+			WorkoutSession.objects.filter(
+				user=user,
+				status="completed",
+				completed_at__isnull=False,
+			)
+			.select_related("plan", "user_plan")
+			.order_by("-completed_at")[: limit + 1]
+		)
+
+		entries = []
+		for session in sessions:
+			completed_at = session.completed_at
+			if completed_at is None:
+				continue
+			entries.append(
+				{
+					"date": completed_at.date().isoformat(),
+					"status": "completed",
+					"title": getattr(session.plan, "name", "Workout"),
+					"day_type": None,
+					"scheduled_day_index": None,
+					"week_number": None,
+					"plan_id": getattr(session.plan, "id", None),
+					"user_plan_id": getattr(session.user_plan, "id", None),
+					"workout_session_id": session.id,
+					"completed_at": completed_at.isoformat(),
+				}
+			)
+
+		has_more = len(entries) > limit
+		entries = entries[:limit]
+		return Response({"results": entries, "has_more": has_more})
