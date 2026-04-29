@@ -11,6 +11,22 @@ import {
   PS_WARNING_RED,
 } from "../../styles/theme";
 
+const AUTH_GLASS_CARD_DARK = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.18,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 4,
+} as any;
+
+const AUTH_GLASS_CARD_LIGHT = {
+  shadowColor: "#64748B",
+  shadowOpacity: 0.1,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 9 },
+  elevation: 4,
+} as any;
+
 export const authStyles = StyleSheet.create({
   container: {
     flex: 1,
@@ -116,16 +132,18 @@ export const authStyles = StyleSheet.create({
   // Shared auth card used for the new Login / Register layouts
   authCard: {
     marginTop: 24,
-    backgroundColor: "#101624",
+    backgroundColor: "rgba(15,23,42,0.84)",
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 18,
     borderWidth: 1,
-    borderColor: "rgba(125,211,252,0.18)",
+    borderColor: "rgba(125,211,252,0.2)",
+    ...AUTH_GLASS_CARD_DARK,
   },
   authCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
   },
   authCardShadow: {
     shadowColor: "#000000",
@@ -275,15 +293,17 @@ export const authStyles = StyleSheet.create({
     minHeight: 82,
     marginHorizontal: 4,
     borderRadius: 20,
-    backgroundColor: "#101624",
+    backgroundColor: "rgba(15,23,42,0.78)",
     borderWidth: 1,
     borderColor: "rgba(125,211,252,0.18)",
     alignItems: "center",
     justifyContent: "center",
+    ...AUTH_GLASS_CARD_DARK,
   },
   compactOptionCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
   },
   compactOptionCardSelected: {
     backgroundColor: PS_BLUE,
@@ -305,13 +325,15 @@ export const authStyles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(125,211,252,0.18)",
-    backgroundColor: "#0B1020",
+    backgroundColor: "rgba(8,17,32,0.88)",
     paddingVertical: 12,
     marginBottom: 12,
+    ...AUTH_GLASS_CARD_DARK,
   },
   scrollPickerBlockLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(248,250,252,0.92)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
   },
   scrollPickerHeader: {
     paddingHorizontal: 14,
@@ -398,13 +420,15 @@ export const authStyles = StyleSheet.create({
     borderRadius: 20,
     padding: 13,
     marginBottom: 9,
-    backgroundColor: "#101624",
+    backgroundColor: "rgba(15,23,42,0.78)",
     borderWidth: 1,
     borderColor: "rgba(125,211,252,0.18)",
+    ...AUTH_GLASS_CARD_DARK,
   },
   levelCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
   },
   levelCardSelected: {
     backgroundColor: PS_BLUE,

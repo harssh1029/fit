@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { API_BASE_URL } from "../api/client";
 import { useAuth } from "../App";
@@ -10,81 +10,59 @@ export function useChallenges() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadChallenges = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    const loadChallenges = async () => {
-      if (!isMounted) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        let tokenToUse = accessToken;
-        const headers: Record<string, string> = {};
-        if (tokenToUse) {
-          headers["Authorization"] = `Bearer ${tokenToUse}`;
-        }
-
-        let response = await fetch(`${API_BASE_URL}/challenges/`, {
-          headers,
-        });
-
-        // If the token expired, try a single refresh like other hooks.
-        if (response.status === 401 && accessToken) {
-          const refreshed = await refreshAccessToken();
-          if (!refreshed) {
-            await signOut();
-            if (isMounted) {
-              setChallenges([]);
-            }
-            return;
-          }
-          tokenToUse = refreshed;
-          response = await fetch(`${API_BASE_URL}/challenges/`, {
-            headers: { Authorization: `Bearer ${tokenToUse}` },
-          });
-        }
-
-        if (!response.ok) {
-          throw new Error(`Failed to load challenges (${response.status})`);
-        }
-
-        const json = (await response.json()) as
-          | ApiChallenge[]
-          | {
-              results: ApiChallenge[];
-            };
-
-        let apiChallenges: ApiChallenge[] = [];
-        if (Array.isArray(json)) {
-          apiChallenges = json as ApiChallenge[];
-        } else if (json && Array.isArray((json as any).results)) {
-          apiChallenges = (json as any).results as ApiChallenge[];
-        }
-
-        if (isMounted) {
-          setChallenges(apiChallenges);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(
-            err instanceof Error ? err.message : "Error loading challenges",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+      let tokenToUse = accessToken;
+      const headers: Record<string, string> = {};
+      if (tokenToUse) {
+        headers.Authorization = `Bearer ${tokenToUse}`;
       }
-    };
 
-    void loadChallenges();
+      let response = await fetch(`${API_BASE_URL}/challenges/`, { headers });
 
-    return () => {
-      isMounted = false;
-    };
+      // If the token expired, try a single refresh like other hooks.
+      if (response.status === 401 && accessToken) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          await signOut();
+          setChallenges([]);
+          return;
+        }
+        tokenToUse = refreshed;
+        response = await fetch(`${API_BASE_URL}/challenges/`, {
+          headers: { Authorization: `Bearer ${tokenToUse}` },
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load challenges (${response.status})`);
+      }
+
+      const json = (await response.json()) as
+        | ApiChallenge[]
+        | {
+            results: ApiChallenge[];
+          };
+
+      const apiChallenges = Array.isArray(json)
+        ? json
+        : Array.isArray((json as any)?.results)
+          ? ((json as any).results as ApiChallenge[])
+          : [];
+      setChallenges(apiChallenges);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error loading challenges");
+    } finally {
+      setLoading(false);
+    }
   }, [accessToken, refreshAccessToken, signOut]);
+
+  useEffect(() => {
+    void loadChallenges();
+  }, [loadChallenges]);
 
   const setChallengeCompleted = async (
     challengeId: string,
@@ -129,30 +107,22 @@ export function useChallenges() {
       }
 
       if (!response.ok) {
-        throw new Error(
-          `Failed to update challenge completion (${response.status})`,
-        );
+        const payload = await response.json().catch(() => null);
+        const detail =
+          payload && typeof payload.detail === "string"
+            ? payload.detail
+            : `Failed to update challenge completion (${response.status})`;
+        throw new Error(detail);
       }
 
-      // Optimistically update local challenge status so the UI and top
-      // progress card react immediately.
-      setChallenges((prev) =>
-        prev.map((c) =>
-          c.id === challengeId
-            ? {
-                ...c,
-                card: {
-                  ...c.card,
-                  status: completed ? "done" : "unlocked",
-                },
-              }
-            : c,
-        ),
-      );
+      // Reload from the backend so dependent challenges unlock immediately
+      // when a completion requirement has just been met.
+      await loadChallenges();
     } catch (err) {
+      setError(err instanceof Error ? err.message : "Error updating challenge");
       console.error("Error updating challenge completion:", err);
     }
   };
 
-  return { challenges, loading, error, setChallengeCompleted };
+  return { challenges, loading, error, reload: loadChallenges, setChallengeCompleted };
 }

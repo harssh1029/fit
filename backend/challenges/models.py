@@ -30,28 +30,27 @@ class Challenge(models.Model):
 
 
 class UserChallengeCompletion(models.Model):
-	    """Per-user record of completed challenges.
+    """Per-user record of completed challenges.
 
-	    This is intentionally lightweight – we only track that a user has
-	    completed the challenge at least once. Detailed workout history lives
-	    in the workouts/insights domain.
-	    """
+    This is intentionally lightweight: detailed workout history lives in the
+    workouts/insights domain.
+    """
 
-	    user = models.ForeignKey(
-	        settings.AUTH_USER_MODEL,
-	        related_name="completed_challenges",
-	        on_delete=models.CASCADE,
-	    )
-	    challenge = models.ForeignKey(
-	        Challenge,
-	        related_name="completions",
-	        on_delete=models.CASCADE,
-	    )
-	    completed_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="completed_challenges",
+        on_delete=models.CASCADE,
+    )
+    challenge = models.ForeignKey(
+        Challenge,
+        related_name="completions",
+        on_delete=models.CASCADE,
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
 
-	    class Meta:
-	        ordering = ["-completed_at"]
-	        unique_together = ("user", "challenge")
+    class Meta:
+        ordering = ["-completed_at"]
+        unique_together = ("user", "challenge")
 
-	    def __str__(self) -> str:  # pragma: no cover - trivial
-	        return f"UserChallengeCompletion(user={self.user_id}, challenge={self.challenge_id})"
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return f"UserChallengeCompletion(user={self.user_id}, challenge={self.challenge_id})"

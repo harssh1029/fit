@@ -10,26 +10,16 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, {
-  Defs,
-  LinearGradient,
-  Path,
-  Stop,
-  Circle,
-} from "react-native-svg";
 
 import {
   GLASS_ACCENT_GREEN,
   GLASS_BORDER_DARK,
-  GLASS_CARD_DARK,
   DARK_CARD,
-  LIGHT_CARD,
   DARK_TEXT_PRIMARY,
   DARK_TEXT_MUTED,
   LIGHT_TEXT_PRIMARY,
   LIGHT_TEXT_MUTED,
   PS_BLUE,
-  PS_CYAN,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
@@ -46,6 +36,22 @@ import ChallengeDetailModal from "./ChallengeDetailModal";
 type ChallengeDifficulty = "Beginner" | "Intermediate" | "Advanced";
 
 type Challenge = ApiChallenge;
+
+const CHALLENGE_GLASS_CARD_DARK = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.2,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 12 },
+  elevation: 4,
+} as any;
+
+const CHALLENGE_GLASS_CARD_LIGHT = {
+  shadowColor: "#64748B",
+  shadowOpacity: 0.11,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 9 },
+  elevation: 4,
+} as any;
 
 const mapChallengeToViewWorkoutWeek = (
   challenge: Challenge,
@@ -139,197 +145,74 @@ const buildChallengeBodyText = (challenge: Challenge): string => {
 };
 
 const buildChallengeUnlockBodyText = (challenge: Challenge): string | null => {
-  const { unlock } = challenge;
-  if (!unlock) return null;
+  const progress = challenge.unlockProgress;
+  if (!progress && !challenge.unlock) return null;
 
   const lines: string[] = [];
 
-  const conditions = (unlock.conditions || []) as Array<{
-    body_part?: string;
-    min_workouts?: number;
-    level_required?: string;
-  }>;
-
-  if (conditions.length) {
-    conditions.forEach((cond) => {
-      const bodyPart = cond.body_part || "Body";
-      const pieces: string[] = [];
-      if (cond.min_workouts != null) {
-        pieces.push(`${cond.min_workouts} workouts`);
-      }
-      if (cond.level_required) {
-        const label =
-          cond.level_required.charAt(0).toUpperCase() +
-          cond.level_required.slice(1);
-        pieces.push(`level ${label}`);
-      }
-      const detail = pieces.length ? ` \\u2014 ${pieces.join(", ")}` : "";
-      lines.push(`• ${bodyPart}${detail}`);
+  if (progress) {
+    progress.conditions.forEach((condition) => {
+      const rankLabel = titleCase(condition.levelRequired);
+      const groupStatus = condition.groups
+        .map(
+          (group) =>
+            `${group.label}: ${group.sessions}/${condition.minWorkouts}, ${group.rank}`,
+        )
+        .join(" or ");
+      const state = condition.isMet ? "Done" : "Need";
+      lines.push(
+        `${state}: ${condition.bodyPart || "Body"} needs ${condition.minWorkouts}+ workouts and ${rankLabel}+ rank (${groupStatus})`,
+      );
     });
-  }
 
-  if (
-    unlock.challenges_completed_required &&
-    unlock.challenges_completed_required > 0
-  ) {
-    lines.push(
-      `• Complete ${unlock.challenges_completed_required} challenge` +
-        (unlock.challenges_completed_required > 1 ? "s" : ""),
-    );
-  }
-
-  if (unlock.unlock_message) {
-    if (lines.length) {
-      lines.push("\n" + unlock.unlock_message);
-    } else {
-      lines.push(unlock.unlock_message);
+    if (progress.challengesCompletedRequired > 0) {
+      const remaining = Math.max(
+        0,
+        progress.challengesCompletedRequired - progress.challengesCompletedCount,
+      );
+      lines.push(
+        `${remaining === 0 ? "Done" : "Need"}: ${progress.challengesCompletedCount}/${progress.challengesCompletedRequired} challenges completed`,
+      );
     }
+
+    if (progress.unlockMessage) lines.push(progress.unlockMessage);
+  } else if (challenge.unlock) {
+    challenge.unlock.conditions.forEach((condition) => {
+      lines.push(
+        `Need: ${condition.body_part} requires ${condition.min_workouts}+ workouts and ${titleCase(condition.level_required)}+ rank`,
+      );
+    });
+    if (challenge.unlock.challenges_completed_required > 0) {
+      lines.push(
+        `Need: Complete ${challenge.unlock.challenges_completed_required} challenge` +
+          (challenge.unlock.challenges_completed_required > 1 ? "s" : ""),
+      );
+    }
+    if (challenge.unlock.unlock_message) lines.push(challenge.unlock.unlock_message);
   }
 
   if (!lines.length) return null;
   return lines.join("\n");
 };
 
-const polarToCartesian = (
-  centerX: number,
-  centerY: number,
-  radius: number,
-  angleInDegrees: number,
-) => {
-  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
-  return {
-    x: centerX + radius * Math.cos(angleInRadians),
-    y: centerY + radius * Math.sin(angleInRadians),
-  };
-};
+const titleCase = (value: string) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
 
-const describeArc = (
-  centerX: number,
-  centerY: number,
-  radius: number,
-  startAngle: number,
-  endAngle: number,
-) => {
-  const start = polarToCartesian(centerX, centerY, radius, endAngle);
-  const end = polarToCartesian(centerX, centerY, radius, startAngle);
-  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
-};
+const getLockedSummary = (challenge: Challenge): string | null => {
+  const progress = challenge.unlockProgress;
+  if (!progress) return challenge.unlock?.unlock_message || null;
 
-type ChallengeCircularGaugeProps = {
-  progress: number;
-  isLight: boolean;
-};
+  if (progress.challengesCompletedRequired > progress.challengesCompletedCount) {
+    return `${progress.challengesCompletedCount}/${progress.challengesCompletedRequired} challenges completed`;
+  }
 
-const ChallengeCircularGauge: React.FC<ChallengeCircularGaugeProps> = ({
-  progress,
-  isLight,
-}) => {
-  const clamped = Math.max(
-    0,
-    Math.min(1, Number.isFinite(progress) ? progress : 0),
-  );
-  const size = 160;
-  const center = size / 2;
-  const outerRadius = 60;
-  const innerRadius = 48;
-  const outerStrokeWidth = 10;
-  const innerStrokeWidth = 4;
-  const startAngle = 135; // leave a gap at the bottom for a gauge feel
-  const endAngleFull = 405; // 135 + 270 degrees
-  const arcRange = endAngleFull - startAngle;
-  const endAngleProgress = startAngle + arcRange * clamped;
-
-  const trackPath = describeArc(
-    center,
-    center,
-    outerRadius,
-    startAngle,
-    endAngleFull,
-  );
-  const progressPath = describeArc(
-    center,
-    center,
-    outerRadius,
-    startAngle,
-    endAngleProgress,
-  );
-  const innerPath = describeArc(
-    center,
-    center,
-    innerRadius,
-    startAngle,
-    endAngleFull,
-  );
-
-  const trackColor = isLight ? "#E5E7EB" : "#111827";
-  const dottedColor = isLight
-    ? "rgba(148,163,184,0.7)"
-    : "rgba(148,163,184,0.85)";
-
-  const progressEndPoint = polarToCartesian(
-    center,
-    center,
-    outerRadius,
-    endAngleProgress,
-  );
-
-  return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <Defs>
-        <LinearGradient
-          id="challengeGaugeGradient"
-          x1="0%"
-          y1="0%"
-          x2="100%"
-          y2="0%"
-        >
-          <Stop offset="0%" stopColor={GLASS_ACCENT_GREEN} />
-          <Stop offset="100%" stopColor="#EAB308" />
-        </LinearGradient>
-      </Defs>
-
-      {/* Outer track */}
-      <Path
-        d={trackPath}
-        stroke={trackColor}
-        strokeWidth={outerStrokeWidth}
-        strokeLinecap="round"
-        fill="none"
-      />
-
-      {/* Inner dotted track */}
-      <Path
-        d={innerPath}
-        stroke={dottedColor}
-        strokeWidth={innerStrokeWidth}
-        strokeDasharray="2 6"
-        strokeLinecap="round"
-        fill="none"
-      />
-
-      {/* Progress arc */}
-      {clamped > 0 && (
-        <Path
-          d={progressPath}
-          stroke="url(#challengeGaugeGradient)"
-          strokeWidth={outerStrokeWidth}
-          strokeLinecap="round"
-          fill="none"
-        />
-      )}
-
-      {/* Knob at end of arc */}
-      {clamped > 0 && (
-        <Circle
-          cx={progressEndPoint.x}
-          cy={progressEndPoint.y}
-          r={4.5}
-          fill="#EAB308"
-        />
-      )}
-    </Svg>
-  );
+  const missing = progress.conditions.find((condition) => !condition.isMet);
+  if (!missing) return progress.unlockMessage || null;
+  const bestGroup = [...missing.groups].sort(
+    (a, b) => b.rankIndex - a.rankIndex || b.sessions - a.sessions,
+  )[0];
+  if (!bestGroup) return progress.unlockMessage || null;
+  return `${bestGroup.label}: ${bestGroup.sessions}/${missing.minWorkouts} workouts, ${bestGroup.rank}`;
 };
 
 const ChallengesScreen: React.FC = () => {
@@ -344,8 +227,6 @@ const ChallengesScreen: React.FC = () => {
   const [activeDifficulty, setActiveDifficulty] =
     useState<ChallengeDifficulty>("Beginner");
 
-  const sectionIconColor = isLight ? DARK_TEXT_PRIMARY : DARK_TEXT_PRIMARY;
-
   const openChallenge = (challenge: Challenge) => {
     setSelected(challenge);
   };
@@ -354,25 +235,7 @@ const ChallengesScreen: React.FC = () => {
     setSelected(null);
   };
 
-  const iconForDifficulty = (
-    difficulty: ChallengeDifficulty,
-  ): React.ComponentProps<typeof Ionicons>["name"] => {
-    switch (difficulty) {
-      case "Beginner":
-        return "ribbon-outline";
-      case "Intermediate":
-        return "barbell-outline";
-      case "Advanced":
-      default:
-        return "flame-outline";
-    }
-  };
-
-  const renderSection = (
-    difficulty: ChallengeDifficulty,
-    title: string,
-    iconName: React.ComponentProps<typeof Ionicons>["name"],
-  ) => {
+  const renderSection = (difficulty: ChallengeDifficulty) => {
     const levelKey =
       difficulty === "Beginner"
         ? "beginner"
@@ -417,6 +280,7 @@ const ChallengesScreen: React.FC = () => {
               "locked") as ChallengeStatus;
             const isDone = status === "done";
             const isLocked = status === "locked";
+            const lockedSummary = isLocked ? getLockedSummary(challenge) : null;
             const iconCircleBase = iconCircleStyleForDifficulty();
             const tagLabel =
               challenge.card.body_map_tags &&
@@ -575,6 +439,30 @@ const ChallengesScreen: React.FC = () => {
                   >
                     {challenge.card.short_description}
                   </Text>
+                  {lockedSummary ? (
+                    <View
+                      style={[
+                        challengeStyles.lockedSummaryPill,
+                        isLight && challengeStyles.lockedSummaryPillLight,
+                      ]}
+                    >
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={13}
+                        color={isLight ? "#2563EB" : "#7DD3FC"}
+                        style={{ marginRight: 5 }}
+                      />
+                      <Text
+                        style={[
+                          challengeStyles.lockedSummaryText,
+                          isLight && challengeStyles.lockedSummaryTextLight,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {lockedSummary}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   {/* Bottom row: meta + arrow circle */}
                   <View style={challengeStyles.cardBottomRow}>
@@ -680,25 +568,6 @@ const ChallengesScreen: React.FC = () => {
     );
   };
 
-  const getDifficultyStats = (difficulty: ChallengeDifficulty) => {
-    const levelKey =
-      difficulty === "Beginner"
-        ? "beginner"
-        : difficulty === "Intermediate"
-          ? "intermediate"
-          : "advanced";
-    const items = challenges.filter((c) => c.card.level === levelKey);
-    const total = items.length;
-    const completedCount = items.filter(
-      (c) => (c.card.status as ChallengeStatus | undefined) === "done",
-    ).length;
-    const lockedCount = items.filter(
-      (c) => (c.card.status as ChallengeStatus | undefined) === "locked",
-    ).length;
-    const completionPercent = total === 0 ? 0 : completedCount / total;
-    return { total, completedCount, lockedCount, completionPercent };
-  };
-
   const getUnlockHint = (difficulty: ChallengeDifficulty) => {
     switch (difficulty) {
       case "Beginner":
@@ -711,14 +580,6 @@ const ChallengesScreen: React.FC = () => {
     }
   };
 
-  const {
-    total: totalActiveDifficulty,
-    completedCount: completedActiveDifficulty,
-    lockedCount: lockedActiveDifficulty,
-    completionPercent: completionPercentActiveDifficulty,
-  } = getDifficultyStats(activeDifficulty);
-
-  // Aggregate challenge stats across all levels for the top metric card.
   const effectiveStatusFor = (c: Challenge): ChallengeStatus | undefined => {
     return c.card.status as ChallengeStatus | undefined;
   };
@@ -816,7 +677,6 @@ const ChallengesScreen: React.FC = () => {
           onThemeToggle={toggle}
         />
 
-        {/* Circular progress gauge card above difficulty filters */}
         <View
           style={[
             challengeStyles.progressCard,
@@ -824,112 +684,69 @@ const ChallengesScreen: React.FC = () => {
           ]}
         >
           <View style={challengeStyles.progressCardInner}>
-            <View style={challengeStyles.progressGaugeRow}>
-              <View style={challengeStyles.progressGaugeSideBlock}>
+            <View style={challengeStyles.progressCardHeaderRow}>
+              <View style={{ flex: 1, paddingRight: 14 }}>
                 <Text
                   style={[
-                    challengeStyles.progressGaugeSideLabel,
+                    challengeStyles.progressCardLabel,
                     isLight
                       ? challengeStyles.headerSubtitleLight
                       : challengeStyles.headerSubtitleDark,
                   ]}
                 >
-                  Done
+                  Body Battle
                 </Text>
                 <Text
                   style={[
-                    challengeStyles.progressGaugeSideValue,
+                    challengeStyles.progressCardTitle,
                     isLight
                       ? challengeStyles.headerTitleLight
                       : challengeStyles.headerTitleDark,
                   ]}
                 >
-                  {displayCompleted}
+                  Pick your next win
                 </Text>
                 <Text
                   style={[
-                    challengeStyles.progressGaugeSideSubLabel,
+                    challengeStyles.progressCardHint,
                     isLight
                       ? challengeStyles.headerSubtitleLight
                       : challengeStyles.headerSubtitleDark,
                   ]}
+                  numberOfLines={2}
                 >
-                  cards
+                  {getUnlockHint(activeDifficulty)}
                 </Text>
               </View>
-
-              <View style={challengeStyles.progressGaugeCenterWrapper}>
-                <View style={challengeStyles.progressGaugeSvgWrapper}>
-                  <ChallengeCircularGauge
-                    progress={displayCompletionPercent}
-                    isLight={isLight}
-                  />
-                  <View style={challengeStyles.progressGaugeCenterLabel}>
-                    <Text
-                      style={[
-                        challengeStyles.progressGaugeCenterPrimary,
-                        isLight
-                          ? challengeStyles.headerTitleLight
-                          : challengeStyles.headerTitleDark,
-                      ]}
-                    >
-                      {displayCompleted}
-                    </Text>
-                    <Text
-                      style={[
-                        challengeStyles.progressGaugeCenterSecondary,
-                        isLight
-                          ? challengeStyles.headerSubtitleLight
-                          : challengeStyles.headerSubtitleDark,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      of {displayTotal} done
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
               <View
                 style={[
-                  challengeStyles.progressGaugeSideBlock,
-                  challengeStyles.progressGaugeSideBlockRight,
+                  challengeStyles.progressScorePill,
+                  isLight && challengeStyles.progressScorePillLight,
                 ]}
               >
                 <Text
                   style={[
-                    challengeStyles.progressGaugeSideLabel,
-                    isLight
-                      ? challengeStyles.headerSubtitleLight
-                      : challengeStyles.headerSubtitleDark,
-                  ]}
-                >
-                  Locked
-                </Text>
-                <Text
-                  style={[
-                    challengeStyles.progressGaugeSideValue,
+                    challengeStyles.progressScoreValue,
                     isLight
                       ? challengeStyles.headerTitleLight
                       : challengeStyles.headerTitleDark,
                   ]}
                 >
-                  {displayLocked}
+                  {Math.round(displayCompletionPercent * 100)}%
                 </Text>
                 <Text
                   style={[
-                    challengeStyles.progressGaugeSideSubLabel,
+                    challengeStyles.progressScoreLabel,
                     isLight
                       ? challengeStyles.headerSubtitleLight
                       : challengeStyles.headerSubtitleDark,
                   ]}
                 >
-                  cards
+                  complete
                 </Text>
               </View>
             </View>
 
-            {/* Overall level progress label + horizontal bar */}
             <View style={challengeStyles.progressCardMeterSection}>
               <Text
                 style={[
@@ -961,34 +778,29 @@ const ChallengesScreen: React.FC = () => {
               </View>
             </View>
 
-            <View style={challengeStyles.progressGaugeTipBlock}>
-              <Text
-                style={[
-                  challengeStyles.progressGaugeTipTitle,
-                  isLight
-                    ? challengeStyles.headerSubtitleLight
-                    : challengeStyles.headerSubtitleDark,
-                ]}
-              >
-                Tip
-              </Text>
-              <Text
-                style={[
-                  challengeStyles.progressGaugeTipBody,
-                  isLight
-                    ? challengeStyles.headerSubtitleLight
-                    : challengeStyles.headerSubtitleDark,
-                ]}
-                numberOfLines={2}
-              >
-                {getUnlockHint(activeDifficulty)}
-              </Text>
+            <View style={challengeStyles.progressStatsRow}>
+              <ChallengeStatPill
+                isLight={isLight}
+                icon="checkmark-done-outline"
+                label="Done"
+                value={displayCompleted}
+              />
+              <ChallengeStatPill
+                isLight={isLight}
+                icon="lock-closed-outline"
+                label="Locked"
+                value={displayLocked}
+              />
+              <ChallengeStatPill
+                isLight={isLight}
+                icon="flash-outline"
+                label="Open"
+                value={Math.max(0, displayTotal - displayCompleted - displayLocked)}
+                isLast
+              />
             </View>
           </View>
         </View>
-
-        {/* Dotted divider between gauge and challenge filters */}
-        <View style={challengeStyles.progressSectionDivider} />
 
         <View
           style={[
@@ -1029,11 +841,7 @@ const ChallengesScreen: React.FC = () => {
           })}
         </View>
 
-        {renderSection(
-          activeDifficulty,
-          activeDifficulty,
-          iconForDifficulty(activeDifficulty),
-        )}
+        {renderSection(activeDifficulty)}
       </ScrollView>
 
       <ChallengeDetailModal
@@ -1046,6 +854,51 @@ const ChallengesScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+const ChallengeStatPill: React.FC<{
+  isLight: boolean;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  value: number;
+  isLast?: boolean;
+}> = ({ isLight, icon, label, value, isLast }) => (
+  <View
+    style={[
+      challengeStyles.progressStatPill,
+      isLight && challengeStyles.progressStatPillLight,
+      isLast && { marginRight: 0 },
+    ]}
+  >
+    <Ionicons
+      name={icon}
+      size={15}
+      color={isLight ? PS_BLUE : "#7DD3FC"}
+      style={{ marginRight: 6 }}
+    />
+    <View>
+      <Text
+        style={[
+          challengeStyles.progressStatValue,
+          isLight
+            ? challengeStyles.headerTitleLight
+            : challengeStyles.headerTitleDark,
+        ]}
+      >
+        {value}
+      </Text>
+      <Text
+        style={[
+          challengeStyles.progressStatLabel,
+          isLight
+            ? challengeStyles.headerSubtitleLight
+            : challengeStyles.headerSubtitleDark,
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  </View>
+);
 
 const challengeStyles = StyleSheet.create({
   modalHeaderRow: {
@@ -1062,19 +915,27 @@ const challengeStyles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   progressCard: {
-    marginTop: 2,
-    borderRadius: 20,
-    backgroundColor: "#111A2B",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(125,211,252,0.2)",
+    marginTop: 4,
+    borderRadius: 24,
+    backgroundColor: "rgba(15,23,42,0.86)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.22)",
     overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 4,
+    ...CHALLENGE_GLASS_CARD_DARK,
   },
   progressCardLight: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+    shadowOpacity: 0.12,
+    ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   progressCardInner: {
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     position: "relative",
   },
@@ -1085,110 +946,89 @@ const challengeStyles = StyleSheet.create({
   },
   progressCardLabel: {
     fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
   progressCardTitle: {
-    marginTop: 4,
-    fontSize: 18,
-    fontWeight: "300", // Mid Display weight per DESIGN.md
-  },
-  progressCardRightColumn: {
-    alignItems: "flex-end",
-  },
-  progressCardLockedLabel: {
-    fontSize: 12,
-  },
-  progressCardLockedCount: {
-    fontSize: 20,
-    fontWeight: "700",
+    marginTop: 5,
+    fontSize: 22,
+    fontWeight: "800",
   },
   progressCardHint: {
-    marginTop: 6,
-    fontSize: 12,
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  progressScorePill: {
+    width: 86,
+    minHeight: 76,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.22)",
+  },
+  progressScorePillLight: {
+    backgroundColor: "rgba(239,246,255,0.92)",
+    borderColor: "#DBEAFE",
+  },
+  progressScoreValue: {
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  progressScoreLabel: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: "700",
   },
   difficultySection: {
     marginTop: 14,
   },
-  progressGaugeRow: {
+  progressStatsRow: {
+    flexDirection: "row",
+    marginTop: 13,
+  },
+  progressStatPill: {
+    flex: 1,
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    borderRadius: 17,
+    paddingHorizontal: 10,
+    marginRight: 8,
+    backgroundColor: "rgba(8,17,32,0.66)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.14)",
+    ...CHALLENGE_GLASS_CARD_DARK,
   },
-  progressGaugeSideBlock: {
-    width: 64,
+  progressStatPillLight: {
+    backgroundColor: "rgba(248,250,252,0.92)",
+    borderColor: "#CFE3F7",
+    ...CHALLENGE_GLASS_CARD_LIGHT,
   },
-  progressGaugeSideBlockRight: {
-    alignItems: "flex-end",
+  progressStatValue: {
+    fontSize: 15,
+    fontWeight: "800",
   },
-  progressGaugeSideLabel: {
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  progressGaugeSideValue: {
-    fontSize: 18,
+  progressStatLabel: {
+    marginTop: 1,
+    fontSize: 10,
     fontWeight: "700",
-  },
-  progressGaugeSideSubLabel: {
-    marginTop: 2,
-    fontSize: 11,
-  },
-  progressGaugeCenterWrapper: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressGaugeSvgWrapper: {
-    width: 132,
-    height: 132,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressGaugeCenterLabel: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressGaugeCenterPrimary: {
-    fontSize: 24,
-    fontWeight: "300", // light, numeric focus
-  },
-  progressGaugeCenterSecondary: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-  progressGaugeTipBlock: {
-    marginTop: 12,
-  },
-  progressGaugeTipTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  progressGaugeTipBody: {
-    fontSize: 12,
-  },
-  progressSectionDivider: {
-    marginTop: 14,
-    marginBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderStyle: "dashed",
-    borderColor: "rgba(148,163,184,0.55)",
   },
   filterRow: {
     flexDirection: "row",
-    marginTop: 0,
-    marginBottom: 14,
+    marginTop: 14,
+    marginBottom: 12,
     borderRadius: 999,
-    backgroundColor: "#111A2B",
-    padding: 3,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(125,211,252,0.18)",
+    backgroundColor: "rgba(15,23,42,0.72)",
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.16)",
   },
   filterRowLight: {
-    backgroundColor: LIGHT_CARD,
+    backgroundColor: "rgba(255,255,255,0.74)",
+    borderColor: "#DCE6F2",
   },
   filterPill: {
     flex: 1,
@@ -1238,15 +1078,17 @@ const challengeStyles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     borderWidth: 1,
-    borderColor: GLASS_BORDER_DARK,
-    backgroundColor: DARK_CARD,
+    borderColor: "rgba(125,211,252,0.22)",
+    backgroundColor: "rgba(8,17,32,0.96)",
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 24,
+    ...CHALLENGE_GLASS_CARD_DARK,
   },
   modalCardLight: {
-    backgroundColor: "#F3F4F6",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(246,250,255,0.96)",
+    borderColor: "#CFE3F7",
+    ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   modalTitle: {
     fontSize: 18,
@@ -1388,15 +1230,23 @@ const challengeStyles = StyleSheet.create({
     color: "#111827",
   },
   challengeCardBase: {
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 22,
+    borderWidth: 1,
     borderColor: "rgba(125,211,252,0.2)",
-    backgroundColor: "#111A2B",
+    backgroundColor: "rgba(15,23,42,0.84)",
     overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+    ...CHALLENGE_GLASS_CARD_DARK,
   },
   challengeCardBaseLight: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+    shadowOpacity: 0.1,
+    ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   challengeCardLockedLight: {
     backgroundColor: "#E5E7EB",
@@ -1472,6 +1322,33 @@ const challengeStyles = StyleSheet.create({
   },
   cardSubtitleDark: {
     color: "#B8C0D4",
+  },
+  lockedSummaryPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 2,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(14,165,233,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    maxWidth: "100%",
+  },
+  lockedSummaryPillLight: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#DBEAFE",
+  },
+  lockedSummaryText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#BAE6FD",
+  },
+  lockedSummaryTextLight: {
+    color: "#2563EB",
   },
   cardProgressSection: {
     marginTop: 10,

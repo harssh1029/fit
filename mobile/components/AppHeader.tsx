@@ -1,9 +1,9 @@
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import { Modal, Text, TouchableOpacity, View } from "react-native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 
-import { ThemeToggle } from "./ThemeToggle";
 import { styles } from "../styles/appStyles";
 
 type RootTabParamList = {
@@ -12,6 +12,7 @@ type RootTabParamList = {
   Exercises: undefined;
   Challenges: undefined;
   Community: undefined;
+  Consistency: undefined;
   Account: undefined;
 };
 
@@ -53,7 +54,7 @@ const HeaderAvatar: React.FC<{
       style={[
         styles.homeAvatar,
         isLight && styles.homeAvatarLight,
-        { marginLeft: 12 },
+        styles.compactHeaderAvatar,
       ]}
       activeOpacity={0.8}
       onPress={() => navigation.navigate("Account")}
@@ -80,62 +81,165 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   isLight,
   title,
   userName,
-  greetingName = userName,
-  greetingText,
   subtitle,
   onThemeToggle,
   rightContent,
   topContent,
   titleNumberOfLines = 1,
-}) => (
-  <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
-    <View style={{ flex: 1, marginRight: 12 }}>
-      {topContent}
-      {(greetingText || greetingName !== undefined) && (
-        <Text
-          style={[
-            styles.homeGreetingLabel,
-            isLight && styles.homeGreetingLabelLight,
-            !!topContent && { marginTop: 8 },
-          ]}
-        >
-          {greetingText ?? (greetingName ? `Hi ${greetingName},` : "Hi,")}
-        </Text>
-      )}
-      <Text
-        style={[
-          styles.homeGreetingTitle,
-          isLight && styles.homeGreetingTitleLight,
-        ]}
-        numberOfLines={titleNumberOfLines}
+}) => {
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const navigation = useNavigation<RootTabNavigation>();
+
+  const menuItems: Array<{
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    route?: keyof RootTabParamList;
+    onPress?: () => void;
+  }> = [
+    { label: "Home", icon: "home-outline", route: "Home" },
+    { label: "Plans", icon: "calendar-outline", route: "Plans" },
+    { label: "Exercises", icon: "barbell-outline", route: "Exercises" },
+    { label: "Challenges", icon: "trophy-outline", route: "Challenges" },
+    { label: "Community", icon: "people-outline", route: "Community" },
+    { label: "Consistency", icon: "grid-outline", route: "Consistency" },
+    {
+      label: "Theme",
+      icon: "color-palette-outline",
+      onPress: onThemeToggle,
+    },
+  ];
+
+  return (
+    <>
+      <View
+        style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}
       >
-        {title}
-      </Text>
-      {!!subtitle && (
-        <Text
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setIsMenuVisible(true)}
           style={[
-            styles.metricCaption,
-            isLight && styles.metricCaptionLight,
-            { marginTop: 4 },
+            styles.compactHeaderIconButton,
+            isLight && styles.compactHeaderIconButtonLight,
           ]}
-          numberOfLines={1}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
         >
-          {subtitle}
-        </Text>
-      )}
-    </View>
-    <View style={styles.homeHeaderRightRow}>
-      {rightContent ??
-        (onThemeToggle ? (
-          <>
-            <ThemeToggle inHeader isLight={isLight} onToggle={onThemeToggle} />
-            <HeaderAvatar isLight={isLight} name={userName} />
-          </>
-        ) : (
-          <HeaderAvatar isLight={isLight} name={userName} />
-        ))}
-    </View>
-  </View>
-);
+          <Ionicons
+            name="menu-outline"
+            size={24}
+            color={isLight ? "#0F172A" : "#F8FAFC"}
+          />
+        </TouchableOpacity>
+
+        <View style={styles.compactHeaderTitleBlock}>
+          {topContent}
+          <Text
+            style={[
+              styles.compactHeaderTitle,
+              isLight && styles.compactHeaderTitleLight,
+            ]}
+            numberOfLines={titleNumberOfLines}
+          >
+            {title}
+          </Text>
+          {!!subtitle && (
+            <Text
+              style={[
+                styles.metricCaption,
+                isLight && styles.metricCaptionLight,
+                styles.compactHeaderSubtitle,
+              ]}
+              numberOfLines={1}
+            >
+              {subtitle}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.homeHeaderRightRow}>
+          {rightContent ?? <HeaderAvatar isLight={isLight} name={userName} />}
+        </View>
+      </View>
+
+      <Modal
+        visible={isMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuVisible(false)}
+      >
+        <View style={styles.headerMenuRoot}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={styles.headerMenuBackdrop}
+            onPress={() => setIsMenuVisible(false)}
+          />
+          <View
+            style={[
+              styles.headerMenuPanel,
+              isLight && styles.headerMenuPanelLight,
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={() => {
+                setIsMenuVisible(false);
+                navigation.navigate("Account");
+              }}
+              style={[
+                styles.headerMenuAccent,
+                isLight && styles.headerMenuAccentLight,
+              ]}
+            >
+              <Ionicons
+                name="person-outline"
+                size={19}
+                color={isLight ? "#0F172A" : "#F8FAFC"}
+              />
+              <Text
+                style={[
+                  styles.headerMenuAccentText,
+                  isLight && styles.headerMenuAccentTextLight,
+                ]}
+              >
+                My Account
+              </Text>
+            </TouchableOpacity>
+            {menuItems.map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                activeOpacity={0.85}
+                style={[
+                  styles.headerMenuItem,
+                  isLight && styles.headerMenuItemLight,
+                ]}
+                onPress={() => {
+                  setIsMenuVisible(false);
+                  if (item.route) {
+                    navigation.navigate(item.route);
+                  }
+                  item.onPress?.();
+                }}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={19}
+                  color={isLight ? "#64748B" : "#94A3B8"}
+                />
+                <Text
+                  style={[
+                    styles.headerMenuItemText,
+                    isLight && styles.headerMenuItemTextLight,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+};
 
 export default AppHeader;

@@ -1,22 +1,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional
+from typing import Dict, List, Mapping, MutableMapping, Optional, Sequence, Set
 
 from django.contrib.auth import get_user_model
 
 from insights.models import UserMetricsSnapshot
 from insights.services import recalculate_user_metrics
 
-from .models import Challenge
+from .models import Challenge, UserChallengeCompletion
 
 User = get_user_model()
 
 
 LEVEL_ORDER: List[str] = ["recruit", "soldier", "warrior", "beast", "legend"]
+CANONICAL_GROUPS: List[str] = [
+    "chest",
+    "shoulders",
+    "arms",
+    "back",
+    "core",
+    "glutes",
+    "legs",
+]
 
 
-@dataclass
+@dataclass(frozen=True)
 class BodyGroupState:
     group: str
     sessions: int
@@ -24,21 +33,45 @@ class BodyGroupState:
 
     @property
     def level_index(self) -> int:
-        try:
-            return LEVEL_ORDER.index(self.rank.lower())
-        except ValueError:
-            return 0
+        return level_index_for_rank(self.rank)
+
+
+@dataclass(frozen=True)
+class ChallengeUnlockEvaluation:
+    is_unlocked: bool
+    is_free: bool
+    conditions: List[dict]
+    challenges_completed_required: int
+    challenges_completed_count: int
+    unlock_message: str
+
+    def as_dict(self) -> dict:
+        return {
+            "isUnlocked": self.is_unlocked,
+            "isFree": self.is_free,
+            "conditions": self.conditions,
+            "challengesCompletedRequired": self.challenges_completed_required,
+            "challengesCompletedCount": self.challenges_completed_count,
+            "unlockMessage": self.unlock_message,
+        }
+
+
+def level_index_for_rank(rank: str) -> int:
+    try:
+        return LEVEL_ORDER.index((rank or "recruit").lower())
+    except ValueError:
+        return 0
+
+
+def display_label_for_group(group: str) -> str:
+    return " ".join(part.capitalize() for part in group.replace("_", " ").split())
 
 
 def _normalize_body_part_label(label: str) -> List[str]:
-    """Map human body-part labels in unlock rules to canonical groups.
+    """Map challenge body-part copy to canonical Body Battle groups.
 
-    The Body Battle Map uses the seven canonical groups:
-    chest, shoulders, arms, back, core, glutes, legs.
-
-    Unlock conditions sometimes use human-friendly labels like
-    "Chest / Legs / Core" – for those we treat any of the mentioned
-    groups as satisfying the *single* condition.
+    A composite label such as "Chest / Legs / Core" means any listed group can
+    satisfy that one condition. Multiple condition rows still all need to pass.
     """
 
     raw = (label or "").strip().lower()
@@ -49,62 +82,49 @@ def _normalize_body_part_label(label: str) -> List[str]:
         t = token.strip().lower()
         if not t:
             return None
-
-        # Canonical one-to-one mappings
-        if t in {"chest", "shoulders", "arms", "back", "core", "glutes", "legs"}:
+        if t in CANONICAL_GROUPS:
             return t
-
-        # Handle simple alias-style labels used in copy, just in case.
         if t in {"shoulder", "delts", "deltoids"}:
             return "shoulders"
         if t in {"arm"}:
             return "arms"
         if t in {"abs", "abdominals"}:
             return "core"
-
-        # Combined copy like "full body" or "all body parts" is *not*
-        # expected in unlock conditions; when present we conservatively
-        # return all groups.
         if t in {"full body", "all body parts"}:
             return "*"
-
         return None
 
-    # Support composite strings like "Chest / Legs / Core".
-    if "/" in raw:
-        parts = [p.strip() for p in raw.split("/") if p.strip()]
-    else:
-        parts = [raw]
-
+    parts = (
+        [part.strip() for part in raw.split("/") if part.strip()]
+        if "/" in raw
+        else [raw]
+    )
     groups: List[str] = []
     for part in parts:
         mapped = _map_single(part)
-        if mapped is None:
-            continue
         if mapped == "*":
-            # Wildcard – all canonical groups.
-            groups.extend(
-                g for g in ["chest", "shoulders", "arms", "back", "core", "glutes", "legs"]
-            )
-        else:
+            groups.extend(CANONICAL_GROUPS)
+        elif mapped is not None:
             groups.append(mapped)
 
-    # De-duplicate while preserving order.
-    seen = set()
+    seen: Set[str] = set()
     unique: List[str] = []
-    for g in groups:
-        if g not in seen:
-            seen.add(g)
-            unique.append(g)
+    for group in groups:
+        if group not in seen:
+            seen.add(group)
+            unique.append(group)
     return unique
 
 
-def _load_body_battle_groups(user: User) -> Mapping[str, BodyGroupState]:
-    """Fetch Body Battle Map canonical-group stats for a user.
+def _default_body_group_states() -> Dict[str, BodyGroupState]:
+    return {
+        group: BodyGroupState(group=group, sessions=0, rank="Recruit")
+        for group in CANONICAL_GROUPS
+    }
 
-    This piggybacks on the existing dashboard metrics snapshot so we compute
-    the body map in a single place (``recalculate_user_metrics``).
-    """
+
+def load_body_battle_groups(user: User) -> Mapping[str, BodyGroupState]:
+    """Return canonical body-part ranks used by challenge unlock rules."""
 
     try:
         snapshot: UserMetricsSnapshot = user.metrics_snapshot  # type: ignore[attr-defined]
@@ -112,83 +132,139 @@ def _load_body_battle_groups(user: User) -> Mapping[str, BodyGroupState]:
         snapshot = recalculate_user_metrics(user)
 
     detail = snapshot.body_battle_map_detail or {}
-    groups_detail: MutableMapping[str, MutableMapping[str, object]] = detail.get("groups", {})  # type: ignore[assignment]
+    groups_detail: MutableMapping[str, MutableMapping[str, object]] = detail.get(
+        "groups",
+        {},
+    )  # type: ignore[assignment]
 
-    states: Dict[str, BodyGroupState] = {}
+    states = _default_body_group_states()
     for key, info in groups_detail.items():
+        if key not in states:
+            continue
         sessions = int(info.get("sessions", 0))  # type: ignore[arg-type]
         rank = str(info.get("rank", "Recruit"))  # type: ignore[arg-type]
         states[key] = BodyGroupState(group=key, sessions=sessions, rank=rank)
     return states
 
 
-def challenge_is_unlocked_for_user(challenge: Challenge, user: Optional[User]) -> bool:
-    """Return True if ``challenge`` should be unlocked for ``user``.
+def completed_challenge_ids_for_user(user: User) -> Set[str]:
+    return set(
+        UserChallengeCompletion.objects.filter(user=user).values_list(
+            "challenge_id",
+            flat=True,
+        )
+    )
 
-    Rules:
-    * The first three beginner challenges (B01–B03) are always unlocked.
-    * For authenticated users, we evaluate each ``unlock.conditions`` entry
-      against Body Battle Map stats (sessions + rank).
-    * ``challenges_completed_required`` is *not* enforced yet – challenge
-      completion tracking will hook into this later.
-    * Anonymous users only see the static seed status, except that the
-      beginner trio remains unlocked.
+
+def _coerce_conditions(raw_conditions: object) -> Sequence[Mapping[str, object]]:
+    if not isinstance(raw_conditions, list):
+        return []
+    return [item for item in raw_conditions if isinstance(item, Mapping)]
+
+
+def evaluate_challenge_unlock(
+    challenge: Challenge,
+    user: Optional[User],
+    *,
+    completed_ids: Optional[Set[str]] = None,
+    body_groups: Optional[Mapping[str, BodyGroupState]] = None,
+) -> ChallengeUnlockEvaluation:
+    """Evaluate every unlock prerequisite for one challenge.
+
+    The API and completion endpoint both use this function so the mobile UI and
+    backend enforcement cannot drift apart.
     """
 
-    # Hard-coded always-open beginner trio.
-    if challenge.id in {"B01", "B02", "B03"}:
-        return True
-
     unlock: Mapping[str, object] = challenge.unlock or {}
+    raw_conditions = _coerce_conditions(unlock.get("conditions", []))
     is_free = bool(unlock.get("is_free"))
+    required_completed = int(unlock.get("challenges_completed_required") or 0)
+    unlock_message = str(unlock.get("unlock_message") or "")
 
-    # If the challenge is marked as free with no conditions, keep it open.
-    conditions: Iterable[Mapping[str, object]] = unlock.get("conditions", []) or []  # type: ignore[assignment]
-    if is_free and not list(conditions):
-        return True
+    is_authenticated = bool(
+        user is not None and getattr(user, "is_authenticated", False)
+    )
+    if is_authenticated and completed_ids is None:
+        completed_ids = completed_challenge_ids_for_user(user)  # type: ignore[arg-type]
+    completed_ids = completed_ids or set()
+    completed_count = len(completed_ids)
 
-    if user is None or not getattr(user, "is_authenticated", False):
-        # For anonymous users we do *not* evaluate body map state. Everything
-        # beyond the always-open trio stays locked.
-        return False
+    if challenge.id in {"B01", "B02", "B03"}:
+        is_free = True
 
-    groups = _load_body_battle_groups(user)
+    groups = body_groups
+    if is_authenticated and groups is None:
+        groups = load_body_battle_groups(user)  # type: ignore[arg-type]
+    groups = groups or _default_body_group_states()
 
-    def _group_state(key: str) -> BodyGroupState:
-        if key in groups:
-            return groups[key]
-        # Default: zero sessions, Recruit.
-        return BodyGroupState(group=key, sessions=0, rank="Recruit")
+    condition_payloads: List[dict] = []
+    all_conditions_met = True
 
-    for cond in conditions:
-        raw_body_part = str(cond.get("body_part", ""))
-        min_workouts = int(cond.get("min_workouts", 0))
-        level_required = str(cond.get("level_required", "recruit")).lower()
+    for condition in raw_conditions:
+        body_part = str(condition.get("body_part", ""))
+        min_workouts = int(condition.get("min_workouts") or 0)
+        required_rank = str(condition.get("level_required") or "recruit").lower()
+        required_rank_index = level_index_for_rank(required_rank)
+        condition_groups = _normalize_body_part_label(body_part)
 
-        groups_for_cond = _normalize_body_part_label(raw_body_part)
-        if not groups_for_cond:
-            # If we cannot map the body part label, be conservative and
-            # require unlock via other conditions only.
-            continue
+        group_payloads: List[dict] = []
+        for group in condition_groups:
+            state = groups.get(
+                group,
+                BodyGroupState(group=group, sessions=0, rank="Recruit"),
+            )
+            sessions_met = state.sessions >= min_workouts
+            rank_met = state.level_index >= required_rank_index
+            group_payloads.append(
+                {
+                    "key": group,
+                    "label": display_label_for_group(group),
+                    "sessions": state.sessions,
+                    "rank": state.rank,
+                    "rankIndex": state.level_index,
+                    "sessionsMet": sessions_met,
+                    "rankMet": rank_met,
+                    "isMet": sessions_met and rank_met,
+                }
+            )
 
-        try:
-            required_level_idx = LEVEL_ORDER.index(level_required)
-        except ValueError:
-            required_level_idx = 0
+        # A composite condition is met if any listed group satisfies it.
+        condition_met = bool(group_payloads) and any(
+            group["isMet"] for group in group_payloads
+        )
+        all_conditions_met = all_conditions_met and condition_met
+        condition_payloads.append(
+            {
+                "bodyPart": body_part,
+                "minWorkouts": min_workouts,
+                "levelRequired": required_rank,
+                "levelRequiredIndex": required_rank_index,
+                "isMet": condition_met,
+                "mode": "any",
+                "groups": group_payloads,
+            }
+        )
 
-        # Composite conditions (e.g. "Chest / Legs / Core") are treated as
-        # satisfied if *any* of the referenced groups meets the threshold.
-        satisfied = False
-        for g in groups_for_cond:
-            state = _group_state(g)
-            if state.sessions >= min_workouts and state.level_index >= required_level_idx:
-                satisfied = True
-                break
+    completed_requirement_met = completed_count >= required_completed
+    free_without_requirements = is_free and not raw_conditions and required_completed == 0
+    is_unlocked = (
+        free_without_requirements
+        or (
+            is_authenticated
+            and all_conditions_met
+            and completed_requirement_met
+        )
+    )
 
-        if not satisfied:
-            return False
+    return ChallengeUnlockEvaluation(
+        is_unlocked=is_unlocked,
+        is_free=is_free,
+        conditions=condition_payloads,
+        challenges_completed_required=required_completed,
+        challenges_completed_count=completed_count,
+        unlock_message=unlock_message,
+    )
 
-    # ``challenges_completed_required`` will be wired up once challenge
-    # completion tracking is implemented. For now, it is informational only.
-    return True
 
+def challenge_is_unlocked_for_user(challenge: Challenge, user: Optional[User]) -> bool:
+    return evaluate_challenge_unlock(challenge, user).is_unlocked

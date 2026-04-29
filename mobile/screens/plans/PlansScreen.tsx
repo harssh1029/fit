@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -19,7 +19,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlans } from "../../hooks/usePlans";
 import { useThemeMode, styles } from "../../App";
-import type { PlansHomeProps } from "../../App";
+import type { PlansHomeProps, PlanUserProgress } from "../../App";
 
 type PlanCardStatus = "preview" | "enrolled" | "completed";
 
@@ -27,9 +27,43 @@ type PlanCardProps = {
   title: string;
   duration: string;
   level: string;
-  enrolledCount: string;
+  goal: string;
+  progress?: PlanUserProgress | null;
   status: PlanCardStatus;
   onPress?: () => void;
+};
+
+const formatPlanDate = (value: string | null | undefined) => {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not set";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+const ProgressDots: React.FC<{
+  total: number;
+  completed: number;
+  isLight: boolean;
+}> = ({ total, completed, isLight }) => {
+  const dotCount = Math.max(8, Math.min(24, total || 12));
+  const filledCount =
+    total > 0 ? Math.round((Math.min(completed, total) / total) * dotCount) : 0;
+
+  return (
+    <View style={styles.planProgressDotsRow}>
+      {Array.from({ length: dotCount }).map((_, index) => (
+        <View
+          key={index}
+          style={[
+            styles.planProgressDot,
+            isLight && styles.planProgressDotLight,
+            index < filledCount && styles.planProgressDotFilled,
+            index < filledCount && isLight && styles.planProgressDotFilledLight,
+          ]}
+        />
+      ))}
+    </View>
+  );
 };
 
 const AnimatedTouchableOpacity =
@@ -39,7 +73,8 @@ const PlanCard: React.FC<PlanCardProps> = ({
   title,
   duration,
   level,
-  enrolledCount,
+  goal,
+  progress,
   status,
   onPress,
 }) => {
@@ -49,10 +84,10 @@ const PlanCard: React.FC<PlanCardProps> = ({
   const pressProgress = useRef(new Animated.Value(0)).current;
   const buttonLabel =
     status === "completed"
-      ? "View completion details"
+      ? "Completed"
       : status === "enrolled"
-        ? "Current plan"
-        : "Preview plan";
+        ? "Current"
+        : "View";
 
   const iconColor =
     status === "completed"
@@ -99,10 +134,14 @@ const PlanCard: React.FC<PlanCardProps> = ({
       onPressIn={() => animatePress(1)}
       onPressOut={() => animatePress(0)}
     >
-      {status === "completed" && (
+      {(status === "completed" || status === "enrolled") && (
         <View style={styles.planCardCompletedBadge}>
           <Ionicons
-            name="checkmark-circle-outline"
+            name={
+              status === "enrolled"
+                ? "radio-button-on"
+                : "checkmark-circle-outline"
+            }
             size={24}
             color={metaIconColor}
           />
@@ -125,19 +164,6 @@ const PlanCard: React.FC<PlanCardProps> = ({
         >
           {title}
         </Text>
-        <View style={styles.planCardDurationRow}>
-          <Ionicons name="calendar-outline" size={15} color={metaIconColor} />
-          <Text
-            style={[
-              styles.planCardDurationText,
-              isLight
-                ? styles.planCardDurationTextLight
-                : styles.planCardDurationTextDark,
-            ]}
-          >
-            {duration}
-          </Text>
-        </View>
       </View>
 
       <View style={styles.planCardMetaStrip}>
@@ -159,20 +185,71 @@ const PlanCard: React.FC<PlanCardProps> = ({
             {level}
           </Text>
         </View>
-        <View style={styles.planCardEnrolledRow}>
-          <Ionicons name="people-outline" size={14} color={metaIconColor} />
+        <View
+          style={[
+            styles.planCardMetaChip,
+            isLight && styles.planCardMetaChipLight,
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={14} color={metaIconColor} />
           <Text
             style={[
-              styles.planCardEnrolledText,
+              styles.planCardMetaText,
               isLight
-                ? styles.planCardEnrolledTextLight
-                : styles.planCardEnrolledTextDark,
+                ? styles.planCardMetaTextLight
+                : styles.planCardMetaTextDark,
             ]}
           >
-            {enrolledCount} joined
+            {duration}
           </Text>
         </View>
       </View>
+
+      <Text
+        style={[
+          styles.planCardGoalText,
+          isLight
+            ? styles.planCardGoalTextLight
+            : styles.planCardGoalTextDark,
+        ]}
+        numberOfLines={2}
+      >
+        {goal}
+      </Text>
+
+      {progress && (
+        <View style={styles.planCardProgressBlock}>
+          <View style={styles.planCardProgressHeader}>
+            <Text
+              style={[
+                styles.planCardProgressText,
+                isLight
+                  ? styles.planCardProgressTextLight
+                  : styles.planCardProgressTextDark,
+              ]}
+            >
+              {progress.currentWeekNumber
+                ? `Week ${progress.currentWeekNumber}`
+                : "Not started"}
+            </Text>
+            <Text
+              style={[
+                styles.planCardProgressText,
+                isLight
+                  ? styles.planCardProgressTextLight
+                  : styles.planCardProgressTextDark,
+              ]}
+            >
+              {progress.completionPercent}% complete
+            </Text>
+          </View>
+          <ProgressDots
+            total={progress.totalSessions}
+            completed={progress.completedSessions}
+            isLight={isLight}
+          />
+        </View>
+      )}
 
       <View
         style={[
@@ -216,13 +293,11 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
 
   const { plans, loading: plansLoading, error: plansError } = usePlans();
 
-  const [activeFilter, setActiveFilter] = useState<string>("All");
-  const planFilters = ["All", "Popular", "New", "Cardio", "Strength"];
-
   const activePlanId = profile?.profile.active_plan_id;
   const activePlan = activePlanId
     ? plans.find((p) => p.id === activePlanId)
     : null;
+  const activeProgress = activePlan?.userProgress ?? null;
 
   if (plansLoading) {
     return (
@@ -330,9 +405,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 ]}
               >
                 <Ionicons
-                  name="navigate-circle-outline"
+                  name="radio-button-on"
                   size={15}
-                  color={isLight ? "#0070cc" : "#7DD3FC"}
+                  color={isLight ? "#64748B" : "#A7B0C3"}
                 />
                 <Text
                   style={[
@@ -366,65 +441,113 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 styles.plansActiveSubtitle,
                 !isLight && styles.plansActiveSubtitleDark,
               ]}
+              numberOfLines={2}
             >
-              {activePlan.durationWeeks} weeks
-              {" " + "•" + " "}
-              {activePlan.sessionsPerWeek} sessions/week
+              {activePlan.goal || activePlan.summary}
             </Text>
 
-            <View
-              style={[
-                styles.plansNextRow,
-                isLight ? styles.plansNextRowLight : styles.plansNextRowDark,
-              ]}
-            >
-              <View>
-                <Text
-                  style={[
-                    styles.plansNextLabel,
-                    isLight
-                      ? styles.plansNextLabelLight
-                      : styles.plansNextLabelDark,
-                  ]}
-                >
-                  Next workout
-                </Text>
-                <Text
-                  style={[
-                    styles.plansNextValue,
-                    isLight
-                      ? styles.plansNextValueLight
-                      : styles.plansNextValueDark,
-                  ]}
-                  numberOfLines={1}
-                >
-                  Tomorrow • Full body
-                </Text>
+            {activeProgress ? (
+              <View style={styles.plansActiveProgressBlock}>
+                <View style={styles.plansActiveProgressHeader}>
+                  <Text
+                    style={[
+                      styles.plansActiveProgressText,
+                      isLight
+                        ? styles.plansActiveProgressTextLight
+                        : styles.plansActiveProgressTextDark,
+                    ]}
+                  >
+                    {activeProgress.currentWeekNumber
+                      ? `Week ${activeProgress.currentWeekNumber} of ${activePlan.durationWeeks}`
+                      : `${activePlan.durationWeeks} weeks`}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.plansActiveProgressText,
+                      isLight
+                        ? styles.plansActiveProgressTextLight
+                        : styles.plansActiveProgressTextDark,
+                    ]}
+                  >
+                    {activeProgress.completionPercent}% completed
+                  </Text>
+                </View>
+                <ProgressDots
+                  total={activeProgress.totalSessions}
+                  completed={activeProgress.completedSessions}
+                  isLight={isLight}
+                />
+                <View style={styles.plansActiveDateRow}>
+                  <Text
+                    style={[
+                      styles.plansActiveDateText,
+                      isLight
+                        ? styles.plansActiveDateTextLight
+                        : styles.plansActiveDateTextDark,
+                    ]}
+                  >
+                    Started {formatPlanDate(activeProgress.startedAt)}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.plansActiveDateText,
+                      isLight
+                        ? styles.plansActiveDateTextLight
+                        : styles.plansActiveDateTextDark,
+                    ]}
+                  >
+                    Ends {formatPlanDate(activeProgress.expectedEndAt)}
+                  </Text>
+                </View>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.plansNextButton,
-                  isLight
-                    ? styles.plansNextButtonLight
-                    : styles.plansNextButtonDark,
-                ]}
-                activeOpacity={0.9}
-                onPress={() =>
-                  navigation.navigate("PlanDetail", { planId: activePlan.id })
-                }
-              >
-                <Text
+            ) : (
+              <View style={styles.planCardMetaStrip}>
+                <View
                   style={[
-                    styles.plansNextButtonLabel,
-                    isLight
-                      ? styles.plansNextButtonLabelLight
-                      : styles.plansNextButtonLabelDark,
+                    styles.planCardMetaChip,
+                    isLight && styles.planCardMetaChipLight,
                   ]}
                 >
-                  View
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
+                  />
+                  <Text
+                    style={[
+                      styles.planCardMetaText,
+                      isLight
+                        ? styles.planCardMetaTextLight
+                        : styles.planCardMetaTextDark,
+                    ]}
+                  >
+                    {activePlan.durationWeeks} weeks
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.planCardMetaChip,
+                    isLight && styles.planCardMetaChipLight,
+                  ]}
+                >
+                  <Ionicons
+                    name="barbell-outline"
+                    size={14}
+                    color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
+                  />
+                  <Text
+                    style={[
+                      styles.planCardMetaText,
+                      isLight
+                        ? styles.planCardMetaTextLight
+                        : styles.planCardMetaTextDark,
+                    ]}
+                  >
+                    {activePlan.sessionsPerWeek}/week
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.plansActiveButtonsRow}>
               <TouchableOpacity
@@ -437,68 +560,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   navigation.navigate("PlanDetail", { planId: activePlan.id })
                 }
               >
-                <Text style={styles.plansPrimaryButtonLabel}>View plan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.plansSecondaryButton,
-                  isLight
-                    ? styles.plansSecondaryButtonLight
-                    : styles.plansSecondaryButtonDark,
-                ]}
-                activeOpacity={0.9}
-              >
-                <Text
-                  style={[
-                    styles.plansSecondaryButtonLabel,
-                    isLight
-                      ? styles.plansSecondaryButtonLabelLight
-                      : styles.plansSecondaryButtonLabelDark,
-                  ]}
-                >
-                  Switch plan
-                </Text>
+                <Text style={styles.plansPrimaryButtonLabel}>Continue</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       )}
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.planFiltersScroll}
-      >
-        {planFilters.map((filter) => {
-          const isActive = filter === activeFilter;
-          return (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.planFilterPill,
-                isLight
-                  ? styles.planFilterPillLight
-                  : styles.planFilterPillDark,
-                isActive && styles.planFilterPillActive,
-              ]}
-              activeOpacity={0.9}
-              onPress={() => setActiveFilter(filter)}
-            >
-              <Text
-                style={[
-                  styles.planFilterLabel,
-                  isLight
-                    ? styles.planFilterLabelLight
-                    : styles.planFilterLabelDark,
-                  isActive && styles.planFilterLabelActive,
-                ]}
-              >
-                {filter}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
 
       <View style={styles.plansBodyContainer}>
         <View style={styles.planSection}>
@@ -526,9 +593,10 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <PlanCard
                 key={plan.id}
                 title={plan.name}
-                duration={`${plan.durationWeeks} weeks · ${plan.sessionsPerWeek} days/wk`}
+                duration={`${plan.durationWeeks}w · ${plan.sessionsPerWeek}/wk`}
                 level={plan.level.charAt(0).toUpperCase() + plan.level.slice(1)}
-                enrolledCount="–"
+                goal={plan.goal || plan.summary}
+                progress={plan.userProgress}
                 status={activePlanId === plan.id ? "enrolled" : "preview"}
                 onPress={() =>
                   navigation.navigate("PlanDetail", {

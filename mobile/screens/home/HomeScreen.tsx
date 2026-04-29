@@ -11,6 +11,9 @@ import {
   Easing,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import * as SecureStore from "expo-secure-store";
+import * as Haptics from "expo-haptics";
 
 import {
   GLASS_ACCENT_GREEN,
@@ -148,9 +151,188 @@ const AnimatedMetricProgressRow: React.FC<AnimatedMetricProgressRowProps> = ({
   );
 };
 
+const CUSTOM_WORKOUT_GROUPS = [
+  { key: "chest", label: "Chest" },
+  { key: "shoulders", label: "Shoulders" },
+  { key: "arms", label: "Arms" },
+  { key: "back", label: "Back" },
+  { key: "core", label: "Core" },
+  { key: "glutes", label: "Glutes" },
+  { key: "legs", label: "Legs" },
+];
+
+type FitnessTestInputs = {
+  age: string;
+  heightCm: string;
+  weightKg: string;
+  pushups: string;
+  pullups: string;
+  squats: string;
+  runMinutes: string;
+};
+
+type FitnessTestResult = {
+  completedAt: string;
+  inputs: FitnessTestInputs;
+  chronologicalAge: number;
+  fitnessAgeYears: number;
+  percentile: number;
+  raceScore: number;
+  bodyBalanceScore: number;
+  bodyMapRows: {
+    key: string;
+    label: string;
+    rank: string;
+    color: string;
+    sessions: number;
+  }[];
+  components: {
+    pushupScore: number;
+    pullupScore: number;
+    squatScore: number;
+    runScore: number;
+    bmiScore: number;
+    overallScore: number;
+  };
+};
+
+const FITNESS_TEST_CALCULATION_STEPS = [
+  "Calculating fitness age",
+  "Comparing peer percentile",
+  "Scoring race readiness",
+  "Mapping body-part ranks",
+  "Updating dashboard",
+];
+
+const getDefaultFitnessTestInputs = (
+  profileHeight?: number | null,
+  profileWeight?: number | null,
+): FitnessTestInputs => ({
+  age: "25",
+  heightCm: profileHeight != null ? String(Math.round(profileHeight)) : "172",
+  weightKg: profileWeight != null ? String(Math.round(profileWeight)) : "70",
+  pushups: "15",
+  pullups: "3",
+  squats: "30",
+  runMinutes: "7",
+});
+
+const clampScore = (value: number, min = 0, max = 100) =>
+  Math.max(min, Math.min(max, Math.round(value)));
+
+const rankFromScore = (score: number) => {
+  if (score >= 82) return "Legend";
+  if (score >= 65) return "Beast";
+  if (score >= 45) return "Warrior";
+  if (score >= 25) return "Soldier";
+  return "Recruit";
+};
+
+const parseFitnessTestNumber = (value: string, fallback: number) => {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const calculateFitnessTestResult = (
+  inputs: FitnessTestInputs,
+): FitnessTestResult => {
+  const age = Math.max(16, Math.min(80, parseFitnessTestNumber(inputs.age, 25)));
+  const heightCm = Math.max(
+    120,
+    Math.min(220, parseFitnessTestNumber(inputs.heightCm, 172)),
+  );
+  const weightKg = Math.max(
+    40,
+    Math.min(180, parseFitnessTestNumber(inputs.weightKg, 70)),
+  );
+  const pushups = Math.max(0, parseFitnessTestNumber(inputs.pushups, 0));
+  const pullups = Math.max(0, parseFitnessTestNumber(inputs.pullups, 0));
+  const squats = Math.max(0, parseFitnessTestNumber(inputs.squats, 0));
+  const runMinutes = Math.max(
+    3,
+    Math.min(20, parseFitnessTestNumber(inputs.runMinutes, 7)),
+  );
+
+  const bmi = weightKg / (heightCm / 100) ** 2;
+  const bmiScore = clampScore(100 - Math.abs(bmi - 22) * 8, 20, 100);
+  const pushupScore = clampScore((pushups / 45) * 100);
+  const pullupScore = clampScore((pullups / 12) * 100);
+  const squatScore = clampScore((squats / 70) * 100);
+  const runScore = clampScore(110 - ((runMinutes - 4) / 8) * 90, 15, 100);
+  const upperStrength = clampScore(pushupScore * 0.55 + pullupScore * 0.45);
+  const lowerStrength = clampScore(squatScore * 0.7 + runScore * 0.3);
+  const overallScore = clampScore(
+    pushupScore * 0.22 +
+      pullupScore * 0.18 +
+      squatScore * 0.2 +
+      runScore * 0.28 +
+      bmiScore * 0.12,
+  );
+  const fitnessAgeYears = Math.max(
+    16,
+    Math.min(
+      80,
+      Math.round(age - (overallScore - 55) / 4 + Math.max(0, 70 - bmiScore) / 15),
+    ),
+  );
+  const percentile = clampScore(18 + overallScore * 0.8, 5, 98);
+  const raceScore = clampScore(
+    runScore * 0.42 + lowerStrength * 0.24 + upperStrength * 0.24 + bmiScore * 0.1,
+  );
+
+  const groupScores: Record<string, number> = {
+    shoulders: clampScore(pushupScore * 0.75 + pullupScore * 0.25),
+    chest: pushupScore,
+    arms: clampScore(pushupScore * 0.35 + pullupScore * 0.65),
+    core: clampScore(runScore * 0.45 + squatScore * 0.35 + bmiScore * 0.2),
+    back: clampScore(pullupScore * 0.78 + squatScore * 0.22),
+    glutes: clampScore(squatScore * 0.72 + runScore * 0.28),
+    legs: clampScore(squatScore * 0.55 + runScore * 0.45),
+  };
+  const groupScoreValues = Object.values(groupScores);
+  const averageGroupScore =
+    groupScoreValues.reduce((sum, score) => sum + score, 0) /
+    groupScoreValues.length;
+  const spreadPenalty =
+    Math.max(...groupScoreValues) - Math.min(...groupScoreValues);
+  const bodyBalanceScore = clampScore(averageGroupScore - spreadPenalty * 0.18);
+
+  const bodyMapRows = BODY_BATTLE_GROUP_ORDER.map((key) => {
+    const score = groupScores[key] ?? 0;
+    const rank = rankFromScore(score);
+    return {
+      key,
+      label: BODY_BATTLE_CANONICAL_LABELS[key] ?? key,
+      rank,
+      color: BODY_BATTLE_RANK_COLORS[rank] ?? BODY_BATTLE_RANK_COLORS.Recruit,
+      sessions: Math.round(score / 10),
+    };
+  });
+
+  return {
+    completedAt: new Date().toISOString(),
+    inputs,
+    chronologicalAge: Math.round(age),
+    fitnessAgeYears,
+    percentile,
+    raceScore,
+    bodyBalanceScore,
+    bodyMapRows,
+    components: {
+      pushupScore,
+      pullupScore,
+      squatScore,
+      runScore,
+      bmiScore,
+      overallScore,
+    },
+  };
+};
+
 const HomeScreen: React.FC = () => {
   const { mode, toggle } = useThemeMode();
   const isLight = mode === "light";
+  const navigation = useNavigation<any>();
   const { savePr } = useExercisePrs();
   const { accessToken, refreshAccessToken, signOut } = useAuth();
   const {
@@ -161,11 +343,39 @@ const HomeScreen: React.FC = () => {
   } = useDashboardSummary();
   const { profile } = useUserProfileBasic();
   const activePlanId = profile?.profile.active_plan_id ?? null;
+  const fitnessTestStorageKey = profile?.id
+    ? `fitness_test_result_v1_${profile.id}`
+    : "fitness_test_result_v1_guest";
   const {
     plan: activePlan,
     loading: activePlanLoading,
     error: activePlanError,
   } = usePlanDetail(activePlanId);
+  const [fitnessTestInputs, setFitnessTestInputs] =
+    useState<FitnessTestInputs>(() => getDefaultFitnessTestInputs());
+  const [fitnessTestResult, setFitnessTestResult] =
+    useState<FitnessTestResult | null>(null);
+  const [pendingFitnessTestResult, setPendingFitnessTestResult] =
+    useState<FitnessTestResult | null>(null);
+  const [isFitnessTestHydrated, setIsFitnessTestHydrated] = useState(false);
+  const [isFitnessTestModalVisible, setIsFitnessTestModalVisible] =
+    useState(false);
+  const [isCustomWorkoutVisible, setIsCustomWorkoutVisible] = useState(false);
+  const [customWorkoutGroups, setCustomWorkoutGroups] = useState<string[]>([]);
+  const [customWorkoutExerciseCount, setCustomWorkoutExerciseCount] =
+    useState("4");
+  const [customWorkoutDuration, setCustomWorkoutDuration] = useState("45");
+  const [customWorkoutCardio, setCustomWorkoutCardio] = useState(false);
+  const [customWorkoutSaving, setCustomWorkoutSaving] = useState(false);
+  const [customWorkoutError, setCustomWorkoutError] = useState<string | null>(
+    null,
+  );
+  const [fitnessTestPhase, setFitnessTestPhase] = useState<
+    "form" | "calculating" | "complete"
+  >("form");
+  const [fitnessTestCalculationStep, setFitnessTestCalculationStep] =
+    useState(0);
+  const [fitnessTestError, setFitnessTestError] = useState<string | null>(null);
 
   const [homeActiveTab, setHomeActiveTab] = useState<"workouts" | "nutrition">(
     "workouts",
@@ -183,6 +393,95 @@ const HomeScreen: React.FC = () => {
   } = useWorkoutHistory();
 
   const [isWorkoutHistoryVisible, setIsWorkoutHistoryVisible] = useState(false);
+
+  useEffect(() => {
+    setFitnessTestInputs((prev) => {
+      if (fitnessTestResult) return prev;
+      return {
+        ...prev,
+        heightCm:
+          profile?.profile.height_cm != null
+            ? String(Math.round(profile.profile.height_cm))
+            : prev.heightCm,
+        weightKg:
+          profile?.profile.weight_kg != null
+            ? String(Math.round(profile.profile.weight_kg))
+            : prev.weightKg,
+      };
+    });
+  }, [
+    fitnessTestResult,
+    profile?.profile.height_cm,
+    profile?.profile.weight_kg,
+  ]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadFitnessTestResult = async () => {
+      setIsFitnessTestHydrated(false);
+      try {
+        const stored = await SecureStore.getItemAsync(fitnessTestStorageKey);
+        if (!isMounted) return;
+        if (stored) {
+          const parsed = JSON.parse(stored) as FitnessTestResult;
+          setFitnessTestResult(parsed);
+          setFitnessTestInputs(parsed.inputs);
+        } else {
+          setFitnessTestResult(null);
+        }
+      } catch {
+        if (isMounted) {
+          setFitnessTestResult(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsFitnessTestHydrated(true);
+        }
+      }
+    };
+
+    void loadFitnessTestResult();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fitnessTestStorageKey]);
+
+  useEffect(() => {
+    if (fitnessTestPhase !== "calculating" || !pendingFitnessTestResult) {
+      return;
+    }
+
+    if (fitnessTestCalculationStep >= FITNESS_TEST_CALCULATION_STEPS.length) {
+      setFitnessTestResult(pendingFitnessTestResult);
+      setFitnessTestInputs(pendingFitnessTestResult.inputs);
+      setPendingFitnessTestResult(null);
+      setFitnessTestPhase("complete");
+      SecureStore.setItemAsync(
+        fitnessTestStorageKey,
+        JSON.stringify(pendingFitnessTestResult),
+      ).catch(() => {
+        // Local persistence is helpful, but the calculated result is already
+        // applied in memory if secure storage is unavailable.
+      });
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setFitnessTestCalculationStep((prev) => prev + 1);
+      Haptics.selectionAsync().catch(() => {
+        // best-effort haptics
+      });
+    }, 720);
+
+    return () => clearTimeout(timeout);
+  }, [
+    fitnessTestCalculationStep,
+    fitnessTestPhase,
+    fitnessTestStorageKey,
+    pendingFitnessTestResult,
+  ]);
 
   const [completedWorkouts, setCompletedWorkouts] = useState<
     Record<string, boolean>
@@ -274,6 +573,36 @@ const HomeScreen: React.FC = () => {
   const activeItems =
     homeActiveTab === "workouts" ? activeWorkoutItems : activeNutritionItems;
 
+  const maxPlanDayIndex = useMemo(() => {
+    if (!activePlan) return null;
+    let max = 0;
+    for (const week of activePlan.weeks) {
+      for (const day of week.days) {
+        if (typeof day.day === "number") {
+          max = Math.max(max, day.day);
+        }
+      }
+    }
+    return max > 0 ? max : null;
+  }, [activePlan]);
+
+  const isActivePlanFinished = useMemo(() => {
+    if (!maxPlanDayIndex) return false;
+    return workoutHistoryItems.some(
+      (entry) =>
+        typeof entry.scheduled_day_index === "number" &&
+        entry.scheduled_day_index >= maxPlanDayIndex &&
+        (entry.status === "completed" || entry.status === "missed") &&
+        entry.date <= todayIso,
+    );
+  }, [maxPlanDayIndex, todayIso, workoutHistoryItems]);
+
+  const shouldShowWorkoutSetup =
+    homeActiveTab === "workouts" &&
+    (!activePlanId ||
+      (!activePlanLoading && !activePlan) ||
+      isActivePlanFinished);
+
   const planDayTypeByWeekday = useMemo<Record<
     number,
     PlanDayDetail["type"]
@@ -338,17 +667,58 @@ const HomeScreen: React.FC = () => {
       : null;
 
   const metrics = summary?.metrics;
-  const fitness = metrics?.fitness_age;
-  const race = metrics?.race_readiness;
-  const percentile = metrics?.percentile_rank;
+  const hasCompletedFitnessTest = fitnessTestResult != null;
+  const isFitnessTestLocked = !hasCompletedFitnessTest;
+  const fitness = fitnessTestResult
+    ? {
+        fitness_age_years: fitnessTestResult.fitnessAgeYears,
+        chronological_age: fitnessTestResult.chronologicalAge,
+      }
+    : null;
+  const race = fitnessTestResult
+    ? {
+        score: fitnessTestResult.raceScore,
+        detail: {
+          components: {
+            energy_score: fitnessTestResult.components.bmiScore,
+            run_1km_score: fitnessTestResult.components.runScore,
+            wall_balls_score: fitnessTestResult.components.squatScore,
+            sled_score: Math.round(
+              (fitnessTestResult.components.pushupScore +
+                fitnessTestResult.components.pullupScore) /
+                2,
+            ),
+          },
+        },
+      }
+    : null;
+  const percentile = fitnessTestResult
+    ? { percentile: fitnessTestResult.percentile }
+    : null;
   const streak = metrics?.streak;
   const totalTime = metrics?.total_time;
-  const bodyBattle = metrics?.body_battle_map;
+  const bodyBattle = fitnessTestResult
+    ? {
+        balance_score: fitnessTestResult.bodyBalanceScore,
+        detail: {
+          groups: fitnessTestResult.bodyMapRows.reduce<Record<string, any>>(
+            (acc, row) => {
+              acc[row.key] = {
+                rank: row.rank,
+                sessions: row.sessions,
+              };
+              return acc;
+            },
+            {},
+          ),
+        },
+      }
+    : null;
 
   const fitnessAgeValue =
     typeof fitness?.fitness_age_years === "number"
       ? `${fitness.fitness_age_years} yrs`
-      : metricsLoading
+      : metricsLoading && !isFitnessTestLocked
         ? "Loading…"
         : "—";
 
@@ -382,7 +752,7 @@ const HomeScreen: React.FC = () => {
   const raceScoreValue =
     typeof race?.score === "number"
       ? `${Math.round(race.score)} / 100`
-      : metricsLoading
+      : metricsLoading && !isFitnessTestLocked
         ? "Loading…"
         : "—";
 
@@ -411,7 +781,7 @@ const HomeScreen: React.FC = () => {
   const percentileValue =
     typeof percentile?.percentile === "number"
       ? `${Math.round(percentile.percentile)}th`
-      : metricsLoading
+      : metricsLoading && !isFitnessTestLocked
         ? "Loading…"
         : "—";
 
@@ -489,7 +859,11 @@ const HomeScreen: React.FC = () => {
   const racePercent =
     typeof race?.score === "number" ? Math.round(race.score) : null;
   const racePercentDisplay =
-    racePercent != null ? `${racePercent}%` : metricsLoading ? "Loading…" : "—";
+    racePercent != null
+      ? `${racePercent}%`
+      : metricsLoading && !isFitnessTestLocked
+        ? "Loading…"
+        : "—";
   const raceGaugeProgress =
     racePercent != null ? Math.max(0, Math.min(1, racePercent / 100)) : null;
 
@@ -529,7 +903,7 @@ const HomeScreen: React.FC = () => {
   const percentilePercentDisplay =
     percentilePercent != null
       ? `${percentilePercent}%`
-      : metricsLoading
+      : metricsLoading && !isFitnessTestLocked
         ? "Loading…"
         : "—";
 
@@ -593,7 +967,7 @@ const HomeScreen: React.FC = () => {
   const bodyBalanceDisplay =
     bodyBalanceScore != null
       ? `${bodyBalanceScore} / 100`
-      : metricsLoading
+      : metricsLoading && !isFitnessTestLocked
         ? "Loading…"
         : "—";
   let bodyBalanceLabel: string | null = null;
@@ -636,45 +1010,19 @@ const HomeScreen: React.FC = () => {
     },
   );
 
-  // Fallback sample data so charts look meaningful when the API
-  // does not yet return real body-battle sessions.
-  const SAMPLE_BODY_BATTLE: Record<string, { sessions: number; rank: string }> =
-    {
-      back: { sessions: 52, rank: "Legend" },
-      chest: { sessions: 44, rank: "Beast" },
-      legs: { sessions: 32, rank: "Warrior" },
-      arms: { sessions: 26, rank: "Warrior" },
-      shoulders: { sessions: 20, rank: "Soldier" },
-      core: { sessions: 15, rank: "Soldier" },
-      glutes: { sessions: 8, rank: "Recruit" },
-    };
-
-  const hasRealBodyMapData = realBodyMapRows.some((row) => row.sessions > 0);
-
-  const sampleBodyMapRows: BodyMapRow[] = BODY_BATTLE_GROUP_ORDER.map(
+  const recruitBodyMapRows: BodyMapRow[] = BODY_BATTLE_GROUP_ORDER.map(
     (gKey): BodyMapRow => {
-      const mock = SAMPLE_BODY_BATTLE[gKey] ?? {
-        sessions: 0,
-        rank: "Recruit",
-      };
       const label = BODY_BATTLE_CANONICAL_LABELS[gKey] ?? gKey;
-      const rank = mock.rank;
-      const sessions = mock.sessions;
+      const rank = "Recruit";
+      const sessions = 0;
       const color =
         BODY_BATTLE_RANK_COLORS[rank] ?? BODY_BATTLE_RANK_COLORS["Recruit"];
       return { key: gKey, label, rank, color, sessions };
     },
   );
 
-  // For now, always show the richer sample data so the UI clearly
-  // communicates the different rank levels across body parts.
-  // When wiring to real production data, flip this flag to false.
-  const USE_SAMPLE_BODY_BATTLE_FOR_UI = true;
-
   const bodyMapRows: BodyMapRow[] =
-    USE_SAMPLE_BODY_BATTLE_FOR_UI || !hasRealBodyMapData
-      ? sampleBodyMapRows
-      : realBodyMapRows;
+    hasCompletedFitnessTest ? realBodyMapRows : recruitBodyMapRows;
 
   const bodyBalanceFillProgress = useRef(new Animated.Value(0)).current;
 
@@ -697,18 +1045,34 @@ const HomeScreen: React.FC = () => {
   });
 
   const handlePressFitnessAge = () => {
+    if (isFitnessTestLocked) {
+      openFitnessTest();
+      return;
+    }
     setActiveMetricTooltip("fitness_age");
   };
 
   const handlePressRaceReadiness = () => {
+    if (isFitnessTestLocked) {
+      openFitnessTest();
+      return;
+    }
     setActiveMetricTooltip("race_readiness");
   };
 
   const handlePressPercentile = () => {
+    if (isFitnessTestLocked) {
+      openFitnessTest();
+      return;
+    }
     setActiveMetricTooltip("percentile");
   };
 
   const handlePressBodyBattleMap = () => {
+    if (isFitnessTestLocked) {
+      openFitnessTest();
+      return;
+    }
     setActiveMetricTooltip("body_battle_map");
   };
 
@@ -817,6 +1181,82 @@ const HomeScreen: React.FC = () => {
     }
   };
 
+  const toggleCustomWorkoutGroup = (group: string) => {
+    setCustomWorkoutError(null);
+    setCustomWorkoutGroups((prev) =>
+      prev.includes(group)
+        ? prev.filter((item) => item !== group)
+        : [...prev, group],
+    );
+  };
+
+  const submitCustomWorkout = async () => {
+    if (!customWorkoutGroups.length && !customWorkoutCardio) {
+      setCustomWorkoutError("Select a body part or cardio.");
+      return;
+    }
+    if (!accessToken) {
+      setCustomWorkoutError("Sign in again to log this workout.");
+      return;
+    }
+
+    setCustomWorkoutSaving(true);
+    setCustomWorkoutError(null);
+    try {
+      const payload = {
+        body_groups: customWorkoutGroups,
+        exercise_count: Number(customWorkoutExerciseCount) || 0,
+        duration_minutes: Number(customWorkoutDuration) || 30,
+        cardio: customWorkoutCardio,
+      };
+
+      let tokenToUse = accessToken;
+      let response = await fetch(`${API_BASE_URL}/workouts/custom/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokenToUse}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.status === 401) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          await signOut();
+          return;
+        }
+        tokenToUse = refreshed;
+        response = await fetch(`${API_BASE_URL}/workouts/custom/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenToUse}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        setCustomWorkoutError(data?.detail || "Could not log workout.");
+        return;
+      }
+
+      setIsCustomWorkoutVisible(false);
+      setCustomWorkoutGroups([]);
+      setCustomWorkoutCardio(false);
+      setCustomWorkoutExerciseCount("4");
+      setCustomWorkoutDuration("45");
+      reloadMetrics();
+      reloadWorkoutHistory();
+    } catch {
+      setCustomWorkoutError("Could not log workout.");
+    } finally {
+      setCustomWorkoutSaving(false);
+    }
+  };
+
   const updateExercisePrInput = (
     segmentId: string,
     field: "weight" | "sets",
@@ -862,6 +1302,605 @@ const HomeScreen: React.FC = () => {
   const handleNextMonth = () => {
     setCurrentMonth((prev) => addMonths(prev, 1));
   };
+
+  const openFitnessTest = () => {
+    setFitnessTestError(null);
+    setPendingFitnessTestResult(null);
+    setFitnessTestCalculationStep(0);
+    setFitnessTestPhase("form");
+    setIsFitnessTestModalVisible(true);
+  };
+
+  const closeFitnessTest = () => {
+    if (fitnessTestPhase === "calculating") return;
+    setIsFitnessTestModalVisible(false);
+  };
+
+  const updateFitnessTestInput = (
+    key: keyof FitnessTestInputs,
+    value: string,
+  ) => {
+    setFitnessTestError(null);
+    setFitnessTestInputs((prev) => ({
+      ...prev,
+      [key]: value.replace(/[^0-9.]/g, ""),
+    }));
+  };
+
+  const startFitnessTestCalculation = () => {
+    const requiredFields: (keyof FitnessTestInputs)[] = [
+      "age",
+      "heightCm",
+      "weightKg",
+      "pushups",
+      "pullups",
+      "squats",
+      "runMinutes",
+    ];
+    const hasMissingField = requiredFields.some(
+      (field) => fitnessTestInputs[field].trim().length === 0,
+    );
+    if (hasMissingField) {
+      setFitnessTestError("Fill each test input so the score is reliable.");
+      return;
+    }
+
+    const result = calculateFitnessTestResult(fitnessTestInputs);
+    setFitnessTestError(null);
+    setPendingFitnessTestResult(result);
+    setFitnessTestCalculationStep(0);
+    setFitnessTestPhase("calculating");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+      // best-effort haptics
+    });
+  };
+
+  const finishFitnessTest = () => {
+    setIsFitnessTestModalVisible(false);
+    setFitnessTestPhase("form");
+  };
+
+  const renderFitnessTestField = (
+    key: keyof FitnessTestInputs,
+    label: string,
+    suffix: string,
+    iconName: React.ComponentProps<typeof Ionicons>["name"],
+  ) => (
+    <View
+      key={key}
+      style={[
+        styles.fitnessTestInputCard,
+        isLight && styles.fitnessTestInputCardLight,
+      ]}
+    >
+      <View style={styles.fitnessTestInputLabelRow}>
+        <Ionicons
+          name={iconName}
+          size={16}
+          color={isLight ? "#0070cc" : "#7DD3FC"}
+        />
+        <Text
+          style={[
+            styles.fitnessTestInputLabel,
+            isLight && styles.fitnessTestInputLabelLight,
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.fitnessTestValueRow,
+          isLight && styles.fitnessTestValueRowLight,
+        ]}
+      >
+        <TextInput
+          value={fitnessTestInputs[key]}
+          onChangeText={(value) => updateFitnessTestInput(key, value)}
+          keyboardType="numeric"
+          placeholder="0"
+          placeholderTextColor={isLight ? "#94A3B8" : "#64748B"}
+          style={[
+            styles.fitnessTestInput,
+            isLight && styles.fitnessTestInputLight,
+          ]}
+        />
+        <Text
+          style={[
+            styles.fitnessTestInputSuffix,
+            isLight && styles.fitnessTestInputSuffixLight,
+          ]}
+        >
+          {suffix}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderFitnessTestModal = () => (
+    <Modal
+      visible={isFitnessTestModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={closeFitnessTest}
+    >
+      <View style={styles.fitnessTestModalBackdrop}>
+        <View
+          style={[
+            styles.fitnessTestModalCard,
+            isLight && styles.fitnessTestModalCardLight,
+          ]}
+        >
+          <View style={styles.fitnessTestHeaderRow}>
+            <View>
+              <Text
+                style={[
+                  styles.fitnessTestTitle,
+                  isLight && styles.fitnessTestTitleLight,
+                ]}
+              >
+                Fitness test
+              </Text>
+              <Text
+                style={[
+                  styles.fitnessTestSubtitle,
+                  isLight && styles.fitnessTestSubtitleLight,
+                ]}
+              >
+                Quick inputs. Clean dashboard metrics.
+              </Text>
+            </View>
+            {fitnessTestPhase !== "calculating" && (
+              <TouchableOpacity
+                style={[
+                  styles.fitnessTestCloseButton,
+                  isLight && styles.fitnessTestCloseButtonLight,
+                ]}
+                activeOpacity={0.8}
+                onPress={closeFitnessTest}
+              >
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color={isLight ? "#0F172A" : "#FFFFFF"}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {fitnessTestPhase === "form" && (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View
+                style={[
+                  styles.fitnessTestHintCard,
+                  isLight && styles.fitnessTestHintCardLight,
+                ]}
+              >
+                <Ionicons
+                  name="sparkles-outline"
+                  size={18}
+                  color={isLight ? "#0070cc" : "#7DD3FC"}
+                />
+                <Text
+                  style={[
+                    styles.fitnessTestHintText,
+                    isLight && styles.fitnessTestHintTextLight,
+                  ]}
+                >
+                  Enter honest numbers from one attempt. The app will unlock
+                  fitness age, peer score, readiness, and body-map ranks.
+                </Text>
+              </View>
+
+              <Text
+                style={[
+                  styles.fitnessTestSectionLabel,
+                  isLight && styles.fitnessTestSectionLabelLight,
+                ]}
+              >
+                Body basics
+              </Text>
+              <View style={styles.fitnessTestGrid}>
+                {renderFitnessTestField("age", "Age", "yrs", "calendar-outline")}
+                {renderFitnessTestField(
+                  "heightCm",
+                  "Height",
+                  "cm",
+                  "resize-outline",
+                )}
+                {renderFitnessTestField(
+                  "weightKg",
+                  "Weight",
+                  "kg",
+                  "scale-outline",
+                )}
+              </View>
+
+              <Text
+                style={[
+                  styles.fitnessTestSectionLabel,
+                  isLight && styles.fitnessTestSectionLabelLight,
+                ]}
+              >
+                Strength snapshot
+              </Text>
+              <View style={styles.fitnessTestGrid}>
+                {renderFitnessTestField(
+                  "pushups",
+                  "Pushups",
+                  "reps",
+                  "body-outline",
+                )}
+                {renderFitnessTestField(
+                  "pullups",
+                  "Pullups",
+                  "reps",
+                  "barbell-outline",
+                )}
+                {renderFitnessTestField(
+                  "squats",
+                  "Squats",
+                  "reps",
+                  "accessibility-outline",
+                )}
+              </View>
+
+              <Text
+                style={[
+                  styles.fitnessTestSectionLabel,
+                  isLight && styles.fitnessTestSectionLabelLight,
+                ]}
+              >
+                Easy run
+              </Text>
+              {renderFitnessTestField(
+                "runMinutes",
+                "1 km run",
+                "min",
+                "walk-outline",
+              )}
+
+              {fitnessTestError && (
+                <Text style={styles.fitnessTestErrorText}>
+                  {fitnessTestError}
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={styles.fitnessTestPrimaryButton}
+                activeOpacity={0.9}
+                onPress={startFitnessTestCalculation}
+              >
+                <Text style={styles.fitnessTestPrimaryButtonText}>
+                  Calculate metrics
+                </Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {fitnessTestPhase === "calculating" && (
+            <View style={styles.fitnessTestCalculationPanel}>
+              <View style={styles.fitnessTestPulseRing}>
+                <ActivityIndicator size="large" color="#7DD3FC" />
+              </View>
+              {FITNESS_TEST_CALCULATION_STEPS.map((label, index) => {
+                const isDone = index < fitnessTestCalculationStep;
+                const isActive = index === fitnessTestCalculationStep;
+                return (
+                  <View
+                    key={label}
+                    style={[
+                      styles.fitnessTestCalcRow,
+                      isActive && styles.fitnessTestCalcRowActive,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.fitnessTestCalcIcon,
+                        isDone && styles.fitnessTestCalcIconDone,
+                        isActive && styles.fitnessTestCalcIconActive,
+                      ]}
+                    >
+                      {isDone ? (
+                        <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      ) : isActive ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <View style={styles.fitnessTestCalcDot} />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.fitnessTestCalcText,
+                        isLight && styles.fitnessTestCalcTextLight,
+                        isDone && styles.fitnessTestCalcTextDone,
+                        isActive && styles.fitnessTestCalcTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {fitnessTestPhase === "complete" && fitnessTestResult && (
+            <View style={styles.fitnessTestCompletePanel}>
+              <View style={styles.fitnessTestCompleteIcon}>
+                <Ionicons name="checkmark" size={28} color="#FFFFFF" />
+              </View>
+              <Text
+                style={[
+                  styles.fitnessTestTitle,
+                  isLight && styles.fitnessTestTitleLight,
+                  { textAlign: "center" },
+                ]}
+              >
+                Test complete
+              </Text>
+              <Text
+                style={[
+                  styles.fitnessTestSubtitle,
+                  isLight && styles.fitnessTestSubtitleLight,
+                  { textAlign: "center", marginTop: 6 },
+                ]}
+              >
+                Your dashboard has been updated with fresh baseline metrics.
+              </Text>
+              <View style={styles.fitnessTestResultRow}>
+                <View
+                  style={[
+                    styles.fitnessTestResultPill,
+                    isLight && styles.fitnessTestResultPillLight,
+                  ]}
+                >
+                  <Text style={styles.fitnessTestResultValue}>
+                    {fitnessTestResult.fitnessAgeYears}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.fitnessTestResultLabel,
+                      isLight && styles.fitnessTestResultLabelLight,
+                    ]}
+                  >
+                    fitness age
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.fitnessTestResultPill,
+                    isLight && styles.fitnessTestResultPillLight,
+                  ]}
+                >
+                  <Text style={styles.fitnessTestResultValue}>
+                    {fitnessTestResult.percentile}%
+                  </Text>
+                  <Text
+                    style={[
+                      styles.fitnessTestResultLabel,
+                      isLight && styles.fitnessTestResultLabelLight,
+                    ]}
+                  >
+                    fitter than
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.fitnessTestPrimaryButton}
+                activeOpacity={0.9}
+                onPress={finishFitnessTest}
+              >
+                <Text style={styles.fitnessTestPrimaryButtonText}>
+                  View dashboard
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderCustomWorkoutModal = () => (
+    <Modal
+      visible={isCustomWorkoutVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setIsCustomWorkoutVisible(false)}
+    >
+      <View style={styles.fitnessTestModalBackdrop}>
+        <View
+          style={[
+            styles.fitnessTestModalCard,
+            isLight && styles.fitnessTestModalCardLight,
+          ]}
+        >
+          <View style={styles.fitnessTestHeaderRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text
+                style={[
+                  styles.fitnessTestTitle,
+                  isLight && styles.fitnessTestTitleLight,
+                ]}
+              >
+                Log custom workout
+              </Text>
+              <Text
+                style={[
+                  styles.fitnessTestSubtitle,
+                  isLight && styles.fitnessTestSubtitleLight,
+                ]}
+              >
+                Track what you trained today without building a full exercise
+                list.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.fitnessTestCloseButton,
+                isLight && styles.fitnessTestCloseButtonLight,
+              ]}
+              onPress={() => setIsCustomWorkoutVisible(false)}
+            >
+              <Ionicons
+                name="close"
+                size={18}
+                color={isLight ? "#0F172A" : "#F8FAFC"}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <Text
+            style={[
+              styles.fitnessTestSectionLabel,
+              isLight && styles.fitnessTestSectionLabelLight,
+            ]}
+          >
+            Body parts covered
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+            {CUSTOM_WORKOUT_GROUPS.map((group) => {
+              const selected = customWorkoutGroups.includes(group.key);
+              return (
+                <TouchableOpacity
+                  key={group.key}
+                  activeOpacity={0.84}
+                  onPress={() => toggleCustomWorkoutGroup(group.key)}
+                  style={[
+                    {
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      borderRadius: 999,
+                      marginRight: 8,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: isLight ? "#E2E8F0" : "rgba(148,163,184,0.2)",
+                      backgroundColor: isLight ? "#F8FAFC" : "rgba(255,255,255,0.05)",
+                    },
+                    selected && {
+                      backgroundColor: isLight ? "#0F172A" : "#F8FAFC",
+                      borderColor: isLight ? "#0F172A" : "#F8FAFC",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: selected
+                        ? isLight
+                          ? "#FFFFFF"
+                          : "#0F172A"
+                        : isLight
+                          ? "#334155"
+                          : "#CBD5E1",
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {group.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.84}
+            onPress={() => setCustomWorkoutCardio((prev) => !prev)}
+            style={[
+              styles.fitnessTestHintCard,
+              isLight && styles.fitnessTestHintCardLight,
+              { alignItems: "center", marginTop: 4 },
+            ]}
+          >
+            <Ionicons
+              name={customWorkoutCardio ? "checkbox" : "square-outline"}
+              size={20}
+              color={isLight ? "#0F172A" : "#E5E7EB"}
+            />
+            <Text
+              style={[
+                styles.fitnessTestHintText,
+                isLight && styles.fitnessTestHintTextLight,
+                { marginLeft: 10 },
+              ]}
+            >
+              Included cardio
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.fitnessTestGrid}>
+            {([
+              ["exercise_count", "Exercises", customWorkoutExerciseCount, setCustomWorkoutExerciseCount],
+              ["duration_minutes", "Duration", customWorkoutDuration, setCustomWorkoutDuration],
+            ] as const).map((field) => (
+              <View key={field[0]} style={styles.fitnessTestInputCard}>
+                <Text
+                  style={[
+                    styles.fitnessTestInputLabel,
+                    isLight && styles.fitnessTestInputLabelLight,
+                    { marginLeft: 0, marginBottom: 7 },
+                  ]}
+                >
+                  {field[1]}
+                </Text>
+                <View
+                  style={[
+                    styles.fitnessTestValueRow,
+                    isLight && styles.fitnessTestValueRowLight,
+                  ]}
+                >
+                  <TextInput
+                    value={field[2]}
+                    onChangeText={(value) => field[3](value.replace(/[^0-9]/g, ""))}
+                    keyboardType="numeric"
+                    style={[
+                      styles.fitnessTestInput,
+                      isLight && styles.fitnessTestInputLight,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.fitnessTestInputSuffix,
+                      isLight && styles.fitnessTestInputSuffixLight,
+                    ]}
+                  >
+                    {field[0] === "duration_minutes" ? "min" : "total"}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {customWorkoutError ? (
+            <Text style={styles.fitnessTestErrorText}>{customWorkoutError}</Text>
+          ) : null}
+
+          <TouchableOpacity
+            style={styles.fitnessTestPrimaryButton}
+            activeOpacity={0.9}
+            onPress={submitCustomWorkout}
+            disabled={customWorkoutSaving}
+          >
+            {customWorkoutSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.fitnessTestPrimaryButtonText}>
+                  Log workout
+                </Text>
+                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderMetricTooltip = () => {
     if (!activeMetricTooltip) return null;
@@ -1423,7 +2462,12 @@ const HomeScreen: React.FC = () => {
           style={[styles.homeHeroCard, isLight && styles.homeHeroCardLight]}
         >
           {/* Tabs */}
-          <View style={styles.homeActiveTabsRow}>
+          <View
+            style={[
+              styles.homeActiveTabsRow,
+              isLight && styles.homeActiveTabsRowLight,
+            ]}
+          >
             <TouchableOpacity
               style={styles.homeActiveTabButton}
               activeOpacity={0.9}
@@ -1488,7 +2532,49 @@ const HomeScreen: React.FC = () => {
               : "My Active Nutrition"}
           </Text>
 
-          {activeItems.map((item, index) => {
+          {shouldShowWorkoutSetup ? (
+            <View
+              style={[
+                styles.homeActiveListItem,
+                isLight && styles.homeActiveListItemLight,
+                { marginTop: 12 },
+              ]}
+            >
+              <View
+                style={[
+                  styles.homeActiveListIndexPill,
+                  isLight && styles.homeActiveListIndexPillLight,
+                ]}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={isLight ? "#0F172A" : "#E5E7EB"}
+                />
+              </View>
+              <View style={styles.homeActiveListContent}>
+                <Text
+                  style={[
+                    styles.homeActiveItemTitle,
+                    isLight && styles.homeActiveItemTitleLight,
+                  ]}
+                >
+                  {isActivePlanFinished ? "Plan completed" : "No active plan"}
+                </Text>
+                <Text
+                  style={[
+                    styles.homeActiveItemMeta,
+                    isLight && styles.homeActiveItemMetaLight,
+                    { lineHeight: 18 },
+                  ]}
+                >
+                  Enroll in a plan for today's workout, or log a custom session
+                  if you trained differently.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            activeItems.map((item, index) => {
             const isCompleted =
               homeActiveTab === "workouts"
                 ? completedWorkouts[item.id]
@@ -1499,6 +2585,7 @@ const HomeScreen: React.FC = () => {
                 key={item.id}
                 style={[
                   styles.homeActiveListItem,
+                  isLight && styles.homeActiveListItemLight,
                   index === 0 && { marginTop: 12 },
                 ]}
               >
@@ -1551,7 +2638,10 @@ const HomeScreen: React.FC = () => {
                     </View>
 
                     <TouchableOpacity
-                      style={styles.homeActiveItemCheckButton}
+                      style={[
+                        styles.homeActiveItemCheckButton,
+                        isLight && styles.homeActiveItemCheckButtonLight,
+                      ]}
                       activeOpacity={0.8}
                       onPress={() =>
                         toggleItemCompleted(homeActiveTab, item.id)
@@ -1577,37 +2667,92 @@ const HomeScreen: React.FC = () => {
                 </View>
               </View>
             );
-          })}
+            })
+          )}
 
           <View style={styles.homeActiveDivider} />
 
-          <TouchableOpacity
-            style={styles.homeActiveSeeAllRow}
-            activeOpacity={0.8}
-            onPress={() => {
-              setAllActiveTab(homeActiveTab);
-              setIsAllActiveSheetVisible(true);
-            }}
-          >
-            <Text
+          {shouldShowWorkoutSetup ? (
+            <View style={{ flexDirection: "row" }}>
+              <TouchableOpacity
+                style={[
+                  styles.homeActiveSeeAllRow,
+                  isLight && styles.homeActiveSeeAllRowLight,
+                  { flex: 1, marginRight: 8 },
+                ]}
+                activeOpacity={0.84}
+                onPress={() => navigation.navigate("Plans")}
+              >
+                <Text
+                  style={[
+                    styles.homeActiveSeeAllLabel,
+                    isLight && styles.homeActiveSeeAllLabelLight,
+                  ]}
+                >
+                  Enroll plan
+                </Text>
+                <Ionicons
+                  name="calendar-outline"
+                  size={16}
+                  color={isLight ? "#475569" : "#CBD5E1"}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.homeActiveSeeAllRow,
+                  isLight && styles.homeActiveSeeAllRowLight,
+                  { flex: 1 },
+                ]}
+                activeOpacity={0.84}
+                onPress={() => setIsCustomWorkoutVisible(true)}
+              >
+                <Text
+                  style={[
+                    styles.homeActiveSeeAllLabel,
+                    isLight && styles.homeActiveSeeAllLabelLight,
+                  ]}
+                >
+                  Log custom
+                </Text>
+                <Ionicons
+                  name="add"
+                  size={17}
+                  color={isLight ? "#475569" : "#CBD5E1"}
+                />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
               style={[
-                styles.homeActiveSeeAllLabel,
-                isLight && styles.homeActiveSeeAllLabelLight,
+                styles.homeActiveSeeAllRow,
+                isLight && styles.homeActiveSeeAllRowLight,
               ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setAllActiveTab(homeActiveTab);
+                setIsAllActiveSheetVisible(true);
+              }}
             >
-              {homeActiveTab === "workouts"
-                ? "See All Active Workouts"
-                : "Watch complete details"}
-            </Text>
-            <Text
-              style={[
-                styles.homeActiveSeeAllArrow,
-                isLight && styles.homeActiveSeeAllArrowLight,
-              ]}
-            >
-              →
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.homeActiveSeeAllLabel,
+                  isLight && styles.homeActiveSeeAllLabelLight,
+                ]}
+              >
+                {homeActiveTab === "workouts"
+                  ? "See All Active Workouts"
+                  : "Watch complete details"}
+              </Text>
+              <Text
+                style={[
+                  styles.homeActiveSeeAllArrow,
+                  isLight && styles.homeActiveSeeAllArrowLight,
+                ]}
+              >
+                →
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Training Days calendar */}
@@ -2397,19 +3542,29 @@ const HomeScreen: React.FC = () => {
             Today metrics
           </Text>
           <TouchableOpacity
-            onPress={reloadMetrics}
+            onPress={openFitnessTest}
             activeOpacity={0.8}
-            disabled={metricsLoading}
+            disabled={!isFitnessTestHydrated}
             style={[
               styles.homeHeaderRefreshButton,
-              metricsLoading && { opacity: 0.5 },
+              styles.homeHeaderTestButton,
+              isLight && styles.homeHeaderTestButtonLight,
+              !isFitnessTestHydrated && { opacity: 0.5 },
             ]}
           >
             <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={isLight ? LIGHT_TEXT_MUTED : GLASS_TEXT_MUTED}
+              name="pulse-outline"
+              size={16}
+              color={isLight ? "#0070cc" : "#FFFFFF"}
             />
+            <Text
+              style={[
+                styles.homeHeaderTestButtonText,
+                isLight && styles.homeHeaderTestButtonTextLight,
+              ]}
+            >
+              {hasCompletedFitnessTest ? "Retake test" : "Take the test"}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -2446,7 +3601,7 @@ const HomeScreen: React.FC = () => {
               centerText={
                 typeof fitness?.fitness_age_years === "number"
                   ? String(fitness.fitness_age_years)
-                  : metricsLoading
+                  : metricsLoading && !isFitnessTestLocked
                     ? "..."
                     : "--"
               }
@@ -2481,12 +3636,14 @@ const HomeScreen: React.FC = () => {
                 isLight && styles.metricCaptionLight,
               ]}
             >
-              Based on heart rate, strength, flexibility & endurance
+              {isFitnessTestLocked
+                ? "Take a quick baseline test to unlock this metric"
+                : "Based on strength, BMI, and easy endurance inputs"}
             </Text>
             <Text
               style={[styles.metricLink, isLight && styles.metricLinkLight]}
             >
-              Retake test
+              {hasCompletedFitnessTest ? "View details" : "Take test"}
             </Text>
           </TouchableOpacity>
 
@@ -2534,7 +3691,7 @@ const HomeScreen: React.FC = () => {
                 centerText={
                   racePercent != null
                     ? String(racePercent)
-                    : metricsLoading
+                    : metricsLoading && !isFitnessTestLocked
                       ? "..."
                       : "--"
                 }
@@ -2943,6 +4100,8 @@ const HomeScreen: React.FC = () => {
         </View>
       </ScrollView>
 
+      {renderFitnessTestModal()}
+      {renderCustomWorkoutModal()}
       {renderMetricTooltip()}
     </>
   );

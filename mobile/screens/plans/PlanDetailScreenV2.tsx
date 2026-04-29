@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -10,17 +11,18 @@ import { Ionicons } from "@expo/vector-icons";
 
 import {
   GLASS_ACCENT_GREEN,
-  LIGHT_CARD,
   DARK_TEXT_PRIMARY,
-  LIGHT_TEXT_PRIMARY,
-  PS_BLUE,
+  DARK_TEXT_MUTED,
+  LIGHT_TEXT_MUTED,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
+import { API_BASE_URL } from "../../api/client";
 import { usePlanDetail } from "../../hooks/usePlanDetail";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import {
   useThemeMode,
+  useAuth,
   styles,
   type PlanDetailProps,
   type ViewWorkoutWeek,
@@ -31,6 +33,39 @@ import {
   mapPlanWeekToViewNutritionWeek,
 } from "../../App";
 
+const formatPlanDate = (value: string | null | undefined) => {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not set";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+const ProgressDots: React.FC<{
+  total: number;
+  completed: number;
+  isLight: boolean;
+}> = ({ total, completed, isLight }) => {
+  const dotCount = Math.max(8, Math.min(24, total || 12));
+  const filledCount =
+    total > 0 ? Math.round((Math.min(completed, total) / total) * dotCount) : 0;
+
+  return (
+    <View style={styles.planProgressDotsRow}>
+      {Array.from({ length: dotCount }).map((_, index) => (
+        <View
+          key={index}
+          style={[
+            styles.planProgressDot,
+            isLight && styles.planProgressDotLight,
+            index < filledCount && styles.planProgressDotFilled,
+            index < filledCount && isLight && styles.planProgressDotFilledLight,
+          ]}
+        />
+      ))}
+    </View>
+  );
+};
+
 const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
   route,
   navigation,
@@ -38,8 +73,9 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
   const { planId } = route.params;
   const { mode, toggle } = useThemeMode();
   const isLight = mode === "light";
+  const { accessToken, refreshAccessToken, signOut } = useAuth();
 
-  const { profile } = useUserProfileBasic();
+  const { profile, reload: reloadProfile } = useUserProfileBasic();
   const plansUserName =
     profile?.profile.display_name || profile?.username || null;
 
@@ -50,10 +86,76 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     useState<ViewWorkoutWeek | null>(null);
   const [activeNutritionWeek, setActiveNutritionWeek] =
     useState<ViewNutritionWeek | null>(null);
+  const [isOptingOut, setIsOptingOut] = useState(false);
 
   const canMarkComplete =
     !!profile?.profile.active_plan_id &&
     profile.profile.active_plan_id === plan?.id;
+
+  const handleOptOut = () => {
+    if (!plan || !accessToken || isOptingOut) return;
+
+    Alert.alert(
+      "Opt out of plan?",
+      "This will remove the plan from your active dashboard. Your completed workout history will stay saved.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Opt out",
+          style: "destructive",
+          onPress: async () => {
+            setIsOptingOut(true);
+            try {
+              let tokenToUse = accessToken;
+              let response = await fetch(`${API_BASE_URL}/plans/opt-out/`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${tokenToUse}`,
+                },
+                body: JSON.stringify({ plan_id: plan.id }),
+              });
+
+              if (response.status === 401) {
+                const refreshed = await refreshAccessToken();
+                if (!refreshed) {
+                  await signOut();
+                  return;
+                }
+                tokenToUse = refreshed;
+                response = await fetch(`${API_BASE_URL}/plans/opt-out/`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${tokenToUse}`,
+                  },
+                  body: JSON.stringify({ plan_id: plan.id }),
+                });
+              }
+
+              if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                Alert.alert(
+                  "Could not opt out",
+                  data?.detail || "Please try again.",
+                );
+                return;
+              }
+
+              reloadDashboardSummary();
+              await reloadProfile();
+              Alert.alert("Plan removed", "This plan is no longer active.");
+              navigation.goBack();
+            } catch {
+              Alert.alert("Could not opt out", "Please try again.");
+            } finally {
+              setIsOptingOut(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const backToPlansLink = (
     <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -103,6 +205,26 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     );
   }
 
+  const levelLabel = plan.level.charAt(0).toUpperCase() + plan.level.slice(1);
+  const progress = plan.userProgress ?? null;
+  const completedSessions = progress?.completedSessions ?? 0;
+  const totalSessions =
+    progress?.totalSessions ??
+    plan.weeks.reduce((total, week) => total + week.days.length, 0);
+  const completionPercent = progress?.completionPercent ?? 0;
+  const currentWeekNumber = progress?.currentWeekNumber;
+
+  const openPlanOptions = () => {
+    if (canMarkComplete) {
+      Alert.alert("Plan options", plan.name, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Opt out", style: "destructive", onPress: handleOptOut },
+      ]);
+      return;
+    }
+    Alert.alert("Plan options", "Enroll by completing your first workout day.");
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -110,199 +232,377 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         contentContainerStyle={styles.plansScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <AppHeader
-          isLight={isLight}
-          title="Your plan"
-          userName={plansUserName}
-          onThemeToggle={toggle}
-          topContent={backToPlansLink}
-        />
+        <View style={styles.planDetailTopNav}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.goBack()}
+            style={[
+              styles.planDetailNavButton,
+              isLight && styles.planDetailNavButtonLight,
+            ]}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color={isLight ? "#0F172A" : DARK_TEXT_PRIMARY}
+            />
+          </TouchableOpacity>
+          <Text
+            style={[
+              styles.planDetailNavTitle,
+              isLight
+                ? styles.planDetailNavTitleLight
+                : styles.planDetailNavTitleDark,
+            ]}
+          >
+            Training Plan
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={openPlanOptions}
+            style={[
+              styles.planDetailNavButton,
+              isLight && styles.planDetailNavButtonLight,
+            ]}
+          >
+            <Ionicons
+              name="ellipsis-vertical"
+              size={20}
+              color={isLight ? "#0F172A" : DARK_TEXT_PRIMARY}
+            />
+          </TouchableOpacity>
+        </View>
 
-        <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
-          {plan.name}
-        </Text>
-        <View style={styles.planMetaChipsRow}>
+        <View
+          style={[styles.planDetailHero, isLight && styles.planDetailHeroLight]}
+        >
+          <View style={styles.planDetailHeroHeader}>
+            <Text
+              style={[
+                styles.planDetailTitle,
+                isLight ? styles.planDetailTitleLight : styles.planDetailTitleDark,
+              ]}
+              numberOfLines={2}
+            >
+              {plan.name}
+            </Text>
+            {canMarkComplete && (
+              <View
+                style={[
+                  styles.planDetailActivePill,
+                  isLight && styles.planDetailActivePillLight,
+                ]}
+              >
+                <Ionicons
+                  name="radio-button-on"
+                  size={13}
+                  color={isLight ? "#475569" : "#CBD5E1"}
+                />
+                <Text
+                  style={[
+                    styles.planDetailActivePillText,
+                    isLight
+                      ? styles.planDetailActivePillTextLight
+                      : styles.planDetailActivePillTextDark,
+                  ]}
+                >
+                  Active
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <Text
+            style={[
+              styles.planDetailSummary,
+              isLight
+                ? styles.planDetailSummaryLight
+                : styles.planDetailSummaryDark,
+            ]}
+            numberOfLines={3}
+          >
+            {plan.summary || plan.goal}
+          </Text>
+
+          <View style={styles.planDetailProgressBlock}>
+            <View style={styles.planDetailProgressHeader}>
+              <Text
+                style={[
+                  styles.planDetailProgressText,
+                  isLight
+                    ? styles.planDetailProgressTextLight
+                    : styles.planDetailProgressTextDark,
+                ]}
+              >
+                {currentWeekNumber
+                  ? `Week ${currentWeekNumber} of ${plan.durationWeeks}`
+                  : `${plan.durationWeeks} week plan`}
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailProgressText,
+                  isLight
+                    ? styles.planDetailProgressTextLight
+                    : styles.planDetailProgressTextDark,
+                ]}
+              >
+                {completionPercent}% completed
+              </Text>
+            </View>
+            <ProgressDots
+              total={totalSessions}
+              completed={completedSessions}
+              isLight={isLight}
+            />
+            <View style={styles.planDetailProgressDates}>
+              <View style={styles.planDetailDateItem}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
+                />
+                <Text
+                  style={[
+                    styles.planDetailDateText,
+                    isLight
+                      ? styles.planDetailDateTextLight
+                      : styles.planDetailDateTextDark,
+                  ]}
+                >
+                  Started {formatPlanDate(progress?.startedAt)}
+                </Text>
+              </View>
+              <View style={styles.planDetailDateItem}>
+                <Ionicons
+                  name="calendar-clear-outline"
+                  size={13}
+                  color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
+                />
+                <Text
+                  style={[
+                    styles.planDetailDateText,
+                    isLight
+                      ? styles.planDetailDateTextLight
+                      : styles.planDetailDateTextDark,
+                  ]}
+                >
+                  Ends {formatPlanDate(progress?.expectedEndAt)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.planDetailMetricsGrid}>
           <View
-            style={[styles.planMetaChip, isLight && styles.planMetaChipLight]}
+            style={[
+              styles.planDetailMetricCard,
+              isLight && styles.planDetailMetricCardLight,
+            ]}
           >
             <Text
               style={[
-                styles.planMetaChipText,
+                styles.planDetailMetricLabel,
                 isLight
-                  ? styles.planMetaChipTextLight
-                  : styles.planMetaChipTextDark,
+                  ? styles.planDetailMetricLabelLight
+                  : styles.planDetailMetricLabelDark,
               ]}
             >
-              {plan.durationWeeks} weeks
+              Focus
+            </Text>
+            <Text
+              style={[
+                styles.planDetailMetricValue,
+                isLight
+                  ? styles.planDetailMetricValueLight
+                  : styles.planDetailMetricValueDark,
+              ]}
+              numberOfLines={2}
+            >
+              {plan.goal}
             </Text>
           </View>
           <View
-            style={[styles.planMetaChip, isLight && styles.planMetaChipLight]}
+            style={[
+              styles.planDetailMetricCard,
+              isLight && styles.planDetailMetricCardLight,
+              { marginRight: 0 },
+            ]}
           >
             <Text
               style={[
-                styles.planMetaChipText,
+                styles.planDetailMetricLabel,
                 isLight
-                  ? styles.planMetaChipTextLight
-                  : styles.planMetaChipTextDark,
+                  ? styles.planDetailMetricLabelLight
+                  : styles.planDetailMetricLabelDark,
               ]}
             >
-              {plan.sessionsPerWeek} sessions/week
+              Sessions/week
+            </Text>
+            <Text
+              style={[
+                styles.planDetailMetricValue,
+                isLight
+                  ? styles.planDetailMetricValueLight
+                  : styles.planDetailMetricValueDark,
+              ]}
+            >
+              {plan.sessionsPerWeek}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.planDetailMetricCard,
+              isLight && styles.planDetailMetricCardLight,
+            ]}
+          >
+            <Text
+              style={[
+                styles.planDetailMetricLabel,
+                isLight
+                  ? styles.planDetailMetricLabelLight
+                  : styles.planDetailMetricLabelDark,
+              ]}
+            >
+              Level
+            </Text>
+            <Text
+              style={[
+                styles.planDetailMetricValue,
+                isLight
+                  ? styles.planDetailMetricValueLight
+                  : styles.planDetailMetricValueDark,
+              ]}
+            >
+              {levelLabel}
             </Text>
           </View>
           <View
-            style={[styles.planMetaChip, isLight && styles.planMetaChipLight]}
+            style={[
+              styles.planDetailMetricCard,
+              isLight && styles.planDetailMetricCardLight,
+              { marginRight: 0 },
+            ]}
           >
             <Text
               style={[
-                styles.planMetaChipText,
+                styles.planDetailMetricLabel,
                 isLight
-                  ? styles.planMetaChipTextLight
-                  : styles.planMetaChipTextDark,
+                  ? styles.planDetailMetricLabelLight
+                  : styles.planDetailMetricLabelDark,
               ]}
             >
-              {plan.level.toUpperCase()}
+              Completed
+            </Text>
+            <Text
+              style={[
+                styles.planDetailMetricValue,
+                isLight
+                  ? styles.planDetailMetricValueLight
+                  : styles.planDetailMetricValueDark,
+              ]}
+            >
+              {completedSessions}/{totalSessions || "0"}
             </Text>
           </View>
         </View>
 
         <View
           style={[
-            styles.planOverviewCard,
-            isLight && styles.planOverviewCardLight,
+            styles.planDetailGuidelinesCard,
+            isLight && styles.planDetailGuidelinesCardLight,
           ]}
         >
           <Text
             style={[
-              styles.planOverviewHeading,
+              styles.planDetailGuidelinesTitle,
               isLight
-                ? styles.planOverviewHeadingLight
-                : styles.planOverviewHeadingDark,
+                ? styles.planDetailGuidelinesTitleLight
+                : styles.planDetailGuidelinesTitleDark,
             ]}
           >
-            About this plan
+            Plan guidelines
           </Text>
-
-          <View style={[styles.planOverviewRow, styles.planOverviewRowFirst]}>
-            <Text
-              style={[
-                styles.planOverviewLabel,
-                isLight
-                  ? styles.planOverviewLabelLight
-                  : styles.planOverviewLabelDark,
-              ]}
-            >
-              Overview
-            </Text>
-            <Text
-              style={[
-                styles.planOverviewValue,
-                isLight
-                  ? styles.planOverviewValueLight
-                  : styles.planOverviewValueDark,
-              ]}
-            >
-              {plan.summary}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.planOverviewInfoRow}>
-          <View
-            style={[styles.planInfoCard, isLight && styles.planInfoCardLight]}
-          >
-            <View style={styles.planInfoCardHeaderRow}>
-              <View
+          <View style={styles.planDetailGuidelinesRow}>
+            <View style={styles.planDetailGuidelineItem}>
+              <Text
                 style={[
-                  styles.planInfoIconCircle,
-                  styles.planInfoIconCircleFocus,
+                  styles.planDetailGuidelineValue,
+                  isLight
+                    ? styles.planDetailGuidelineValueLight
+                    : styles.planDetailGuidelineValueDark,
                 ]}
               >
-                <Ionicons name="flame-outline" size={18} color="#FFFFFF" />
-              </View>
-              <View style={styles.planInfoCardHeaderTextBlock}>
-                <Text
-                  style={[
-                    styles.planInfoCardTitle,
-                    isLight
-                      ? styles.planInfoCardTitleLight
-                      : styles.planInfoCardTitleDark,
-                  ]}
-                >
-                  Focus
-                </Text>
-                <Text
-                  style={[
-                    styles.planInfoCardSubtitle,
-                    isLight
-                      ? styles.planInfoCardSubtitleLight
-                      : styles.planInfoCardSubtitleDark,
-                  ]}
-                >
-                  Our program focus
-                </Text>
-              </View>
-            </View>
-            <Text
-              style={[
-                styles.planInfoCardBody,
-                isLight
-                  ? styles.planInfoCardBodyLight
-                  : styles.planInfoCardBodyDark,
-              ]}
-            >
-              {plan.goal}
-            </Text>
-          </View>
-
-          <View style={styles.planOverviewInfoSpacer} />
-
-          <View
-            style={[styles.planInfoCard, isLight && styles.planInfoCardLight]}
-          >
-            <View style={styles.planInfoCardHeaderRow}>
-              <View
+                {levelLabel}
+              </Text>
+              <Text
                 style={[
-                  styles.planInfoIconCircle,
-                  styles.planInfoIconCircleAudience,
+                  styles.planDetailGuidelineLabel,
+                  isLight
+                    ? styles.planDetailGuidelineLabelLight
+                    : styles.planDetailGuidelineLabelDark,
                 ]}
               >
-                <Ionicons name="people-outline" size={18} color="#FFFFFF" />
-              </View>
-              <View style={styles.planInfoCardHeaderTextBlock}>
-                <Text
-                  style={[
-                    styles.planInfoCardTitle,
-                    isLight
-                      ? styles.planInfoCardTitleLight
-                      : styles.planInfoCardTitleDark,
-                  ]}
-                >
-                  Who is it for
-                </Text>
-                <Text
-                  style={[
-                    styles.planInfoCardSubtitle,
-                    isLight
-                      ? styles.planInfoCardSubtitleLight
-                      : styles.planInfoCardSubtitleDark,
-                  ]}
-                >
-                  Who should follow
-                </Text>
-              </View>
+                Intensity
+              </Text>
             </View>
-            <Text
-              style={[
-                styles.planInfoCardBody,
-                isLight
-                  ? styles.planInfoCardBodyLight
-                  : styles.planInfoCardBodyDark,
-              ]}
-            >
-              {plan.audience}
-            </Text>
+            <View style={styles.planDetailGuidelineItem}>
+              <Text
+                style={[
+                  styles.planDetailGuidelineValue,
+                  isLight
+                    ? styles.planDetailGuidelineValueLight
+                    : styles.planDetailGuidelineValueDark,
+                ]}
+              >
+                {plan.durationWeeks}w
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailGuidelineLabel,
+                  isLight
+                    ? styles.planDetailGuidelineLabelLight
+                    : styles.planDetailGuidelineLabelDark,
+                ]}
+              >
+                Duration
+              </Text>
+            </View>
+            <View style={styles.planDetailGuidelineItem}>
+              <Text
+                style={[
+                  styles.planDetailGuidelineValue,
+                  isLight
+                    ? styles.planDetailGuidelineValueLight
+                    : styles.planDetailGuidelineValueDark,
+                ]}
+              >
+                {plan.sessionsPerWeek}
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailGuidelineLabel,
+                  isLight
+                    ? styles.planDetailGuidelineLabelLight
+                    : styles.planDetailGuidelineLabelDark,
+                ]}
+              >
+                Sessions
+              </Text>
+            </View>
           </View>
+          <Text
+            style={[
+              styles.planDetailGuidelinesBody,
+              isLight
+                ? styles.planDetailGuidelinesBodyLight
+                : styles.planDetailGuidelinesBodyDark,
+            ]}
+            numberOfLines={3}
+          >
+            {plan.result || plan.audience}
+          </Text>
         </View>
 
         <View style={styles.planDetailContainer}>
@@ -314,87 +614,70 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                 : styles.planDetailHeadingDark,
             ]}
           >
-            Plan structure
+            Weekly plan
           </Text>
 
-          <View style={{ marginTop: 16 }}>
+          <View style={styles.planDetailWeekList}>
             {plan.weeks.map((week) => {
               const nutritionWeek = mapPlanWeekToViewNutritionWeek(week);
 
               return (
-                <View key={week.id} style={{ marginBottom: 24 }}>
+                <View key={week.id} style={styles.planDetailWeekCardOuter}>
                   <View
-                    style={{
-                      padding: 16,
-                      borderRadius: 18,
-                      backgroundColor: isLight ? LIGHT_CARD : "#111A2B",
-                      borderWidth: 1,
-                      borderColor: isLight
-                        ? "#E2E8F0"
-                        : "rgba(125,211,252,0.2)",
-                      marginBottom: 12,
-                    }}
+                    style={[
+                      styles.planDetailWeekCard,
+                      isLight && styles.planDetailWeekCardLight,
+                    ]}
                   >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        marginBottom: 8,
-                      }}
-                    >
+                    <View style={styles.planDetailWeekHeader}>
                       <View
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          backgroundColor: PS_BLUE,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 8,
-                        }}
+                        style={[
+                          styles.planDetailWeekNumber,
+                          isLight && styles.planDetailWeekNumberLight,
+                        ]}
                       >
                         <Text
-                          style={{
-                            color: "#FFFFFF",
-                            fontSize: 14,
-                            fontWeight: "700",
-                          }}
+                          style={[
+                            styles.planDetailWeekNumberText,
+                            isLight
+                              ? styles.planDetailWeekNumberTextLight
+                              : styles.planDetailWeekNumberTextDark,
+                          ]}
                         >
                           {week.number}
                         </Text>
                       </View>
                       <Text
-                        style={{
-                          flex: 1,
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: isLight
-                            ? LIGHT_TEXT_PRIMARY
-                            : DARK_TEXT_PRIMARY,
-                        }}
+                        style={[
+                          styles.planDetailWeekTitle,
+                          isLight
+                            ? styles.planDetailWeekTitleLight
+                            : styles.planDetailWeekTitleDark,
+                        ]}
                         numberOfLines={1}
                       >
-                        Week {week.number}: {week.title}
+                        {week.title}
                       </Text>
                     </View>
 
                     <Text
-                      style={{
-                        fontSize: 13,
-                        lineHeight: 19,
-                        color: isLight ? "#4B5563" : "#B8C0D4",
-                        marginBottom: 12,
-                      }}
+                      style={[
+                        styles.planDetailWeekDescription,
+                        isLight
+                          ? styles.planDetailWeekDescriptionLight
+                          : styles.planDetailWeekDescriptionDark,
+                      ]}
+                      numberOfLines={2}
                     >
                       {week.description}
                     </Text>
 
-                    <View style={{ flexDirection: "row" }}>
+                    <View style={styles.planDetailWeekActions}>
                       <TouchableOpacity
                         style={[
                           styles.planWeekViewFullButton,
                           isLight && styles.planWeekViewFullButtonLight,
-                          { marginRight: 8 },
+                          { marginRight: nutritionWeek ? 8 : 0 },
                         ]}
                         activeOpacity={0.85}
                         onPress={() =>

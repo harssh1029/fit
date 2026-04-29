@@ -1,12 +1,22 @@
 from django.db.models import Q
 from rest_framework import generics, status
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Exercise, MuscleGroup
-from .serializers import ExerciseSerializer, MuscleGroupSerializer
+from .serializers import (
+	ExerciseDetailSerializer,
+	ExerciseSerializer,
+	MuscleGroupSerializer,
+)
 from .services import ExerciseDBError, import_all_exercises_from_exercisedb
+
+
+class ExercisePagination(LimitOffsetPagination):
+	default_limit = 12
+	max_limit = 24
 
 
 class ExerciseListView(generics.ListAPIView):
@@ -16,14 +26,25 @@ class ExerciseListView(generics.ListAPIView):
 	- muscles: comma-separated muscle IDs
 	- equipment: comma-separated equipment tags
 	- level: beginner|intermediate|advanced
+	- mechanic: compound|isolation
+	- force: push|pull|hold
+	- starts_with: first letter for alphabet navigation
 	- search: free text over name/description
+
+	List responses intentionally include only still thumbnails, never GIF/video
+	media. Detail fetches carry the heavier media URLs after a user opens one
+	exercise.
 	"""
 
 	serializer_class = ExerciseSerializer
 	permission_classes = [AllowAny]
+	pagination_class = ExercisePagination
 
 	def get_queryset(self):
-		qs = Exercise.objects.all().prefetch_related('primary_muscles', 'secondary_muscles')
+		qs = Exercise.objects.all().prefetch_related(
+			'primary_muscles',
+			'secondary_muscles',
+		)
 		params = self.request.query_params
 
 		muscles = params.get('muscles')
@@ -36,14 +57,44 @@ class ExerciseListView(generics.ListAPIView):
 				).distinct()
 
 		level = params.get('level')
-		if level:
+		if level in {'beginner', 'intermediate', 'advanced'}:
 			qs = qs.filter(level=level)
+
+		mechanic = params.get('mechanic')
+		if mechanic == 'compound':
+			qs = qs.filter(is_compound=True)
+		elif mechanic == 'isolation':
+			qs = qs.filter(is_compound=False)
+
+		force = params.get('force')
+		if force == 'push':
+			qs = qs.filter(
+				Q(movement_pattern__icontains='push')
+				| Q(movement_pattern__icontains='press')
+			)
+		elif force == 'pull':
+			qs = qs.filter(
+				Q(movement_pattern__icontains='pull')
+				| Q(movement_pattern__icontains='row')
+				| Q(movement_pattern__icontains='curl')
+			)
+		elif force == 'hold':
+			qs = qs.filter(
+				Q(movement_pattern__icontains='hold')
+				| Q(movement_pattern__icontains='carry')
+			)
 
 		search = params.get('search')
 		if search:
 			qs = qs.filter(
 				Q(name__icontains=search) | Q(description__icontains=search)
 			)
+
+		starts_with = params.get('starts_with')
+		if starts_with:
+			letter = starts_with.strip()[:1]
+			if letter.isalpha():
+				qs = qs.filter(name__istartswith=letter)
 
 		equipment = params.get('equipment')
 		if equipment:
@@ -56,8 +107,11 @@ class ExerciseListView(generics.ListAPIView):
 
 
 class ExerciseDetailView(generics.RetrieveAPIView):
-	queryset = Exercise.objects.all().prefetch_related('primary_muscles', 'secondary_muscles')
-	serializer_class = ExerciseSerializer
+	queryset = Exercise.objects.all().prefetch_related(
+		'primary_muscles',
+		'secondary_muscles',
+	)
+	serializer_class = ExerciseDetailSerializer
 	permission_classes = [AllowAny]
 
 

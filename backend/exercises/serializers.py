@@ -20,6 +20,7 @@ class ExerciseSerializer(serializers.ModelSerializer):
 		read_only=True,
 		slug_field='id',
 	)
+	thumbnail_url = serializers.SerializerMethodField()
 
 	class Meta:
 		model = Exercise
@@ -36,6 +37,33 @@ class ExerciseSerializer(serializers.ModelSerializer):
 			'source',
 			'body_part',
 			'target',
+			'thumbnail_url',
+			'description',
+		]
+
+	def get_thumbnail_url(self, obj: Exercise) -> str:
+		# List rows should only load optimized still thumbnails. GIF/video media
+		# stays out of paginated responses to keep cloud egress predictable.
+		return obj.image_url or ''
+
+
+class ExerciseDetailSerializer(ExerciseSerializer):
+	class Meta:
+		model = Exercise
+		fields = [
+			'id',
+			'name',
+			'primary_muscles',
+			'secondary_muscles',
+			'movement_pattern',
+			'equipment',
+			'level',
+			'is_compound',
+			'is_featured',
+			'source',
+			'body_part',
+			'target',
+			'thumbnail_url',
 			'secondary_targets',
 			'video_url',
 			'gif_url',

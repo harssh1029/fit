@@ -30,6 +30,53 @@ class PlanDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 
+class OptOutPlanView(APIView):
+    """Cancel the current user's active enrollment for a plan."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        plan_id = request.data.get("plan_id")
+        if not plan_id:
+            return Response(
+                {"detail": "plan_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            plan = Plan.objects.get(id=plan_id)
+        except Plan.DoesNotExist:
+            return Response(
+                {"detail": "Plan not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = timezone.now()
+        updated = UserPlan.objects.filter(
+            user=user,
+            plan=plan,
+            is_active=True,
+            status="active",
+        ).update(is_active=False, status="cancelled", updated_at=now)
+
+        profile = getattr(user, "profile", None)
+        if profile is not None and getattr(profile, "active_plan_id", None) == plan.id:
+            profile.active_plan = None
+            profile.save(update_fields=["active_plan"])
+
+        snapshot = recalculate_user_metrics(user, as_of=now)
+        return Response(
+            {
+                "status": "cancelled",
+                "plan_id": plan.id,
+                "cancelled_count": updated,
+                "metrics_snapshot_id": snapshot.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class CompletePlanDayView(APIView):
     """Mark a specific plan day complete for the current user.
 

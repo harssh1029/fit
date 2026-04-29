@@ -49,10 +49,41 @@ export type ChallengeUnlock = {
   unlock_message: string;
 };
 
+export type ChallengeUnlockProgressGroup = {
+  key: string;
+  label: string;
+  sessions: number;
+  rank: string;
+  rankIndex: number;
+  sessionsMet: boolean;
+  rankMet: boolean;
+  isMet: boolean;
+};
+
+export type ChallengeUnlockProgressCondition = {
+  bodyPart: string;
+  minWorkouts: number;
+  levelRequired: ChallengeUnlockCondition["level_required"];
+  levelRequiredIndex: number;
+  isMet: boolean;
+  mode: "any";
+  groups: ChallengeUnlockProgressGroup[];
+};
+
+export type ChallengeUnlockProgress = {
+  isUnlocked: boolean;
+  isFree: boolean;
+  conditions: ChallengeUnlockProgressCondition[];
+  challengesCompletedRequired: number;
+  challengesCompletedCount: number;
+  unlockMessage: string;
+};
+
 export type ApiChallenge = {
   id: string;
   order: number;
   card: ChallengeCard;
   detail: ChallengeDetail;
   unlock: ChallengeUnlock;
+  unlockProgress?: ChallengeUnlockProgress;
 };

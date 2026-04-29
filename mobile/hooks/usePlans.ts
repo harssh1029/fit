@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { API_BASE_URL } from "../api/client";
+import { useAuth } from "../App";
 import type { ApiPlan, Plan } from "../App";
 import { mapApiPlan } from "../App";
 
 export function usePlans() {
+	const { accessToken, refreshAccessToken, signOut } = useAuth();
 	const [plans, setPlans] = useState<Plan[]>([]);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [error, setError] = useState<string | null>(null);
@@ -17,7 +19,24 @@ export function usePlans() {
 				setLoading(true);
 				setError(null);
 
-				const response = await fetch(`${API_BASE_URL}/plans/`);
+				let tokenToUse = accessToken;
+				const headers: HeadersInit = {};
+				if (tokenToUse) {
+					headers.Authorization = `Bearer ${tokenToUse}`;
+				}
+
+				let response = await fetch(`${API_BASE_URL}/plans/`, { headers });
+				if (response.status === 401 && tokenToUse) {
+					const refreshed = await refreshAccessToken();
+					if (!refreshed) {
+						await signOut();
+						return;
+					}
+					tokenToUse = refreshed;
+					response = await fetch(`${API_BASE_URL}/plans/`, {
+						headers: { Authorization: `Bearer ${tokenToUse}` },
+					});
+				}
 				if (!response.ok) {
 					throw new Error(`Failed to load plans (${response.status})`);
 				}
@@ -51,7 +70,7 @@ export function usePlans() {
 		return () => {
 			isMounted = false;
 		};
-	}, []);
+	}, [accessToken, refreshAccessToken, signOut]);
 
 	return { plans, loading, error };
 }

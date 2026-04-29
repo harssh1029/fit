@@ -36,5 +36,5 @@ urlpatterns = [
 			path('api/v1/', include('insights.urls')),
 			path('api/v1/', include('workouts.urls')),
 			path('api/v1/', include('challenges.urls')),
+			path('api/v1/', include('community.urls')),
 ]
-

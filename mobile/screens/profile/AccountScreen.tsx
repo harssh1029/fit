@@ -19,6 +19,7 @@ import {
   styles,
 } from "../../App";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
+import { useCommunity } from "../../hooks/useCommunity";
 import type { UserProfile } from "../../App";
 
 const AccountScreen: React.FC = () => {
@@ -38,6 +39,8 @@ const AccountScreen: React.FC = () => {
     error: allWorkoutHistoryError,
     reload: reloadAllWorkoutHistory,
   } = useAllWorkoutHistory();
+  const { friends: profileFriends, loading: profileFriendsLoading } =
+    useCommunity();
   const accountUserName =
     profile?.profile.display_name || profile?.username || null;
 
@@ -272,6 +275,74 @@ const AccountScreen: React.FC = () => {
               Stable
             </Text>
           </View>
+        </View>
+
+        <Text
+          style={[styles.sectionHeader, isLight && styles.sectionHeaderLight]}
+        >
+          FRIENDS
+        </Text>
+        <View style={[styles.settingsCard, isLight && styles.settingsCardLight]}>
+          <View style={styles.settingsItemRow}>
+            <Ionicons
+              name="people-outline"
+              size={20}
+              color={isLight ? "#0070cc" : "#7DD3FC"}
+              style={styles.settingsItemIcon}
+            />
+            <View style={styles.settingsItemTextCol}>
+              <Text
+                style={[
+                  styles.settingsItemPrimary,
+                  isLight && styles.settingsItemPrimaryLight,
+                ]}
+              >
+                Friends
+              </Text>
+              <Text
+                style={[
+                  styles.settingsItemSecondary,
+                  isLight && styles.settingsItemSecondaryLight,
+                ]}
+              >
+                {profileFriendsLoading
+                  ? "Loading friends…"
+                  : profileFriends.length === 0
+                    ? "No friends added yet"
+                    : profileFriends.length === 1
+                      ? "1 friend connected"
+                      : `${profileFriends.length} friends connected`}
+              </Text>
+            </View>
+          </View>
+          {profileFriends.length > 0 && (
+            <View style={{ flexDirection: "row", marginTop: 12 }}>
+              {profileFriends.slice(0, 5).map((friend) => (
+                <View
+                  key={friend.id}
+                  style={[
+                    styles.homeAvatar,
+                    isLight && styles.homeAvatarLight,
+                    {
+                      width: 34,
+                      height: 34,
+                      marginRight: 8,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.homeAvatarInitials,
+                      isLight && styles.homeAvatarInitialsLight,
+                      { fontSize: 11 },
+                    ]}
+                  >
+                    {friend.avatarInitials ?? friend.name.slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         <Text

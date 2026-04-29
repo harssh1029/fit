@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Challenge
+from .models import Challenge, UserChallengeCompletion
 
 
 @admin.register(Challenge)
@@ -23,3 +23,16 @@ class ChallengeAdmin(admin.ModelAdmin):
         return obj.card.get("status")
 
     get_status.short_description = "Status"  # type: ignore[attr-defined]
+
+
+@admin.register(UserChallengeCompletion)
+class UserChallengeCompletionAdmin(admin.ModelAdmin):
+    list_display = ("user", "challenge", "completed_at")
+    search_fields = (
+        "user__username",
+        "user__email",
+        "challenge__id",
+        "challenge__card__name",
+    )
+    list_filter = ("completed_at",)
+    readonly_fields = ("completed_at",)

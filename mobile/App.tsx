@@ -78,6 +78,7 @@ import ExercisesFeatureScreen from "./screens/exercises/ExerciseListScreen";
 import PlansFeatureScreen from "./screens/plans/PlansScreen";
 import PlanDetailScreenV2 from "./screens/plans/PlanDetailScreenV2";
 import CommunityScreen from "./screens/community/CommunityScreen";
+import ConsistencyScreen from "./screens/consistency/ConsistencyScreen";
 import LoginScreen from "./screens/auth/LoginScreen";
 import RegisterScreen from "./screens/auth/RegisterScreen";
 import FitnessAgeDetailScreen from "./screens/home/components/FitnessAgeDetailScreen";
@@ -135,8 +136,14 @@ export type Exercise = {
   level: string;
   is_compound: boolean;
   is_featured?: boolean;
+  thumbnail_url?: string;
   video_url?: string;
+  gif_url?: string;
   image_url?: string;
+  instructions?: string[];
+  target?: string;
+  secondary_targets?: string[];
+  body_part?: string;
   description?: string;
 };
 
@@ -385,6 +392,10 @@ export const buildExercisesUrl = (
     offset?: number;
     muscleIds?: string[];
     search?: string;
+    level?: LevelFilter;
+    mechanic?: MechanicFilter;
+    force?: ForceFilter;
+    startsWith?: string | null;
   },
 ): string => {
   const params: string[] = [];
@@ -401,6 +412,24 @@ export const buildExercisesUrl = (
 
   if (options.search && options.search.trim().length > 0) {
     params.push(`search=${encodeURIComponent(options.search.trim())}`);
+  }
+
+  if (options.level && options.level !== "all") {
+    params.push(`level=${encodeURIComponent(options.level)}`);
+  }
+
+  if (options.mechanic && options.mechanic !== "all") {
+    params.push(`mechanic=${encodeURIComponent(options.mechanic)}`);
+  }
+
+  if (options.force && options.force !== "all") {
+    params.push(`force=${encodeURIComponent(options.force)}`);
+  }
+
+  if (options.startsWith && options.startsWith.trim().length > 0) {
+    params.push(
+      `starts_with=${encodeURIComponent(options.startsWith.trim()[0])}`,
+    );
   }
 
   const query = params.length ? `?${params.join("&")}` : "";
@@ -709,6 +738,9 @@ export type WorkoutHistoryEntry = {
   day_type?: string | null;
   week_number?: number | null;
   scheduled_day_index?: number | null;
+  plan_id?: string | number | null;
+  plan_name?: string | null;
+  user_plan_id?: string | number | null;
   completed_at?: string | null;
 };
 
@@ -730,6 +762,18 @@ export type Plan = {
   result: string; // what you can expect after completing the plan
   sessionsPerWeek: number;
   weeks: PlanWeek[];
+  userProgress?: PlanUserProgress | null;
+};
+
+export type PlanUserProgress = {
+  isActive: boolean;
+  status: "active" | "completed" | "cancelled" | "paused";
+  startedAt: string | null;
+  expectedEndAt: string | null;
+  currentWeekNumber: number | null;
+  completedSessions: number;
+  totalSessions: number;
+  completionPercent: number;
 };
 
 export type ApiPlanExercise = {
@@ -774,7 +818,33 @@ export type ApiPlan = {
   sessions_per_week: number;
   long_description?: string | null;
   weeks?: ApiPlanWeek[];
+  user_progress?: {
+    is_active: boolean;
+    status: PlanUserProgress["status"];
+    started_at: string | null;
+    expected_end_at: string | null;
+    current_week_number: number | null;
+    completed_sessions: number;
+    total_sessions: number;
+    completion_percent: number;
+  } | null;
 };
+
+function mapApiPlanProgress(
+  progress: ApiPlan["user_progress"],
+): PlanUserProgress | null {
+  if (!progress) return null;
+  return {
+    isActive: progress.is_active,
+    status: progress.status,
+    startedAt: progress.started_at,
+    expectedEndAt: progress.expected_end_at,
+    currentWeekNumber: progress.current_week_number,
+    completedSessions: progress.completed_sessions,
+    totalSessions: progress.total_sessions,
+    completionPercent: progress.completion_percent,
+  };
+}
 
 export function mapApiPlan(api: ApiPlan): Plan {
   return {
@@ -787,6 +857,7 @@ export function mapApiPlan(api: ApiPlan): Plan {
     audience: api.audience,
     result: api.result,
     sessionsPerWeek: api.sessions_per_week,
+    userProgress: mapApiPlanProgress(api.user_progress),
     weeks: (api.weeks ?? []).map((week) => ({
       weekNumber: week.number,
       title: week.title,
@@ -860,6 +931,7 @@ export type PlanDetail = {
   sessionsPerWeek: number;
   weeks: PlanWeekDetail[];
   longDescription?: string | null;
+  userProgress?: PlanUserProgress | null;
 };
 
 function normalizePlanDayNutrition(raw: unknown): PlanDayNutrition | null {
@@ -932,6 +1004,7 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
     audience: api.audience,
     result: api.result,
     sessionsPerWeek: api.sessions_per_week,
+    userProgress: mapApiPlanProgress(api.user_progress),
     weeks: (api.weeks ?? []).map((week) => ({
       id: String(week.id),
       number: week.number,
@@ -1770,6 +1843,7 @@ type MainTabParamList = {
   Exercises: undefined;
   Challenges: undefined;
   Community: undefined;
+  Consistency: undefined;
   Account: undefined;
 };
 
@@ -2334,7 +2408,10 @@ const AppTabBar: React.FC<BottomTabBarProps & { isLight: boolean }> = ({
   navigation,
   isLight,
 }) => {
-  const visibleRoutes = state.routes.filter((route) => route.name !== "Account");
+  const visibleTabNames = ["Home", "Plans", "Exercises", "Challenges", "Community"];
+  const visibleRoutes = state.routes.filter((route) =>
+    visibleTabNames.includes(route.name),
+  );
 
   return (
     <View style={[styles.tabBar, isLight && styles.tabBarLight]}>
@@ -2395,6 +2472,13 @@ const MainTabsNavigator: React.FC = () => {
       <MainTabs.Screen name="Exercises" component={ExercisesFeatureScreen} />
       <MainTabs.Screen name="Challenges" component={ChallengesScreen} />
       <MainTabs.Screen name="Community" component={CommunityScreen} />
+      <MainTabs.Screen
+        name="Consistency"
+        component={ConsistencyScreen}
+        options={{
+          tabBarButton: () => null,
+        }}
+      />
       {/* Hidden tab used only for navigating to the Account/profile screen */}
       <MainTabs.Screen
         name="Account"
