@@ -11,13 +11,24 @@ from insights.services import recalculate_user_metrics
 from workouts.models import SessionExercise, WorkoutSession
 
 from .models import Plan, PlanDay, UserPlan
-from .serializers import PlanSerializer
+from .serializers import PlanSerializer, UserPlanSerializer
+from .services import (
+    PremiumRequiredError,
+    checkMissedWorkouts,
+    completeWorkout,
+    recalibrateUserPlan,
+    startUserPlan,
+    user_has_premium,
+)
 
 
 class PlanListView(generics.ListAPIView):
     """Read-only list of plans with nested weeks, days, and exercises."""
 
-    queryset = Plan.objects.all().prefetch_related("weeks__days__exercises")
+    queryset = Plan.objects.filter(is_active=True).prefetch_related(
+        "weeks__days__exercises__exercise",
+        "versions__weeks__days__exercises__exercise",
+    )
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
 
@@ -25,7 +36,10 @@ class PlanListView(generics.ListAPIView):
 class PlanDetailView(generics.RetrieveAPIView):
     """Read-only plan detail including weeks, days, exercises, nutrition, supplements."""
 
-    queryset = Plan.objects.all().prefetch_related("weeks__days__exercises")
+    queryset = Plan.objects.filter(is_active=True).prefetch_related(
+        "weeks__days__exercises__exercise",
+        "versions__weeks__days__exercises__exercise",
+    )
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
 
@@ -331,6 +345,129 @@ class CompletePlanDayView(APIView):
                 "user_plan_id": user_plan.id,
                 "workout_session_id": session.id,
                 "metrics_snapshot_id": snapshot.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class StartUserPlanView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        plan_id = request.data.get("planId") or request.data.get("plan_id")
+        sessions_per_week = request.data.get("sessionsPerWeek") or request.data.get(
+            "sessions_per_week"
+        )
+        start_date = request.data.get("startDate") or request.data.get("start_date")
+
+        if not plan_id or sessions_per_week is None or not start_date:
+            return Response(
+                {"detail": "planId, sessionsPerWeek, and startDate are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user_plan = startUserPlan(
+                request.user,
+                str(plan_id),
+                int(sessions_per_week),
+                start_date,
+            )
+        except PremiumRequiredError:
+            return Response(
+                {"code": "premium_required", "detail": "Premium is required for this plan version."},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        user_plan = (
+            UserPlan.objects.filter(id=user_plan.id)
+            .select_related("plan", "plan_version")
+            .prefetch_related(
+                "scheduled_workouts__plan_day__exercises__exercise",
+                "plan__versions__weeks__days__exercises__exercise",
+                "plan_version__weeks__days__exercises__exercise",
+            )
+            .get()
+        )
+        return Response(UserPlanSerializer(user_plan).data, status=status.HTTP_201_CREATED)
+
+
+class ActiveUserPlanView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user_plan = (
+            UserPlan.objects.filter(user=request.user, is_active=True, status="active")
+            .select_related("plan", "plan_version")
+            .prefetch_related(
+                "scheduled_workouts__plan_day__exercises__exercise",
+                "plan__versions__weeks__days__exercises__exercise",
+                "plan_version__weeks__days__exercises__exercise",
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if user_plan is None:
+            return Response({"detail": "No active plan."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(UserPlanSerializer(user_plan).data, status=status.HTTP_200_OK)
+
+
+class CompleteScheduledWorkoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id, *args, **kwargs):
+        scheduled_workout_id = request.data.get("scheduledWorkoutId") or request.data.get(
+            "scheduled_workout_id"
+        )
+        if scheduled_workout_id is None:
+            return Response(
+                {"detail": "scheduledWorkoutId is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            user_plan = UserPlan.objects.get(id=id, user=request.user)
+            updated = completeWorkout(user_plan.id, int(scheduled_workout_id))
+        except UserPlan.DoesNotExist:
+            return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(UserPlanSerializer(updated).data, status=status.HTTP_200_OK)
+
+
+class CheckMissedWorkoutsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id, *args, **kwargs):
+        try:
+            user_plan = UserPlan.objects.get(id=id, user=request.user)
+            updated = checkMissedWorkouts(user_plan.id)
+        except UserPlan.DoesNotExist:
+            return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(UserPlanSerializer(updated).data, status=status.HTTP_200_OK)
+
+
+class RecalibrateUserPlanView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id, *args, **kwargs):
+        if not user_has_premium(request.user):
+            return Response(
+                {"code": "premium_required", "detail": "Premium is required to recalibrate plans."},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+        try:
+            user_plan = UserPlan.objects.get(id=id, user=request.user)
+            updated = recalibrateUserPlan(user_plan.id)
+        except UserPlan.DoesNotExist:
+            return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
+                "user_plan": UserPlanSerializer(updated).data,
             },
             status=status.HTTP_200_OK,
         )

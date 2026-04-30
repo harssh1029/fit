@@ -1,6 +1,7 @@
-import React, { useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   ScrollView,
   Text,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 
 import {
   GLASS_ACCENT_GREEN,
@@ -18,7 +20,9 @@ import {
 import { AppHeader } from "../../components/AppHeader";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlans } from "../../hooks/usePlans";
-import { useThemeMode, styles } from "../../App";
+import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
+import { API_BASE_URL } from "../../api/client";
+import { useAuth, useThemeMode, styles } from "../../App";
 import type { PlansHomeProps, PlanUserProgress } from "../../App";
 
 type PlanCardStatus = "preview" | "enrolled" | "completed";
@@ -39,6 +43,13 @@ const formatPlanDate = (value: string | null | undefined) => {
   if (Number.isNaN(date.getTime())) return "Not set";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
+
+const humanizeGoal = (value: string) =>
+  value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 
 const ProgressDots: React.FC<{
   total: number;
@@ -284,6 +295,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
 
 const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
   const { mode, toggle } = useThemeMode();
+  const { accessToken } = useAuth();
   const isLight = mode === "light";
   const sectionIconColor = isLight ? "#0F172A" : DARK_TEXT_PRIMARY;
 
@@ -292,12 +304,95 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
     profile?.profile.display_name || profile?.username || null;
 
   const { plans, loading: plansLoading, error: plansError } = usePlans();
+  const {
+    activeUserPlan,
+    loading: activeUserPlanLoading,
+    reload: reloadActiveUserPlan,
+  } = useActiveUserPlan();
+
+  useFocusEffect(
+    useCallback(() => {
+      void reloadActiveUserPlan();
+    }, [reloadActiveUserPlan]),
+  );
 
   const activePlanId = profile?.profile.active_plan_id;
   const activePlan = activePlanId
     ? plans.find((p) => p.id === activePlanId)
     : null;
   const activeProgress = activePlan?.userProgress ?? null;
+  const activeScheduled = activeUserPlan?.scheduled_workouts ?? [];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayWorkout =
+    activeScheduled.find(
+      (item) => item.scheduled_date === todayIso && item.status === "scheduled",
+    ) ?? activeScheduled.find((item) => item.status === "scheduled");
+  const upcomingWorkouts = activeScheduled
+    .filter((item) => item.status === "scheduled")
+    .slice(0, 3);
+  const completedCount =
+    activeUserPlan?.completed_sessions ??
+    activeScheduled.filter((item) => item.status === "completed").length;
+  const missedCount =
+    activeUserPlan?.missed_sessions ??
+    activeScheduled.filter((item) => item.status === "missed").length;
+  const currentWeek =
+    todayWorkout?.week_number ?? activeProgress?.currentWeekNumber ?? 1;
+  const isPremiumUser = Boolean(
+    (profile?.profile.personal_bests as any)?.is_premium ||
+      (profile?.profile.personal_bests as any)?.premium ||
+      (profile?.profile.personal_bests as any)?.subscription === "premium",
+  );
+
+  const recalibratePlan = () => {
+    if (!activeUserPlan) return;
+    if (!isPremiumUser) {
+      Alert.alert(
+        "Premium required",
+        "Recalibration is available with Premium.",
+      );
+      return;
+    }
+    Alert.alert(
+      "Recalibrate plan?",
+      "This will move your missed workouts forward and extend your plan end date. Completed workouts will stay unchanged.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Recalibrate",
+          onPress: async () => {
+            if (!accessToken) return;
+            const response = await fetch(
+              `${API_BASE_URL}/user-plans/${activeUserPlan.id}/recalibrate`,
+              {
+                method: "POST",
+                headers: { Authorization: `Bearer ${accessToken}` },
+              },
+            );
+            if (response.status === 402) {
+              Alert.alert(
+                "Premium required",
+                "Recalibration is available with Premium.",
+              );
+              return;
+            }
+            if (!response.ok) {
+              Alert.alert(
+                "Could not recalibrate",
+                `Server returned ${response.status}.`,
+              );
+              return;
+            }
+            Alert.alert(
+              "Plan recalibrated",
+              "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
+            );
+            void reloadActiveUserPlan();
+          },
+        },
+      ],
+    );
+  };
 
   if (plansLoading) {
     return (
@@ -312,7 +407,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
-          <Text style={styles.loadingText}>Loading plans…</Text>
+          <Text style={styles.loadingText}>Loading plans...</Text>
         </View>
       </View>
     );
@@ -384,7 +479,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
         />
       </View>
 
-      {activePlan && (
+      {(activeUserPlan || activePlan) && (
         <View
           style={[
             styles.plansHeaderContainer,
@@ -432,7 +527,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   ]}
                   numberOfLines={2}
                 >
-                  {activePlan.name}
+                  {activeUserPlan?.plan.name ?? activePlan?.name}
                 </Text>
               </View>
             </View>
@@ -443,10 +538,113 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               ]}
               numberOfLines={2}
             >
-              {activePlan.goal || activePlan.summary}
+              {activeUserPlan
+                ? `${activeUserPlan.plan_version?.sessions_per_week ?? activeUserPlan.sessions_per_week} sessions/week • Week ${currentWeek}`
+                : activePlan
+                  ? humanizeGoal(activePlan.goal) || activePlan.summary
+                  : ""}
             </Text>
 
-            {activeProgress ? (
+            {activeUserPlan ? (
+              <View style={styles.plansActiveProgressBlock}>
+                <View style={styles.plansActiveProgressHeader}>
+                  <Text
+                    style={[
+                      styles.plansActiveProgressText,
+                      isLight
+                        ? styles.plansActiveProgressTextLight
+                        : styles.plansActiveProgressTextDark,
+                    ]}
+                  >
+                    {activeUserPlan.start_date} to {activeUserPlan.end_date}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.plansActiveProgressText,
+                      isLight
+                        ? styles.plansActiveProgressTextLight
+                        : styles.plansActiveProgressTextDark,
+                    ]}
+                  >
+                    {Number(activeUserPlan.completion_percent).toFixed(0)}% completed
+                  </Text>
+                </View>
+                <ProgressDots
+                  total={activeUserPlan.total_sessions}
+                  completed={activeUserPlan.completed_sessions}
+                  isLight={isLight}
+                />
+                <Text
+                  style={[
+                    styles.plansActiveDateText,
+                    isLight
+                      ? styles.plansActiveDateTextLight
+                      : styles.plansActiveDateTextDark,
+                    { marginTop: 10 },
+                  ]}
+                >
+                  Next:{" "}
+                  {todayWorkout
+                    ? `${todayWorkout.scheduled_date} • ${todayWorkout.plan_day.title}`
+                    : activeUserPlanLoading
+                      ? "Loading schedule..."
+                      : "No scheduled workout"}
+                </Text>
+                {upcomingWorkouts.slice(1).map((item) => (
+                  <Text
+                    key={item.id}
+                    style={[
+                      styles.plansActiveDateText,
+                      isLight
+                        ? styles.plansActiveDateTextLight
+                        : styles.plansActiveDateTextDark,
+                      { marginTop: 4 },
+                    ]}
+                  >
+                    {item.scheduled_date} • {item.plan_day.title}
+                  </Text>
+                ))}
+                {missedCount > 0 && (
+                  <View
+                    style={[
+                      styles.plansNextRow,
+                      isLight ? styles.plansNextRowLight : styles.plansNextRowDark,
+                      { marginTop: 12 },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.plansNextValue,
+                          isLight
+                            ? styles.plansNextValueLight
+                            : styles.plansNextValueDark,
+                        ]}
+                      >
+                        You missed {missedCount} workouts.
+                      </Text>
+                      <Text
+                        style={[
+                          styles.plansNextLabel,
+                          isLight
+                            ? styles.plansNextLabelLight
+                            : styles.plansNextLabelDark,
+                        ]}
+                      >
+                        Recalibrate your plan and continue without losing progress.
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.plansNextButton}
+                      activeOpacity={0.9}
+                      onPress={recalibratePlan}
+                    >
+                      <Text style={styles.plansNextButtonLabel}>Recalibrate Plan</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ) : activeProgress ? (
               <View style={styles.plansActiveProgressBlock}>
                 <View style={styles.plansActiveProgressHeader}>
                   <Text
@@ -458,8 +656,8 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                     ]}
                   >
                     {activeProgress.currentWeekNumber
-                      ? `Week ${activeProgress.currentWeekNumber} of ${activePlan.durationWeeks}`
-                      : `${activePlan.durationWeeks} weeks`}
+                      ? `Week ${activeProgress.currentWeekNumber} of ${activePlan?.durationWeeks}`
+                      : `${activePlan?.durationWeeks} weeks`}
                   </Text>
                   <Text
                     style={[
@@ -500,54 +698,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   </Text>
                 </View>
               </View>
-            ) : (
-              <View style={styles.planCardMetaStrip}>
-                <View
-                  style={[
-                    styles.planCardMetaChip,
-                    isLight && styles.planCardMetaChipLight,
-                  ]}
-                >
-                  <Ionicons
-                    name="calendar-outline"
-                    size={14}
-                    color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
-                  />
-                  <Text
-                    style={[
-                      styles.planCardMetaText,
-                      isLight
-                        ? styles.planCardMetaTextLight
-                        : styles.planCardMetaTextDark,
-                    ]}
-                  >
-                    {activePlan.durationWeeks} weeks
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.planCardMetaChip,
-                    isLight && styles.planCardMetaChipLight,
-                  ]}
-                >
-                  <Ionicons
-                    name="barbell-outline"
-                    size={14}
-                    color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
-                  />
-                  <Text
-                    style={[
-                      styles.planCardMetaText,
-                      isLight
-                        ? styles.planCardMetaTextLight
-                        : styles.planCardMetaTextDark,
-                    ]}
-                  >
-                    {activePlan.sessionsPerWeek}/week
-                  </Text>
-                </View>
-              </View>
-            )}
+            ) : null}
 
             <View style={styles.plansActiveButtonsRow}>
               <TouchableOpacity
@@ -557,7 +708,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 ]}
                 activeOpacity={0.9}
                 onPress={() =>
-                  navigation.navigate("PlanDetail", { planId: activePlan.id })
+                  navigation.navigate("PlanDetail", {
+                    planId: activeUserPlan?.plan.id ?? activePlan!.id,
+                  })
                 }
               >
                 <Text style={styles.plansPrimaryButtonLabel}>Continue</Text>
@@ -593,9 +746,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <PlanCard
                 key={plan.id}
                 title={plan.name}
-                duration={`${plan.durationWeeks}w · ${plan.sessionsPerWeek}/wk`}
+                duration={`${plan.durationWeeks}w · ${plan.defaultSessionsPerWeek ?? plan.sessionsPerWeek}/wk`}
                 level={plan.level.charAt(0).toUpperCase() + plan.level.slice(1)}
-                goal={plan.goal || plan.summary}
+                goal={humanizeGoal(plan.goal) || plan.summary}
                 progress={plan.userProgress}
                 status={activePlanId === plan.id ? "enrolled" : "preview"}
                 onPress={() =>

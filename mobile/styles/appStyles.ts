@@ -3750,12 +3750,27 @@ export const styles = StyleSheet.create({
     color: GLASS_TEXT_PRIMARY,
   },
   planDetailContainer: {
-    marginTop: 24,
+    marginTop: 22,
+  },
+  planDetailSectionHeaderRow: {
+    marginBottom: 8,
+  },
+  planDetailSectionSubtext: {
+    marginTop: 5,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  planDetailSectionSubtextLight: {
+    color: "#64748B",
+  },
+  planDetailSectionSubtextDark: {
+    color: "#94A3B8",
   },
   planDetailHeading: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 4,
   },
   planDetailHeadingLight: {
     color: LIGHT_TEXT_MUTED,
@@ -3796,16 +3811,16 @@ export const styles = StyleSheet.create({
   },
   planDetailHero: {
     marginTop: 0,
-    padding: 18,
-    borderRadius: 20,
+    padding: 20,
+    borderRadius: 22,
     backgroundColor: "rgba(15,23,42,0.76)",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.16)",
     ...PREMIUM_CARD_DARK,
   },
   planDetailHeroLight: {
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderColor: "#E6EAF0",
     ...PREMIUM_CARD_LIGHT,
   },
   planDetailHeroHeader: {
@@ -3815,8 +3830,8 @@ export const styles = StyleSheet.create({
   planDetailTitle: {
     flex: 1,
     minWidth: 0,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 25,
+    lineHeight: 31,
     fontWeight: "600",
     letterSpacing: 0.1,
   },
@@ -3855,7 +3870,7 @@ export const styles = StyleSheet.create({
   planDetailSummary: {
     marginTop: 10,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   planDetailSummaryLight: {
     color: "#64748B",
@@ -3905,20 +3920,23 @@ export const styles = StyleSheet.create({
   planDetailFactRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 16,
+    marginTop: 14,
   },
   planDetailFactChip: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 7,
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: "rgba(30,41,59,0.72)",
+    backgroundColor: "rgba(30,41,59,0.56)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planDetailFactChipLight: {
     backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
   },
   planDetailFactText: {
     marginLeft: 6,
@@ -3933,12 +3951,13 @@ export const styles = StyleSheet.create({
   },
   planDetailInsightRow: {
     flexDirection: "row",
-    marginTop: 12,
+    marginTop: 14,
   },
   planDetailInsightCard: {
     flex: 1,
-    padding: 14,
-    borderRadius: 16,
+    padding: 18,
+    minHeight: 188,
+    borderRadius: 22,
     backgroundColor: "rgba(15,23,42,0.62)",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.14)",
@@ -3946,16 +3965,30 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   planDetailInsightCardLight: {
-    backgroundColor: "rgba(255,255,255,0.84)",
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderColor: "#E5E7EB",
     ...PREMIUM_CARD_LIGHT,
   },
+  planDetailInsightIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  planDetailInsightIconBlue: {
+    backgroundColor: "#2B7CD3",
+  },
+  planDetailInsightIconGreen: {
+    backgroundColor: "#8ACD78",
+  },
   planDetailInsightLabel: {
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
-    marginBottom: 7,
+    letterSpacing: 1,
+    marginBottom: 10,
   },
   planDetailInsightLabelLight: {
     color: "#64748B",
@@ -3964,15 +3997,27 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   planDetailInsightText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "800",
   },
   planDetailInsightTextLight: {
     color: LIGHT_TEXT_PRIMARY,
   },
   planDetailInsightTextDark: {
     color: DARK_TEXT_PRIMARY,
+  },
+  planDetailInsightSubtext: {
+    marginTop: 9,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "500",
+  },
+  planDetailInsightSubtextLight: {
+    color: "#64748B",
+  },
+  planDetailInsightSubtextDark: {
+    color: "#A7B0C3",
   },
   planDetailMetricsGrid: {
     flexDirection: "row",
@@ -4020,22 +4065,24 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   planDetailGuidelinesCard: {
+    marginTop: 12,
     padding: 18,
-    borderRadius: 20,
+    borderRadius: 22,
     backgroundColor: "rgba(15,23,42,0.66)",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.16)",
     ...PREMIUM_CARD_DARK,
   },
   planDetailGuidelinesCardLight: {
-    backgroundColor: "rgba(255,255,255,0.88)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderColor: "#E5E7EB",
     ...PREMIUM_CARD_LIGHT,
   },
   planDetailGuidelinesTitle: {
     fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 18,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 22,
   },
   planDetailGuidelinesTitleLight: {
     color: LIGHT_TEXT_MUTED,
@@ -4046,15 +4093,16 @@ export const styles = StyleSheet.create({
   planDetailGuidelinesRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   planDetailGuidelineItem: {
     flex: 1,
   },
   planDetailGuidelineValue: {
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: "600",
+    marginTop: 4,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "800",
   },
   planDetailGuidelineValueLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -4063,9 +4111,8 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   planDetailGuidelineLabel: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "600",
   },
   planDetailGuidelineLabelLight: {
     color: "#64748B",
@@ -4074,14 +4121,340 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   planDetailGuidelinesBody: {
+    flex: 1,
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 22,
+    fontWeight: "500",
   },
   planDetailGuidelinesBodyLight: {
     color: "#64748B",
   },
   planDetailGuidelinesBodyDark: {
     color: "#A7B0C3",
+  },
+  planDetailGuidelineRowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148,163,184,0.16)",
+  },
+  planDetailGuidelineRowItemLight: {
+    borderBottomColor: "#E5E7EB",
+  },
+  planDetailGuidelineIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  planDetailGuidelineIconBlue: {
+    backgroundColor: "#2B7CD3",
+  },
+  planDetailGuidelineIconGreen: {
+    backgroundColor: "#35A956",
+  },
+  planDetailGuidelineIconPurple: {
+    backgroundColor: "#9B5DE5",
+  },
+  planDetailGuidelineNoteBox: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+    backgroundColor: "rgba(15,23,42,0.42)",
+  },
+  planDetailGuidelineNoteBoxLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E5E7EB",
+  },
+  planCurrentScheduleCard: {
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: "rgba(15,23,42,0.66)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    ...PREMIUM_CARD_DARK,
+  },
+  planCurrentScheduleCardLight: {
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderColor: "#E5E7EB",
+    ...PREMIUM_CARD_LIGHT,
+  },
+  planCurrentScheduleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  planCurrentScheduleIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  planCurrentScheduleIconLight: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
+  },
+  planCurrentScheduleEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  planCurrentScheduleEyebrowLight: {
+    color: "#64748B",
+  },
+  planCurrentScheduleEyebrowDark: {
+    color: "#94A3B8",
+  },
+  planCurrentScheduleTitle: {
+    marginTop: 2,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  planCurrentScheduleTitleLight: {
+    color: "#0F172A",
+  },
+  planCurrentScheduleTitleDark: {
+    color: "#F8FAFC",
+  },
+  planCurrentScheduleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  planCurrentScheduleButtonLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+  },
+  planCurrentScheduleButtonText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  planCurrentScheduleButtonTextLight: {
+    color: "#0F172A",
+  },
+  planCurrentScheduleButtonTextDark: {
+    color: "#E5E7EB",
+  },
+  planCurrentScheduleDescription: {
+    marginTop: 12,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  planCurrentScheduleDescriptionLight: {
+    color: "#64748B",
+  },
+  planCurrentScheduleDescriptionDark: {
+    color: "#94A3B8",
+  },
+  planRecalibrateCard: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.22)",
+  },
+  planRecalibrateCardLight: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+  },
+  planRecalibrateIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 11,
+    backgroundColor: "rgba(245,158,11,0.12)",
+  },
+  planRecalibrateIconLight: {
+    backgroundColor: "#FEF3C7",
+  },
+  planRecalibrateTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  planRecalibrateTitleLight: {
+    color: "#0F172A",
+  },
+  planRecalibrateTitleDark: {
+    color: "#F8FAFC",
+  },
+  planRecalibrateText: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
+  },
+  planRecalibrateTextLight: {
+    color: "#64748B",
+  },
+  planRecalibrateTextDark: {
+    color: "#CBD5E1",
+  },
+  planRecalibrateButton: {
+    marginLeft: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.9)",
+  },
+  planRecalibrateButtonLight: {
+    backgroundColor: "#0F172A",
+  },
+  planRecalibrateButtonText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  planRecalibrateButtonTextLight: {
+    color: "#FFFFFF",
+  },
+  planRecalibrateButtonTextDark: {
+    color: "#FFFFFF",
+  },
+  planScheduleOptionsHeader: {
+    marginTop: 14,
+    marginBottom: 2,
+  },
+  planScheduleOptionsTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  planScheduleOptionsTitleLight: {
+    color: "#334155",
+  },
+  planScheduleOptionsTitleDark: {
+    color: "#E2E8F0",
+  },
+  planScheduleOptionsHint: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  planScheduleOptionsHintLight: {
+    color: "#64748B",
+  },
+  planScheduleOptionsHintDark: {
+    color: "#94A3B8",
+  },
+  planScheduleOption: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 18,
+    backgroundColor: "rgba(15,23,42,0.58)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  planScheduleOptionLight: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#E5E7EB",
+  },
+  planScheduleOptionRecommended: {
+    borderColor: "rgba(125,211,252,0.32)",
+    backgroundColor: "rgba(15,23,42,0.68)",
+  },
+  planScheduleOptionRecommendedLight: {
+    borderColor: "#BFD7EE",
+    backgroundColor: "#F8FBFE",
+  },
+  planScheduleOptionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  planScheduleOptionIconLight: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
+  },
+  planScheduleOptionIconText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  planScheduleOptionIconTextLight: {
+    color: "#0F172A",
+  },
+  planScheduleOptionIconTextDark: {
+    color: "#E5E7EB",
+  },
+  planScheduleOptionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  planScheduleOptionTitleLight: {
+    color: "#0F172A",
+  },
+  planScheduleOptionTitleDark: {
+    color: "#F8FAFC",
+  },
+  planScheduleOptionDescription: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
+  },
+  planScheduleOptionDescriptionLight: {
+    color: "#64748B",
+  },
+  planScheduleOptionDescriptionDark: {
+    color: "#94A3B8",
+  },
+  planScheduleBadge: {
+    marginLeft: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  planScheduleBadgeLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+  },
+  planScheduleBadgePremium: {
+    borderColor: "rgba(245,158,11,0.28)",
+    backgroundColor: "rgba(245,158,11,0.08)",
+  },
+  planScheduleBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  planScheduleBadgeTextLight: {
+    color: "#475569",
+  },
+  planScheduleBadgeTextDark: {
+    color: "#CBD5E1",
   },
   planDetailOptOutRow: {
     alignItems: "flex-end",
@@ -4497,6 +4870,258 @@ export const styles = StyleSheet.create({
   planWeekViewFullButtonIcon: {
     marginLeft: 6,
     marginTop: 1,
+  },
+  planWeekTabs: {
+    flexDirection: "row",
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.5)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  planWeekTabsLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E5E7EB",
+  },
+  planWeekTab: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planWeekTabLight: {
+    backgroundColor: "transparent",
+  },
+  planWeekTabActive: {
+    backgroundColor: "#146EF5",
+    shadowColor: "#146EF5",
+    shadowOpacity: 0.22,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  planWeekTabText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  planWeekTabTextLight: {
+    color: "#64748B",
+  },
+  planWeekTabTextDark: {
+    color: "#94A3B8",
+  },
+  planWeekTabTextActive: {
+    color: "#FFFFFF",
+  },
+  planWeekTimelineMeta: {
+    marginTop: 26,
+    marginBottom: 14,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  planWeekTimelineMetaLight: {
+    color: "#64748B",
+  },
+  planWeekTimelineMetaDark: {
+    color: "#94A3B8",
+  },
+  planWeekTimelineCard: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    backgroundColor: "rgba(15,23,42,0.66)",
+    ...PREMIUM_CARD_DARK,
+  },
+  planWeekTimelineCardLight: {
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderColor: "#E5E7EB",
+    ...PREMIUM_CARD_LIGHT,
+  },
+  planWeekTimelineRail: {
+    position: "absolute",
+    left: 28,
+    top: 28,
+    bottom: 72,
+    width: 2,
+    borderRadius: 999,
+    backgroundColor: "#2B7CD3",
+  },
+  planWeekTimelineItem: {
+    minHeight: 138,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingTop: 24,
+    paddingRight: 18,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148,163,184,0.14)",
+  },
+  planWeekTimelineItemLast: {
+    borderBottomWidth: 0,
+  },
+  planWeekTimelineNumber: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 14,
+    marginRight: 17,
+    backgroundColor: "#146EF5",
+    shadowColor: "#146EF5",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 7 },
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  planWeekTimelineNumberText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  planWeekTimelineContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planWeekTimelineDayMeta: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  planWeekTimelineDayMetaLight: {
+    color: "#64748B",
+  },
+  planWeekTimelineDayMetaDark: {
+    color: "#A7B0C3",
+  },
+  planWeekTimelineTitle: {
+    marginTop: 4,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  planWeekTimelineTitleLight: {
+    color: "#0F172A",
+  },
+  planWeekTimelineTitleDark: {
+    color: "#F8FAFC",
+  },
+  planWeekTimelineDetailRow: {
+    marginTop: 13,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  planWeekTimelineTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  planWeekTimelineTagGreen: {
+    backgroundColor: "#E8F8EA",
+  },
+  planWeekTimelineTagAmber: {
+    backgroundColor: "#FEF3C7",
+  },
+  planWeekTimelineTagPurple: {
+    backgroundColor: "#F0E7FF",
+  },
+  planWeekTimelineTagOrange: {
+    backgroundColor: "#FFEDE6",
+  },
+  planWeekTimelineTagText: {
+    marginLeft: 5,
+    color: "#16A34A",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  planWeekTimelineTagTextAmber: {
+    color: "#B7791F",
+  },
+  planWeekTimelineTagTextPurple: {
+    color: "#7C3AED",
+  },
+  planWeekTimelineTagTextOrange: {
+    color: "#EA580C",
+  },
+  planWeekTimelineFooter: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  planWeekTimelineDuration: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  planWeekTimelineDurationText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  planWeekTimelineDurationTextLight: {
+    color: "#64748B",
+  },
+  planWeekTimelineDurationTextDark: {
+    color: "#A7B0C3",
+  },
+  planWeekIntensityBars: {
+    marginLeft: 18,
+    height: 22,
+    flexDirection: "row",
+    alignItems: "flex-end",
+  },
+  planWeekIntensityBar: {
+    width: 5,
+    borderRadius: 999,
+    marginRight: 4,
+    backgroundColor: "#E2E8F0",
+  },
+  planWeekIntensityBarActive: {
+    backgroundColor: "#146EF5",
+  },
+  planWeekTimelineCheck: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+    marginTop: 42,
+    backgroundColor: "rgba(125,211,252,0.1)",
+  },
+  planWeekTimelineCheckLight: {
+    backgroundColor: "#EEF6FF",
+  },
+  planWeekTimelineButton: {
+    margin: 14,
+    minHeight: 48,
+    borderRadius: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(148,163,184,0.12)",
+  },
+  planWeekTimelineButtonLight: {
+    backgroundColor: "#F8FAFC",
+  },
+  planWeekTimelineButtonText: {
+    marginRight: 8,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  planWeekTimelineButtonTextLight: {
+    color: "#0F172A",
+  },
+  planWeekTimelineButtonTextDark: {
+    color: "#F8FAFC",
   },
   exerciseImageStack: {
     width: "100%",

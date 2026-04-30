@@ -754,6 +754,7 @@ export type PlanWeek = {
 export type Plan = {
   id: string;
   name: string;
+  subtitle?: string | null;
   level: "beginner" | "intermediate" | "advanced";
   durationWeeks: number;
   goal: string; // high-level focus of the plan
@@ -761,6 +762,9 @@ export type Plan = {
   audience: string; // who this plan is for
   result: string; // what you can expect after completing the plan
   sessionsPerWeek: number;
+  defaultSessionsPerWeek?: number;
+  supportedSessionsPerWeek?: number[];
+  versions?: PlanVersion[];
   weeks: PlanWeek[];
   userProgress?: PlanUserProgress | null;
 };
@@ -774,6 +778,20 @@ export type PlanUserProgress = {
   completedSessions: number;
   totalSessions: number;
   completionPercent: number;
+};
+
+export type PlanVersion = {
+  id: string;
+  planId: string;
+  sessionsPerWeek: number;
+  title: string;
+  description: string;
+  isDefault: boolean;
+  isPremium: boolean;
+  splitType: string;
+  trainingDaysPattern: string[];
+  totalSessions: number;
+  weeklyStructure: string[];
 };
 
 export type ApiPlanExercise = {
@@ -809,14 +827,30 @@ export type ApiPlanWeek = {
 export type ApiPlan = {
   id: string;
   name: string;
+  subtitle?: string | null;
   level: Plan["level"];
   duration_weeks: number;
+  default_sessions_per_week?: number;
   goal: string;
   summary: string;
   audience: string;
   result: string;
   sessions_per_week: number;
   long_description?: string | null;
+  supported_sessions_per_week?: number[];
+  versions?: {
+    id: string;
+    plan_id: string;
+    sessions_per_week: number;
+    title: string;
+    description: string;
+    is_default: boolean;
+    is_premium: boolean;
+    split_type: string;
+    training_days_pattern: string[];
+    total_sessions: number;
+    weekly_structure: string[];
+  }[];
   weeks?: ApiPlanWeek[];
   user_progress?: {
     is_active: boolean;
@@ -850,6 +884,7 @@ export function mapApiPlan(api: ApiPlan): Plan {
   return {
     id: api.id,
     name: api.name,
+    subtitle: api.subtitle ?? null,
     level: api.level,
     durationWeeks: api.duration_weeks,
     goal: api.goal,
@@ -857,6 +892,21 @@ export function mapApiPlan(api: ApiPlan): Plan {
     audience: api.audience,
     result: api.result,
     sessionsPerWeek: api.sessions_per_week,
+    defaultSessionsPerWeek: api.default_sessions_per_week,
+    supportedSessionsPerWeek: api.supported_sessions_per_week ?? [],
+    versions: (api.versions ?? []).map((version) => ({
+      id: version.id,
+      planId: version.plan_id,
+      sessionsPerWeek: version.sessions_per_week,
+      title: version.title,
+      description: version.description,
+      isDefault: version.is_default,
+      isPremium: version.is_premium,
+      splitType: version.split_type,
+      trainingDaysPattern: version.training_days_pattern ?? [],
+      totalSessions: version.total_sessions,
+      weeklyStructure: version.weekly_structure ?? [],
+    })),
     userProgress: mapApiPlanProgress(api.user_progress),
     weeks: (api.weeks ?? []).map((week) => ({
       weekNumber: week.number,
@@ -922,6 +972,7 @@ function usePlans() {
 export type PlanDetail = {
   id: string;
   name: string;
+  subtitle?: string | null;
   level: Plan["level"];
   durationWeeks: number;
   goal: string;
@@ -929,6 +980,9 @@ export type PlanDetail = {
   audience: string;
   result: string;
   sessionsPerWeek: number;
+  defaultSessionsPerWeek?: number;
+  supportedSessionsPerWeek?: number[];
+  versions?: PlanVersion[];
   weeks: PlanWeekDetail[];
   longDescription?: string | null;
   userProgress?: PlanUserProgress | null;
@@ -997,6 +1051,7 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
   return {
     id: api.id,
     name: api.name,
+    subtitle: api.subtitle ?? null,
     level: api.level,
     durationWeeks: api.duration_weeks,
     goal: api.goal,
@@ -1004,6 +1059,21 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
     audience: api.audience,
     result: api.result,
     sessionsPerWeek: api.sessions_per_week,
+    defaultSessionsPerWeek: api.default_sessions_per_week,
+    supportedSessionsPerWeek: api.supported_sessions_per_week ?? [],
+    versions: (api.versions ?? []).map((version) => ({
+      id: version.id,
+      planId: version.plan_id,
+      sessionsPerWeek: version.sessions_per_week,
+      title: version.title,
+      description: version.description,
+      isDefault: version.is_default,
+      isPremium: version.is_premium,
+      splitType: version.split_type,
+      trainingDaysPattern: version.training_days_pattern ?? [],
+      totalSessions: version.total_sessions,
+      weeklyStructure: version.weekly_structure ?? [],
+    })),
     userProgress: mapApiPlanProgress(api.user_progress),
     weeks: (api.weeks ?? []).map((week) => ({
       id: String(week.id),
@@ -1305,65 +1375,6 @@ export function buildActiveNutritionsFromPlan(
   return [mapped];
 }
 
-const SAMPLE_PLANS: Plan[] = [
-  {
-    id: "beginner_4_week",
-    name: "4-Week Beginner Strength Plan",
-    level: "beginner",
-    durationWeeks: 4,
-    goal: "Build a foundation of full-body strength and consistency.",
-    summary:
-      "Three full-body sessions per week with progressive overload and clear structure.",
-    audience:
-      "Beginners who want to learn the main lifts, build confidence in the gym, and create a repeatable routine.",
-    result:
-      "By the end of 4 weeks you will feel confident with core barbell movements and have a solid base to progress from.",
-    sessionsPerWeek: 3,
-    weeks: [
-      {
-        weekNumber: 1,
-        title: "Learn the Movements",
-        focus: "Master form with lighter weights and controlled tempo.",
-        highlights: [
-          "3 full-body sessions focusing on squat, hinge, push, and pull.",
-          "Use RPE 6–7 (leave 3–4 reps in the tank) on main lifts.",
-          "Add a short walk or light cardio on non-lifting days.",
-        ],
-      },
-      {
-        weekNumber: 2,
-        title: "Build Confidence",
-        focus: "Increase load slightly while keeping technique clean.",
-        highlights: [
-          "Add 2.5–5 kg (or the smallest plate) to main lifts where safe.",
-          "Introduce one extra accessory per session for weak points.",
-          "Focus on consistent sleep and hydration all week.",
-        ],
-      },
-      {
-        weekNumber: 3,
-        title: "Push a Little Harder",
-        focus: "Stay in control but work closer to your limits.",
-        highlights: [
-          "Aim for RPE 7–8 on your final sets of the big lifts.",
-          "Keep total volume similar; don't add endless sets.",
-          "Add one extra mobility or stretching session this week.",
-        ],
-      },
-      {
-        weekNumber: 4,
-        title: "Deload & Consolidate",
-        focus: "Back off slightly so you can recover and lock in progress.",
-        highlights: [
-          "Reduce working weights by ~10–20% on all main lifts.",
-          "Keep movement quality high and focus on smooth, fast reps.",
-          "End the week by reviewing progress and setting next goals.",
-        ],
-      },
-    ],
-  },
-];
-
 export type PlanDayNutrition = {
   title?: string;
   description?: string;
@@ -1393,91 +1404,6 @@ export type PlanWeekDetail = {
   description: string;
   days: PlanDayDetail[];
 };
-
-const PLAN_DETAIL_WEEKS: PlanWeekDetail[] = [
-  {
-    id: "w1",
-    number: 1,
-    title: "Foundation & Form",
-    description:
-      "Establishing essential movement patterns and core stability. Focus entirely on feeling the targeted muscles rather than lifting heavy. We want to bulletproof your joints before adding major weight next week.",
-    days: [
-      {
-        id: "d1",
-        day: 1,
-        title: "Lower Body Basics",
-        exercises: "Squats, Lunges, Glute Bridges",
-        duration: "45 min",
-        type: "strength",
-      },
-      {
-        id: "d2",
-        day: 2,
-        title: "Upper Body Pull",
-        exercises: "Dumbbell Rows, Lat Pulldowns",
-        duration: "40 min",
-        type: "strength",
-      },
-      {
-        id: "d3",
-        day: 3,
-        title: "Active Recovery",
-        exercises: "Light stretching, Mobility",
-        duration: "20 min",
-        type: "recovery",
-      },
-      {
-        id: "d4",
-        day: 4,
-        title: "Upper Body Push",
-        exercises: "Push-ups, Overhead Press",
-        duration: "40 min",
-        type: "strength",
-      },
-    ],
-  },
-  {
-    id: "w2",
-    number: 2,
-    title: "Intensity Increase",
-    description:
-      "Adding volume and decreasing rest times. This week pushes the cardiovascular system while maintaining form under fatigue. Track your reps and try to beat your day 1 numbers.",
-    days: [
-      {
-        id: "d5",
-        day: 1,
-        title: "Lower Body Power",
-        exercises: "Jump Squats, Leg Press",
-        duration: "50 min",
-        type: "strength",
-      },
-      {
-        id: "d6",
-        day: 2,
-        title: "Upper Body Compound",
-        exercises: "Bench Press, Rows",
-        duration: "45 min",
-        type: "strength",
-      },
-      {
-        id: "d7",
-        day: 3,
-        title: "Core & Conditioning",
-        exercises: "Planks, HIIT intervals",
-        duration: "30 min",
-        type: "cardio",
-      },
-      {
-        id: "d8",
-        day: 4,
-        title: "Full Body Circuit",
-        exercises: "Kettlebell swings, Thrusters",
-        duration: "50 min",
-        type: "strength",
-      },
-    ],
-  },
-];
 
 // "View workout" weekly template – used to show a full week in
 // the bottom sheet with the exact design from the running schedule
@@ -1533,109 +1459,6 @@ export type ViewNutritionWeek = {
   id: string;
   label: string;
   days: ViewNutritionDay[];
-};
-
-const VIEW_WORKOUT_SAMPLE_WEEK: ViewWorkoutWeek = {
-  id: "week1",
-  label: "Week 1",
-  days: [
-    {
-      id: "mon",
-      weekdayLabel: "Mon",
-      dateLabel: "02 MAR",
-      type: "run",
-      title: "Easy Run",
-      subtitle: "45 mins \u2022 Low Effort",
-    },
-    {
-      id: "tue",
-      weekdayLabel: "Tue",
-      dateLabel: "03 MAR",
-      type: "run",
-      title: "Interval Run",
-      subtitle: "Warm up \u2022 Interval \u2022 Cool Down",
-      headerTags: ["Warm up", "Interval", "Cool Down"],
-      segments: [
-        {
-          id: "warmup",
-          label: "Warm up",
-          primary: "2km",
-          secondary: "6:30-6:41",
-        },
-        {
-          id: "interval",
-          label: "Interval",
-          primary: "10 \u00D7 400m",
-          secondary: "4:45-4:50",
-        },
-        {
-          id: "cooldown",
-          label: "Cool Down",
-          primary: "2km",
-          secondary: "6:30-6:41",
-        },
-      ],
-      notes:
-        "Keep your pace, don't overpace. The warm-up session also shouldn't be too fast. So that the interval results are optimal.",
-      exercises: "2km warm up, 10\u00D7400m intervals, 2km cool down",
-    },
-    {
-      id: "wed",
-      weekdayLabel: "Wed",
-      dateLabel: "04 MAR",
-      type: "strength",
-      title: "Strength Training",
-      subtitle: "Deadlift, Squat, Bench Press…",
-      segments: [
-        {
-          id: "deadlift",
-          label: "Deadlift",
-          primary: "50kg",
-          secondary: "6 reps x 3",
-        },
-        {
-          id: "dumbbell_squat_1",
-          label: "Dumbbell Squat",
-          primary: "10kg",
-          secondary: "20 reps x 3",
-        },
-        {
-          id: "barbell_leg_raise",
-          label: "Barbell Leg Raise",
-          primary: "30kg",
-          secondary: "12 reps x 3",
-        },
-        {
-          id: "barbell_row",
-          label: "Barbell Row",
-          primary: "20kg",
-          secondary: "12 reps x 3",
-        },
-        {
-          id: "bench_press",
-          label: "Bench Press",
-          primary: "30kg",
-          secondary: "8 reps x 3",
-        },
-        {
-          id: "dumbbell_squat_2",
-          label: "Dumbbell Squat",
-          primary: "20kg",
-          secondary: "12 reps x 3",
-        },
-      ],
-      notes:
-        "No rush, always focus on form to avoid injury. Take a break max 30 seconds for each set.",
-    },
-    {
-      id: "thu",
-      weekdayLabel: "Thu",
-      dateLabel: "05 MAR",
-      type: "rest",
-      title: "Rest Day",
-      subtitle: "Cross Training or Walking",
-    },
-  ],
 };
 
 export function mapPlanWeekToViewWorkoutWeek(
