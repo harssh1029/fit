@@ -8,7 +8,18 @@ import React, {
   useState,
 } from "react";
 import { StatusBar } from "expo-status-bar";
+import { useFonts } from "expo-font";
 import * as SecureStore from "expo-secure-store";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
+import {
+  PlayfairDisplay_600SemiBold,
+  PlayfairDisplay_700Bold,
+} from "@expo-google-fonts/playfair-display";
 import {
   ActivityIndicator,
   FlatList,
@@ -66,6 +77,7 @@ export { API_BASE_URL } from "./api/client";
 
 import { ThemeToggle } from "./components/ThemeToggle";
 import { styles } from "./styles/appStyles";
+import { fontFamily } from "./styles/typography";
 
 // Re-export styles for feature screens
 export { styles } from "./styles/appStyles";
@@ -75,7 +87,9 @@ import { useWorkoutHistory } from "./hooks/useWorkoutHistory";
 import ChallengesScreen from "./screens/challenges/ChallengesScreen";
 import HomeScreen from "./screens/home/HomeScreen";
 import ExercisesFeatureScreen from "./screens/exercises/ExerciseListScreen";
-import PlansFeatureScreen from "./screens/plans/PlansScreen";
+import PlansFeatureScreen, {
+  PlansCategoryScreen,
+} from "./screens/plans/PlansScreen";
 import PlanDetailScreenV2 from "./screens/plans/PlanDetailScreenV2";
 import CommunityScreen from "./screens/community/CommunityScreen";
 import ConsistencyScreen from "./screens/consistency/ConsistencyScreen";
@@ -126,6 +140,20 @@ import {
 } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
+(Text as any).defaultProps = {
+  ...((Text as any).defaultProps || {}),
+  style: [{ fontFamily: fontFamily.ui }, (Text as any).defaultProps?.style],
+};
+
+(TextInput as any).defaultProps = {
+  ...((TextInput as any).defaultProps || {}),
+  style: [
+    { fontFamily: fontFamily.ui },
+    (TextInput as any).defaultProps?.style,
+  ],
+  placeholderTextColor: (TextInput as any).defaultProps?.placeholderTextColor,
+};
+
 export type Exercise = {
   id: string;
   name: string;
@@ -139,8 +167,11 @@ export type Exercise = {
   thumbnail_url?: string;
   video_url?: string;
   gif_url?: string;
+  has_demo?: boolean;
   image_url?: string;
   instructions?: string[];
+  common_mistakes?: string[];
+  guideline?: string;
   target?: string;
   secondary_targets?: string[];
   body_part?: string;
@@ -148,9 +179,24 @@ export type Exercise = {
 };
 
 export type LevelFilter = "all" | "beginner" | "intermediate" | "advanced";
-export type FilterSheetKey = "muscles" | "mechanic" | "force" | "level" | null;
+export type FilterSheetKey =
+  | "muscles"
+  | "mechanic"
+  | "force"
+  | "level"
+  | "equipment"
+  | null;
 export type MechanicFilter = "all" | "compound" | "isolation";
 export type ForceFilter = "all" | "push" | "pull" | "hold";
+export type EquipmentFilter =
+  | "all"
+  | "bodyweight"
+  | "barbell"
+  | "dumbbell"
+  | "cable"
+  | "machine"
+  | "resistance band"
+  | "kettlebell";
 
 export type ExerciseListResponse = {
   /**
@@ -167,7 +213,7 @@ export type ExerciseListResponse = {
 
 // Page size for the exercises list. This keeps memory usage predictable on
 // mobile while still showing a generous slice of the library.
-export const EXERCISES_PAGE_SIZE = 20;
+export const EXERCISES_PAGE_SIZE = 12;
 
 // Local images for Barbell Bench Press (top and bottom positions)
 const CHEST_PRESS_IMAGE_UP = require("./assets/chest/0.jpg");
@@ -184,6 +230,36 @@ export type MuscleGroupApi = {
 type TrainingCalendarDay = {
   date: string;
   workouts: number;
+};
+
+const TITLE_ACRONYMS = new Set([
+  "HM",
+  "HYROX",
+  "RDL",
+  "VO2",
+  "PR",
+  "HIIT",
+]);
+
+const toEditorialTitle = (value: string | null | undefined) => {
+  const cleaned = (value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned !== cleaned.toUpperCase()) return cleaned;
+
+  return cleaned
+    .toLowerCase()
+    .split(" ")
+    .map((word) =>
+      word
+        .split("-")
+        .map((part) => {
+          const upper = part.toUpperCase();
+          if (TITLE_ACRONYMS.has(upper)) return upper;
+          return part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part;
+        })
+        .join("-"),
+    )
+    .join(" ");
 };
 
 // Lightweight summary used for the Home dashboard active card (workouts / nutrition)
@@ -395,6 +471,7 @@ export const buildExercisesUrl = (
     level?: LevelFilter;
     mechanic?: MechanicFilter;
     force?: ForceFilter;
+    equipment?: EquipmentFilter;
     startsWith?: string | null;
   },
 ): string => {
@@ -424,6 +501,10 @@ export const buildExercisesUrl = (
 
   if (options.force && options.force !== "all") {
     params.push(`force=${encodeURIComponent(options.force)}`);
+  }
+
+  if (options.equipment && options.equipment !== "all") {
+    params.push(`equipment=${encodeURIComponent(options.equipment)}`);
   }
 
   if (options.startsWith && options.startsWith.trim().length > 0) {
@@ -757,6 +838,7 @@ export type Plan = {
   subtitle?: string | null;
   level: "beginner" | "intermediate" | "advanced";
   durationWeeks: number;
+  maxSessionsPerWeek?: number;
   goal: string; // high-level focus of the plan
   summary: string; // what the plan offers structurally
   audience: string; // who this plan is for
@@ -805,10 +887,17 @@ export type ApiPlanExercise = {
 export type ApiPlanDay = {
   id: number | string;
   day_index: number;
+  workout_order?: number;
   title: string;
+  priority?: "P1" | "P2" | "P3";
+  priority_order?: number;
   description: string;
   duration: string;
   day_type: string;
+  intensity?: string;
+  goal?: string;
+  fatigue_score?: number;
+  coach_note?: string;
   workout_template_id: string | null;
   nutrition: unknown;
   supplements: unknown;
@@ -820,6 +909,8 @@ export type ApiPlanWeek = {
   number: number;
   title: string;
   focus: string;
+  coach_note?: string;
+  recovery_priority?: string;
   highlights: string[];
   days?: ApiPlanDay[];
 };
@@ -831,6 +922,7 @@ export type ApiPlan = {
   level: Plan["level"];
   duration_weeks: number;
   default_sessions_per_week?: number;
+  max_sessions_per_week?: number;
   goal: string;
   summary: string;
   audience: string;
@@ -887,6 +979,7 @@ export function mapApiPlan(api: ApiPlan): Plan {
     subtitle: api.subtitle ?? null,
     level: api.level,
     durationWeeks: api.duration_weeks,
+    maxSessionsPerWeek: api.max_sessions_per_week,
     goal: api.goal,
     summary: api.summary,
     audience: api.audience,
@@ -975,6 +1068,7 @@ export type PlanDetail = {
   subtitle?: string | null;
   level: Plan["level"];
   durationWeeks: number;
+  maxSessionsPerWeek?: number;
   goal: string;
   summary: string;
   audience: string;
@@ -1054,6 +1148,7 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
     subtitle: api.subtitle ?? null,
     level: api.level,
     durationWeeks: api.duration_weeks,
+    maxSessionsPerWeek: api.max_sessions_per_week,
     goal: api.goal,
     summary: api.summary,
     audience: api.audience,
@@ -1080,10 +1175,13 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
       number: week.number,
       title: week.title,
       description: week.focus,
+      coachNote: week.coach_note,
+      recoveryPriority: week.recovery_priority,
       days: (week.days ?? []).map((day) => ({
         id: String(day.id),
         day: day.day_index,
-        title: day.title,
+        workoutOrder: day.workout_order ?? day.day_index,
+        title: toEditorialTitle(day.title),
         duration: day.duration,
         type:
           day.day_type === "cardio" || day.day_type === "recovery"
@@ -1283,7 +1381,7 @@ export function buildActiveWorkoutsFromPlan(
       // numeric PlanDay.id is not available on the client for some reason.
       planWeekNumber: weekNumber,
       planDayIndex: day.day,
-      title: day.title || plan.name,
+      title: toEditorialTitle(day.title) || plan.name,
       durationMinutes,
       durationDisplay: day.duration || `${durationMinutes} min`, // Keep original or format
       style,
@@ -1361,7 +1459,7 @@ export function buildActiveNutritionsFromPlan(
 
   const mapped: ActiveWorkoutSummary = {
     id: `${plan.id}_w${weekNumber}_d${day.day}_nutrition`,
-    title: day.title || plan.name,
+    title: toEditorialTitle(day.title) || plan.name,
     durationMinutes: 5,
     style: "Nutrition",
     progressPercent: 0,
@@ -1384,6 +1482,7 @@ export type PlanDayNutrition = {
 export type PlanDayDetail = {
   id: string;
   day: number;
+  workoutOrder?: number;
   title: string;
   exercises: string;
   duration: string;
@@ -1402,6 +1501,8 @@ export type PlanWeekDetail = {
   number: number;
   title: string;
   description: string;
+  coachNote?: string;
+  recoveryPriority?: string;
   days: PlanDayDetail[];
 };
 
@@ -1470,11 +1571,13 @@ export function mapPlanWeekToViewWorkoutWeek(
     weekNumber: week.number,
 
     days: week.days.map((day) => {
+      const visibleDayOrder = day.workoutOrder ?? day.day;
       const weekdayIndex = Math.max(
         0,
-        Math.min(WEEKDAY_LABELS.length - 1, (day.day ?? 1) - 1),
+        Math.min(WEEKDAY_LABELS.length - 1, (visibleDayOrder ?? 1) - 1),
       );
-      const weekdayLabel = WEEKDAY_LABELS[weekdayIndex] ?? `Day ${day.day}`;
+      const weekdayLabel =
+        WEEKDAY_LABELS[weekdayIndex] ?? `Day ${visibleDayOrder}`;
 
       const mappedType: ViewWorkoutDay["type"] =
         day.type === "cardio"
@@ -1489,9 +1592,9 @@ export function mapPlanWeekToViewWorkoutWeek(
       return {
         id: day.id,
         weekdayLabel,
-        dateLabel: `Day ${day.day}`,
+        dateLabel: `Day ${visibleDayOrder}`,
         type: mappedType,
-        title: day.title,
+        title: toEditorialTitle(day.title),
         subtitle: duration
           ? `${duration}${exercisesSummary ? ` • ${exercisesSummary}` : ""}`
           : exercisesSummary,
@@ -1683,6 +1786,7 @@ type HomeStackNavigation = NativeStackNavigationProp<HomeStackParamList>;
 
 export type PlansStackParamList = {
   PlansHome: undefined;
+  PlansCategory: { category: "popular" | "forYou" | "events" | "browse" };
   PlanDetail: { planId: string };
 };
 
@@ -1692,6 +1796,14 @@ const PlansStack = createNativeStackNavigator<PlansStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 
 const App: React.FC = () => {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    PlayfairDisplay_600SemiBold,
+    PlayfairDisplay_700Bold,
+  });
   const [state, setState] = useState<AuthState>({
     loading: true,
     accessToken: null,
@@ -1996,7 +2108,7 @@ const App: React.FC = () => {
   const navigationTheme =
     themeMode === "dark" ? NavigationDarkTheme : NavigationLightTheme;
 
-  if (state.loading) {
+  if (state.loading || !fontsLoaded) {
     return (
       <View style={styles.fullscreenCenter}>
         <ActivityIndicator color={GLASS_ACCENT_GREEN} />
@@ -2037,6 +2149,10 @@ export type PlansHomeProps = NativeStackScreenProps<
   PlansStackParamList,
   "PlansHome"
 >;
+export type PlansCategoryProps = NativeStackScreenProps<
+  PlansStackParamList,
+  "PlansCategory"
+>;
 export type PlanDetailProps = NativeStackScreenProps<
   PlansStackParamList,
   "PlanDetail"
@@ -2062,6 +2178,7 @@ const PlansStackNavigator: React.FC = () => (
     }}
   >
     <PlansStack.Screen name="PlansHome" component={PlansFeatureScreen} />
+    <PlansStack.Screen name="PlansCategory" component={PlansCategoryScreen} />
     <PlansStack.Screen name="PlanDetail" component={PlanDetailScreenV2} />
   </PlansStack.Navigator>
 );
@@ -2153,7 +2270,7 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
     }).start();
   }, [focused, selectionProgress]);
 
-  const activeIconColor = "#FFFFFF";
+  const activeIconColor = isLight ? "#FFFFFF" : "#05070D";
   const inactiveIconColor = isLight ? "#64748B" : "#94A3B8";
   const iconColor = focused ? activeIconColor : inactiveIconColor;
   const iconAnimatedStyle = {
@@ -2208,7 +2325,10 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
       >
         <Ionicons name={iconName} size={21} color={iconColor} />
         {focused && (
-          <Text style={styles.tabBarActiveLabel} numberOfLines={1}>
+          <Text
+            style={[styles.tabBarActiveLabel, isLight && { color: "#FFFFFF" }]}
+            numberOfLines={1}
+          >
             {label}
           </Text>
         )}

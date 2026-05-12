@@ -19,14 +19,14 @@ class PlanWeekInline(admin.TabularInline):
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'level', 'duration_weeks', 'default_sessions_per_week', 'is_active')
+    list_display = ('id', 'name', 'level', 'duration_weeks', 'default_sessions_per_week', 'max_sessions_per_week', 'is_active')
     search_fields = ('id', 'name', 'goal', 'summary')
     inlines = [PlanWeekInline]
 
 
 @admin.register(PlanWeek)
 class PlanWeekAdmin(admin.ModelAdmin):
-    list_display = ('id', 'plan', 'plan_version', 'number', 'title')
+    list_display = ('id', 'plan', 'plan_version', 'number', 'title', 'recovery_priority')
     list_filter = ('plan', 'plan_version')
     search_fields = ('title', 'focus')
 
@@ -38,9 +38,9 @@ class PlanDayExerciseInline(admin.TabularInline):
 
 @admin.register(PlanDay)
 class PlanDayAdmin(admin.ModelAdmin):
-    list_display = ('id', 'plan_week', 'day_index', 'title', 'day_type', 'intensity', 'rpe_target')
-    list_filter = ('plan_week__plan', 'plan_week__plan_version', 'day_type', 'intensity')
-    search_fields = ('title', 'description')
+    list_display = ('id', 'plan_week', 'day_index', 'workout_order', 'priority', 'title', 'day_type', 'intensity', 'fatigue_score')
+    list_filter = ('plan_week__plan', 'plan_week__plan_version', 'priority', 'day_type', 'intensity')
+    search_fields = ('title', 'description', 'goal')
     inlines = [PlanDayExerciseInline]
 
 

@@ -275,7 +275,7 @@ const ChallengesScreen: React.FC = () => {
         style={[styles.planSection, challengeStyles.difficultySection]}
       >
         <View style={challengeStyles.cardsGrid}>
-          {items.map((challenge, index) => {
+          {items.map((challenge) => {
             const status = (challenge.card.status ||
               "locked") as ChallengeStatus;
             const isDone = status === "done";
@@ -296,7 +296,10 @@ const ChallengesScreen: React.FC = () => {
             }
 
             return (
-              <View key={challenge.id} style={challengeStyles.cardGridItem}>
+              <View
+                key={challenge.id}
+                style={challengeStyles.cardGridItem}
+              >
                 <TouchableOpacity
                   activeOpacity={0.9}
                   style={[
@@ -1230,10 +1233,10 @@ const challengeStyles = StyleSheet.create({
     color: "#111827",
   },
   challengeCardBase: {
-    borderRadius: 22,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: "rgba(125,211,252,0.2)",
-    backgroundColor: "rgba(15,23,42,0.84)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: DARK_CARD,
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.18,
@@ -1243,8 +1246,8 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   challengeCardBaseLight: {
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: "#CFE3F7",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E7EB",
     shadowOpacity: 0.1,
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },

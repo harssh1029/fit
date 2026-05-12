@@ -5,7 +5,10 @@ import { useAuth } from "../App";
 import type { ApiPlan, PlanDetail } from "../App";
 import { mapApiPlanDetail } from "../App";
 
-export function usePlanDetail(planId: string | null) {
+export function usePlanDetail(
+	planId: string | null,
+	selectedSessionsPerWeek?: number | null,
+) {
 	const { accessToken, refreshAccessToken, signOut } = useAuth();
 	const [plan, setPlan] = useState<PlanDetail | null>(null);
 	const [loading, setLoading] = useState<boolean>(true);
@@ -32,7 +35,10 @@ export function usePlanDetail(planId: string | null) {
 					headers.Authorization = `Bearer ${tokenToUse}`;
 				}
 
-				let response = await fetch(`${API_BASE_URL}/plans/${planId}/`, {
+				const suffix = selectedSessionsPerWeek
+					? `?sessions_per_week=${selectedSessionsPerWeek}`
+					: "";
+				let response = await fetch(`${API_BASE_URL}/plans/${planId}/${suffix}`, {
 					headers,
 				});
 				if (response.status === 401 && tokenToUse) {
@@ -42,7 +48,7 @@ export function usePlanDetail(planId: string | null) {
 						return;
 					}
 					tokenToUse = refreshed;
-					response = await fetch(`${API_BASE_URL}/plans/${planId}/`, {
+					response = await fetch(`${API_BASE_URL}/plans/${planId}/${suffix}`, {
 						headers: { Authorization: `Bearer ${tokenToUse}` },
 					});
 				}
@@ -72,7 +78,7 @@ export function usePlanDetail(planId: string | null) {
 		return () => {
 			isMounted = false;
 		};
-	}, [planId, accessToken, refreshAccessToken, signOut]);
+	}, [planId, selectedSessionsPerWeek, accessToken, refreshAccessToken, signOut]);
 
 	return { plan, loading, error };
 }

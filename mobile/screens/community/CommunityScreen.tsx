@@ -544,7 +544,7 @@ const FriendSummaryCard: React.FC<{
       style={[
         styles.metricCardLarge,
         isLight && styles.metricCardLargeLight,
-        { borderRadius: 24, paddingVertical: 14, marginTop: 10 },
+        { borderRadius: 26, paddingVertical: 18, marginTop: 12 },
       ]}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -770,10 +770,10 @@ const LeaderboardTab: React.FC<{
   );
 };
 
-const ActivityCard: React.FC<{ item: CommunityActivity; isLight: boolean }> = ({
-  item,
-  isLight,
-}) => {
+const ActivityCard: React.FC<{
+  item: CommunityActivity;
+  isLight: boolean;
+}> = ({ item, isLight }) => {
   const icon =
     item.type === "challenge"
       ? "trophy-outline"
@@ -788,7 +788,7 @@ const ActivityCard: React.FC<{ item: CommunityActivity; isLight: boolean }> = ({
       style={[
         styles.metricCardLarge,
         isLight && styles.metricCardLargeLight,
-        { borderRadius: 18, padding: 13, marginTop: 9 },
+        { borderRadius: 24, padding: 16, marginTop: 12 },
       ]}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>

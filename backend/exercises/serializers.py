@@ -21,6 +21,7 @@ class ExerciseSerializer(serializers.ModelSerializer):
 		slug_field='id',
 	)
 	thumbnail_url = serializers.SerializerMethodField()
+	has_demo = serializers.SerializerMethodField()
 
 	class Meta:
 		model = Exercise
@@ -38,16 +39,32 @@ class ExerciseSerializer(serializers.ModelSerializer):
 			'body_part',
 			'target',
 			'thumbnail_url',
-			'description',
+			'has_demo',
 		]
 
+	def _absolute_url(self, value: str) -> str:
+		if not value:
+			return ''
+		if value.startswith('http://') or value.startswith('https://'):
+			return value
+		request = self.context.get('request')
+		if request:
+			return request.build_absolute_uri(value)
+		return value
+
 	def get_thumbnail_url(self, obj: Exercise) -> str:
-		# List rows should only load optimized still thumbnails. GIF/video media
-		# stays out of paginated responses to keep cloud egress predictable.
-		return obj.image_url or ''
+		return self._absolute_url(obj.image_url or obj.gif_url or '')
+
+	def get_gif_url(self, obj: Exercise) -> str:
+		return self._absolute_url(obj.gif_url or '')
+
+	def get_has_demo(self, obj: Exercise) -> bool:
+		return bool(obj.gif_url)
 
 
 class ExerciseDetailSerializer(ExerciseSerializer):
+	gif_url = serializers.SerializerMethodField()
+
 	class Meta:
 		model = Exercise
 		fields = [
@@ -64,10 +81,13 @@ class ExerciseDetailSerializer(ExerciseSerializer):
 			'body_part',
 			'target',
 			'thumbnail_url',
+			'has_demo',
 			'secondary_targets',
 			'video_url',
 			'gif_url',
 			'image_url',
 			'instructions',
+			'common_mistakes',
+			'guideline',
 			'description',
 		]

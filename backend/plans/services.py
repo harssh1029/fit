@@ -28,6 +28,40 @@ TRAINING_DAY_PATTERNS = {
 }
 
 
+def getVisibleWorkoutsForWeek(week, selectedSessionsPerWeek: int):
+    """Return master-plan workouts visible for a selected weekly rhythm."""
+
+    workouts = list(week.days.all())
+
+    if selectedSessionsPerWeek == 3:
+        visible = [workout for workout in workouts if workout.priority == "P1"]
+    elif selectedSessionsPerWeek == 4:
+        visible = [
+            workout
+            for workout in workouts
+            if workout.priority == "P1"
+            or (workout.priority == "P2" and workout.priority_order == 1)
+        ]
+    elif selectedSessionsPerWeek == 5:
+        visible = [
+            workout
+            for workout in workouts
+            if workout.priority == "P1"
+            or (workout.priority == "P2" and workout.priority_order == 1)
+            or (workout.priority == "P3" and workout.priority_order == 1)
+        ]
+    elif selectedSessionsPerWeek == 6:
+        visible = workouts
+    else:
+        visible = workouts
+
+    visible = sorted(
+        visible,
+        key=lambda workout: (workout.workout_order or workout.day_index, workout.day_index),
+    )
+    return visible[:selectedSessionsPerWeek]
+
+
 class PremiumRequiredError(Exception):
     pass
 
@@ -81,21 +115,46 @@ def _next_training_date(current: date, valid_weekdays: Iterable[int]) -> date:
     return cursor
 
 
-def generateSchedule(planVersionId: str, startDate: str | date):
+def generateSchedule(
+    planVersionId: str,
+    startDate: str | date,
+    training_days_pattern: Iterable[str] | None = None,
+):
     version = (
         PlanVersion.objects.prefetch_related("weeks__days")
         .select_related("plan")
         .get(id=planVersionId)
     )
     start = parse_start_date(startDate)
-    weekdays = [WEEKDAY_INDEX[item] for item in version.training_days_pattern]
+
+    pattern = list(training_days_pattern or []) or list(
+        getattr(version, "training_days_pattern", []) or []
+    )
+    if not pattern:
+        pattern = TRAINING_DAY_PATTERNS.get(version.sessions_per_week, ["MON", "WED", "FRI"])
+
+    weekdays = [WEEKDAY_INDEX[item] for item in pattern if item in WEEKDAY_INDEX]
     cursor = _next_training_date(start, weekdays)
     scheduled = []
 
     plan_days = []
-    for week in version.weeks.all().order_by("number"):
-        for plan_day in week.days.all().order_by("day_index"):
-            plan_days.append((week.number, plan_day))
+    version_weeks = version.weeks.all().order_by("number")
+    if version_weeks.exists():
+        for week in version_weeks:
+            for plan_day in week.days.all().order_by("day_index"):
+                plan_days.append((week.number, plan_day))
+    else:
+        master_weeks = (
+            version.plan.weeks.filter(plan_version__isnull=True)
+            .prefetch_related("days")
+            .order_by("number")
+        )
+        for week in master_weeks:
+            for plan_day in getVisibleWorkoutsForWeek(
+                week,
+                version.sessions_per_week,
+            ):
+                plan_days.append((week.number, plan_day))
 
     for order_index, (week_number, plan_day) in enumerate(plan_days, start=1):
         cursor = _next_training_date(cursor, weekdays)
@@ -142,12 +201,29 @@ def _sync_user_plan_progress(user_plan: UserPlan) -> UserPlan:
 
 
 @transaction.atomic
-def startUserPlan(user, planId: str, sessionsPerWeek: int, startDate: str | date) -> UserPlan:
+def startUserPlan(
+    user,
+    planId: str,
+    sessionsPerWeek: int,
+    startDate: str | date,
+    training_days_pattern: Iterable[str] | None = None,
+) -> UserPlan:
     version = getPlanVersion(planId, sessionsPerWeek)
     if version.is_premium and not user_has_premium(user):
         raise PremiumRequiredError("premium_required")
 
-    schedule = generateSchedule(version.id, startDate)
+    # Prefer an explicit per-user training pattern when provided; otherwise fall
+    # back to the version's configured pattern and finally to a canonical
+    # TRAINING_DAY_PATTERNS entry for this sessions/week.
+    effective_pattern = list(training_days_pattern or []) or list(
+        getattr(version, "training_days_pattern", []) or []
+    )
+    if not effective_pattern:
+        effective_pattern = TRAINING_DAY_PATTERNS.get(
+            version.sessions_per_week, ["MON", "WED", "FRI"]
+        )
+
+    schedule = generateSchedule(version.id, startDate, training_days_pattern=effective_pattern)
     if not schedule:
         raise ValueError("Plan version has no schedulable workouts.")
 
@@ -167,6 +243,7 @@ def startUserPlan(user, planId: str, sessionsPerWeek: int, startDate: str | date
         is_active=True,
         status="active",
         sessions_per_week=version.sessions_per_week,
+        training_days_pattern=effective_pattern,
         start_date=start,
         end_date=end,
         original_end_date=end,
@@ -233,7 +310,13 @@ def recalibrateUserPlan(userPlanId: int) -> UserPlan:
     if not movable:
         return _sync_user_plan_progress(user_plan)
 
-    weekdays = [WEEKDAY_INDEX[item] for item in version.training_days_pattern]
+    pattern = list(getattr(user_plan, "training_days_pattern", []) or []) or list(
+        getattr(version, "training_days_pattern", []) or []
+    )
+    if not pattern:
+        pattern = TRAINING_DAY_PATTERNS.get(version.sessions_per_week, ["MON", "WED", "FRI"])
+
+    weekdays = [WEEKDAY_INDEX[item] for item in pattern if item in WEEKDAY_INDEX]
     cursor = timezone.localdate()
     for workout in movable:
         cursor = _next_training_date(cursor, weekdays)

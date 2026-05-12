@@ -24,13 +24,17 @@ import {
   GLASS_TEXT_MUTED,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
+import { AppTabs, PremiumCard, SectionTitle } from "../../components/PremiumUI";
+import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
 import { API_BASE_URL } from "../../api/client";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import { useWorkoutHistory } from "../../hooks/useWorkoutHistory";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlanDetail } from "../../hooks/usePlanDetail";
+import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
 import BodyMuscleFront, { MuscleSelection } from "../../BodyMuscleFront";
 import { FancyWorkoutTypeIcon } from "../../TrainingDayIcons";
+import { loadExerciseDemoIds } from "../../utils/exerciseLookup";
 
 import {
   useThemeMode,
@@ -43,8 +47,6 @@ import {
   WEEKDAY_LABELS,
   MONTH_LABELS,
   toISODate,
-  addDays,
-  getWeekStart,
   addMonths,
   buildSampleMonthCalendarDays,
   buildMonthCalendarDaysFromDashboard,
@@ -160,6 +162,23 @@ const CUSTOM_WORKOUT_GROUPS = [
   { key: "glutes", label: "Glutes" },
   { key: "legs", label: "Legs" },
 ];
+
+const getMonthWeekIndex = (date: Date) => {
+  const firstDayOfMonth = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    1,
+  ).getDay();
+  return Math.floor((date.getDate() + firstDayOfMonth - 1) / 7);
+};
+
+const getMonthWeekCount = (monthDate: Date) => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  return Math.ceil((firstDayOfMonth + daysInMonth) / 7);
+};
 
 type FitnessTestInputs = {
   age: string;
@@ -342,7 +361,13 @@ const HomeScreen: React.FC = () => {
     reload: reloadMetrics,
   } = useDashboardSummary();
   const { profile } = useUserProfileBasic();
+  const { activeUserPlan } = useActiveUserPlan();
   const activePlanId = profile?.profile.active_plan_id ?? null;
+  const activePlanSessionsPerWeek =
+    activeUserPlan?.plan.id === activePlanId
+      ? activeUserPlan.plan_version?.sessions_per_week ??
+        activeUserPlan.sessions_per_week
+      : null;
   const fitnessTestStorageKey = profile?.id
     ? `fitness_test_result_v1_${profile.id}`
     : "fitness_test_result_v1_guest";
@@ -350,7 +375,7 @@ const HomeScreen: React.FC = () => {
     plan: activePlan,
     loading: activePlanLoading,
     error: activePlanError,
-  } = usePlanDetail(activePlanId);
+  } = usePlanDetail(activePlanId, activePlanSessionsPerWeek);
   const [fitnessTestInputs, setFitnessTestInputs] =
     useState<FitnessTestInputs>(() => getDefaultFitnessTestInputs());
   const [fitnessTestResult, setFitnessTestResult] =
@@ -381,6 +406,12 @@ const HomeScreen: React.FC = () => {
     "workouts",
   );
   const [isAllActiveSheetVisible, setIsAllActiveSheetVisible] = useState(false);
+  const [activeExerciseName, setActiveExerciseName] = useState<string | null>(
+    null,
+  );
+  const [demoExerciseIds, setDemoExerciseIds] = useState<
+    Record<string, string>
+  >({});
   const [allActiveTab, setAllActiveTab] = useState<"workouts" | "nutrition">(
     "workouts",
   );
@@ -513,6 +544,9 @@ const HomeScreen: React.FC = () => {
     d.setHours(0, 0, 0, 0);
     return d;
   });
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(() =>
+    getMonthWeekIndex(new Date()),
+  );
 
   const [exercisePrInputs, setExercisePrInputs] = useState<
     Record<string, { weight: string; sets: string }>
@@ -536,11 +570,32 @@ const HomeScreen: React.FC = () => {
     [activePlan, workoutHistoryItems, todayIso],
   );
 
+  useEffect(() => {
+    let isMounted = true;
+    const names = activeWorkoutItems.flatMap((item) =>
+      (item.exerciseSegments ?? []).map((segment) => segment.label),
+    );
+
+    if (!names.length) {
+      setDemoExerciseIds({});
+      return;
+    }
+
+    void loadExerciseDemoIds(names).then((ids) => {
+      if (isMounted) {
+        setDemoExerciseIds(ids);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkoutItems]);
+
   const activeNutritionItems = useMemo(
     () => buildActiveNutritionsFromPlan(activePlan),
     [activePlan],
   );
-
   // Seed completion state for active workouts based on workout history
   useEffect(() => {
     if (!activeWorkoutItems.length || !workoutHistoryItems.length) {
@@ -639,12 +694,9 @@ const HomeScreen: React.FC = () => {
   for (let i = 0; i < monthSlots.length; i += 7) {
     monthWeeks.push(monthSlots.slice(i, i + 7));
   }
+  const selectedWeekDates = monthWeeks[selectedWeekIndex] ?? monthWeeks[0] ?? [];
+  const selectedWeekLabel = `${monthLabel}, Week ${selectedWeekIndex + 1}`;
 
-  const currentWeekStart = getWeekStart(todayDate);
-  const currentWeekDates: Date[] = [];
-  for (let i = 0; i < 7; i += 1) {
-    currentWeekDates.push(addDays(currentWeekStart, i));
-  }
   const todayWeekday = todayDate.getDay(); // 0 (Sun) - 6 (Sat)
   const todayPlanDayIndex = todayWeekday === 0 ? 7 : todayWeekday;
   const todayPlannedWorkoutType =
@@ -1295,12 +1347,30 @@ const HomeScreen: React.FC = () => {
     });
   };
 
-  const handlePrevMonth = () => {
-    setCurrentMonth((prev) => addMonths(prev, -1));
+  const handlePrevWeek = () => {
+    if (selectedWeekIndex > 0) {
+      setSelectedWeekIndex((prev) => prev - 1);
+      return;
+    }
+
+    setCurrentMonth((prev) => {
+      const next = addMonths(prev, -1);
+      setSelectedWeekIndex(Math.max(0, getMonthWeekCount(next) - 1));
+      return next;
+    });
   };
 
-  const handleNextMonth = () => {
-    setCurrentMonth((prev) => addMonths(prev, 1));
+  const handleNextWeek = () => {
+    if (selectedWeekIndex < monthWeeks.length - 1) {
+      setSelectedWeekIndex((prev) => prev + 1);
+      return;
+    }
+
+    setCurrentMonth((prev) => {
+      const next = addMonths(prev, 1);
+      setSelectedWeekIndex(0);
+      return next;
+    });
   };
 
   const openFitnessTest = () => {
@@ -2458,71 +2528,21 @@ const HomeScreen: React.FC = () => {
         />
 
         {/* Active workouts / nutrition hero card */}
-        <View
+        <PremiumCard
+          isLight={isLight}
           style={[styles.homeHeroCard, isLight && styles.homeHeroCardLight]}
         >
-          {/* Tabs */}
-          <View
-            style={[
-              styles.homeActiveTabsRow,
-              isLight && styles.homeActiveTabsRowLight,
+          <View style={styles.homeHeroCardInner}>
+          <AppTabs
+            tabs={[
+              { key: "workouts", label: "Workouts" },
+              { key: "nutrition", label: "Nutrition" },
             ]}
-          >
-            <TouchableOpacity
-              style={styles.homeActiveTabButton}
-              activeOpacity={0.9}
-              onPress={() => setHomeActiveTab("workouts")}
-            >
-              <Text
-                style={[
-                  styles.homeActiveTabLabel,
-                  isLight && styles.homeActiveTabLabelLight,
-                  homeActiveTab === "workouts" &&
-                    styles.homeActiveTabLabelActive,
-                  homeActiveTab === "workouts" &&
-                    isLight &&
-                    styles.homeActiveTabLabelActiveLight,
-                ]}
-              >
-                Workouts
-              </Text>
-              {homeActiveTab === "workouts" && (
-                <View
-                  style={[
-                    styles.homeActiveTabIndicator,
-                    isLight && styles.homeActiveTabIndicatorLight,
-                  ]}
-                />
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.homeActiveTabButton}
-              activeOpacity={0.9}
-              onPress={() => setHomeActiveTab("nutrition")}
-            >
-              <Text
-                style={[
-                  styles.homeActiveTabLabel,
-                  isLight && styles.homeActiveTabLabelLight,
-                  homeActiveTab === "nutrition" &&
-                    styles.homeActiveTabLabelActive,
-                  homeActiveTab === "nutrition" &&
-                    isLight &&
-                    styles.homeActiveTabLabelActiveLight,
-                ]}
-              >
-                Nutritions
-              </Text>
-              {homeActiveTab === "nutrition" && (
-                <View
-                  style={[
-                    styles.homeActiveTabIndicator,
-                    isLight && styles.homeActiveTabIndicatorLight,
-                  ]}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
+            activeKey={homeActiveTab}
+            isLight={isLight}
+            onChange={(key) => setHomeActiveTab(key as "workouts" | "nutrition")}
+            style={{ marginBottom: 16 }}
+          />
 
           <Text
             style={[styles.homeHeroLabel, isLight && styles.homeHeroLabelLight]}
@@ -2537,7 +2557,7 @@ const HomeScreen: React.FC = () => {
               style={[
                 styles.homeActiveListItem,
                 isLight && styles.homeActiveListItemLight,
-                { marginTop: 12 },
+                { marginTop: 10 },
               ]}
             >
               <View
@@ -2586,7 +2606,7 @@ const HomeScreen: React.FC = () => {
                 style={[
                   styles.homeActiveListItem,
                   isLight && styles.homeActiveListItemLight,
-                  index === 0 && { marginTop: 12 },
+                  index === 0 && { marginTop: 10 },
                 ]}
               >
                 <View
@@ -2753,7 +2773,8 @@ const HomeScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
           )}
-        </View>
+          </View>
+        </PremiumCard>
 
         {/* Training Days calendar */}
         <View style={styles.trainingSection}>
@@ -2769,7 +2790,7 @@ const HomeScreen: React.FC = () => {
             <View style={styles.trainingMonthControls}>
               <TouchableOpacity
                 style={styles.trainingNavButton}
-                onPress={handlePrevMonth}
+                onPress={handlePrevWeek}
                 activeOpacity={0.8}
               >
                 <Ionicons
@@ -2784,11 +2805,11 @@ const HomeScreen: React.FC = () => {
                   isLight && styles.trainingMonthLabelLight,
                 ]}
               >
-                {monthLabel}
+                {selectedWeekLabel}
               </Text>
               <TouchableOpacity
                 style={styles.trainingNavButton}
-                onPress={handleNextMonth}
+                onPress={handleNextWeek}
                 activeOpacity={0.8}
               >
                 <Ionicons
@@ -2800,7 +2821,12 @@ const HomeScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={styles.trainingCalendarContainer}>
+          <View
+            style={[
+              styles.trainingCalendarContainer,
+              isLight && styles.trainingCalendarContainerLight,
+            ]}
+          >
             <View style={styles.trainingWeekdayHeaderRow}>
               {WEEKDAY_LABELS.map((label) => (
                 <View key={label} style={styles.trainingDayColumn}>
@@ -2818,7 +2844,16 @@ const HomeScreen: React.FC = () => {
 
             <View style={styles.trainingMonthGrid}>
               <View style={styles.trainingWeekRow}>
-                {currentWeekDates.map((date) => {
+                {selectedWeekDates.map((date, dayIndex) => {
+                  if (!date) {
+                    return (
+                      <View
+                        key={`empty-${selectedWeekIndex}-${dayIndex}`}
+                        style={styles.trainingDayColumn}
+                      />
+                    );
+                  }
+
                   const iso = toISODate(date);
                   const trainingDay = trainingDays.find(
                     (day) => day.date === iso,
@@ -2880,16 +2915,18 @@ const HomeScreen: React.FC = () => {
 
                   return (
                     <View key={iso} style={styles.trainingDayColumn}>
-                      {showStatusCircle && (
-                        <View style={statusCircleStyles}>
-                          {hasPlannedWorkout && (
-                            <FancyWorkoutTypeIcon
-                              type={plannedWorkoutType as any}
-                              size={22}
-                            />
-                          )}
-                        </View>
-                      )}
+                      <View style={styles.trainingDayMarkerSlot}>
+                        {showStatusCircle && (
+                          <View style={statusCircleStyles}>
+                            {hasPlannedWorkout && (
+                              <FancyWorkoutTypeIcon
+                                type={plannedWorkoutType as any}
+                                size={18}
+                              />
+                            )}
+                          </View>
+                        )}
+                      </View>
                       <Text
                         style={[
                           styles.trainingDayDate,
@@ -3134,23 +3171,26 @@ const HomeScreen: React.FC = () => {
                       : completedNutritions[item.id];
 
                   return (
-                    <View
+                    <PremiumCard
                       key={item.id}
+                      isLight={isLight}
                       style={[
                         styles.homeAllActiveWorkoutCard,
                         isLight && styles.homeAllActiveWorkoutCardLight,
+                        { padding: 0 },
                       ]}
                     >
                       {/* Workout Header */}
                       <View style={styles.homeAllActiveWorkoutHeader}>
                         <View style={styles.homeAllActiveWorkoutTitleRow}>
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
                             <Text
                               style={[
                                 styles.homeAllActiveWorkoutTitle,
                                 isLight &&
                                   styles.homeAllActiveWorkoutTitleLight,
                               ]}
+                              numberOfLines={2}
                             >
                               {item.title}
                             </Text>
@@ -3200,6 +3240,8 @@ const HomeScreen: React.FC = () => {
                               sets: "",
                             };
                             const isSaved = savedExercisePrs[segment.id];
+                            const demoExerciseId =
+                              demoExerciseIds[segment.label];
                             return (
                               <View
                                 key={segment.id}
@@ -3210,16 +3252,36 @@ const HomeScreen: React.FC = () => {
                                 ]}
                               >
                                 {/* Exercise Info */}
-                                <View style={styles.homeAllActiveExerciseInfo}>
-                                  <Text
-                                    style={[
-                                      styles.homeAllActiveExerciseName,
-                                      isLight &&
-                                        styles.homeAllActiveExerciseNameLight,
-                                    ]}
-                                  >
-                                    {segment.label}
-                                  </Text>
+                                <TouchableOpacity
+                                  style={styles.homeAllActiveExerciseInfo}
+                                  activeOpacity={demoExerciseId ? 0.82 : 1}
+                                  disabled={!demoExerciseId}
+                                  onPress={() => {
+                                    if (demoExerciseId) {
+                                      setActiveExerciseName(segment.label);
+                                    }
+                                  }}
+                                >
+                                  <View style={styles.viewWorkoutExerciseTapRow}>
+                                    <Text
+                                      style={[
+                                        styles.homeAllActiveExerciseName,
+                                        isLight &&
+                                          styles.homeAllActiveExerciseNameLight,
+                                        { flex: 1 },
+                                      ]}
+                                      numberOfLines={2}
+                                    >
+                                      {segment.label}
+                                    </Text>
+                                    {demoExerciseId ? (
+                                      <Ionicons
+                                        name="play-circle-outline"
+                                        size={17}
+                                        color={isLight ? "#2563EB" : "#93C5FD"}
+                                      />
+                                    ) : null}
+                                  </View>
                                   <View
                                     style={styles.homeAllActiveExerciseMetaRow}
                                   >
@@ -3253,7 +3315,7 @@ const HomeScreen: React.FC = () => {
                                       </>
                                     )}
                                   </View>
-                                </View>
+                                </TouchableOpacity>
 
                                 {/* Personal Best Input */}
                                 <View style={styles.homeAllActivePrContainer}>
@@ -3374,7 +3436,7 @@ const HomeScreen: React.FC = () => {
                           ))}
                         </View>
                       ) : null}
-                    </View>
+                    </PremiumCard>
                   );
                 })}
               </ScrollView>
@@ -3532,41 +3594,38 @@ const HomeScreen: React.FC = () => {
         </Modal>
 
         {/* Today metrics section */}
-        <View style={styles.homeSectionHeaderRow}>
-          <Text
-            style={[
-              styles.homeSectionTitle,
-              isLight && styles.homeSectionTitleLight,
-            ]}
-          >
-            Today metrics
-          </Text>
-          <TouchableOpacity
-            onPress={openFitnessTest}
-            activeOpacity={0.8}
-            disabled={!isFitnessTestHydrated}
-            style={[
-              styles.homeHeaderRefreshButton,
-              styles.homeHeaderTestButton,
-              isLight && styles.homeHeaderTestButtonLight,
-              !isFitnessTestHydrated && { opacity: 0.5 },
-            ]}
-          >
-            <Ionicons
-              name="pulse-outline"
-              size={16}
-              color={isLight ? "#0070cc" : "#FFFFFF"}
-            />
-            <Text
+        <SectionTitle
+          title="Today metrics"
+          caption="Performance"
+          isLight={isLight}
+          right={
+            <TouchableOpacity
+              onPress={openFitnessTest}
+              activeOpacity={0.8}
+              disabled={!isFitnessTestHydrated}
               style={[
-                styles.homeHeaderTestButtonText,
-                isLight && styles.homeHeaderTestButtonTextLight,
+                styles.homeHeaderRefreshButton,
+                styles.homeHeaderTestButton,
+                isLight && styles.homeHeaderTestButtonLight,
+                !isFitnessTestHydrated && { opacity: 0.5 },
               ]}
             >
-              {hasCompletedFitnessTest ? "Retake test" : "Take the test"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Ionicons
+                name="pulse-outline"
+                size={16}
+                color={isLight ? "#0070cc" : "#FFFFFF"}
+              />
+              <Text
+                style={[
+                  styles.homeHeaderTestButtonText,
+                  isLight && styles.homeHeaderTestButtonTextLight,
+                ]}
+              >
+                {hasCompletedFitnessTest ? "Retake test" : "Take the test"}
+              </Text>
+            </TouchableOpacity>
+          }
+        />
 
         <View style={styles.metricsSection}>
           <TouchableOpacity
@@ -3967,15 +4026,15 @@ const HomeScreen: React.FC = () => {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginTop: 8,
+              marginTop: 4,
             }}
           >
             <View
               style={{
-                flexBasis: 112,
-                maxWidth: 112,
-                height: 165,
-                marginRight: 16,
+                flexBasis: 96,
+                maxWidth: 96,
+                height: 142,
+                marginRight: 10,
               }}
             >
               <BodyMuscleFront
@@ -3997,9 +4056,9 @@ const HomeScreen: React.FC = () => {
                           flexDirection: "row",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          marginVertical: 8,
-                          paddingVertical: isActive ? 4 : 0,
-                          paddingHorizontal: 8,
+                          marginVertical: 4,
+                          paddingVertical: isActive ? 3 : 0,
+                          paddingHorizontal: 7,
                           borderRadius: isActive ? 999 : 0,
                           backgroundColor: isActive
                             ? "rgba(148,163,184,0.18)"
@@ -4056,7 +4115,8 @@ const HomeScreen: React.FC = () => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                marginTop: 12,
+                marginTop: 8,
+                flexWrap: "wrap",
               }}
             >
               {["Recruit", "Soldier", "Warrior", "Beast", "Legend"].map(
@@ -4068,10 +4128,11 @@ const HomeScreen: React.FC = () => {
                     <View
                       key={rank}
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        marginRight: 12,
-                      }}
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginRight: 8,
+                          marginBottom: 4,
+                        }}
                     >
                       <View
                         style={{
@@ -4080,7 +4141,7 @@ const HomeScreen: React.FC = () => {
                           borderRadius: 999,
                           backgroundColor: color,
                           marginRight: 4,
-                          marginTop: 6,
+                          marginTop: 0,
                         }}
                       />
                       <Text
@@ -4103,6 +4164,15 @@ const HomeScreen: React.FC = () => {
       {renderFitnessTestModal()}
       {renderCustomWorkoutModal()}
       {renderMetricTooltip()}
+      <ExerciseDetailSheet
+        visible={!!activeExerciseName}
+        isLight={isLight}
+        exerciseId={
+          activeExerciseName ? demoExerciseIds[activeExerciseName] : null
+        }
+        exerciseName={activeExerciseName}
+        onClose={() => setActiveExerciseName(null)}
+      />
     </>
   );
 };

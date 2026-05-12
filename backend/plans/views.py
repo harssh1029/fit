@@ -32,6 +32,19 @@ class PlanListView(generics.ListAPIView):
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["include_weeks"] = False
+        sessions = self.request.query_params.get("sessions_per_week") or self.request.query_params.get(
+            "sessionsPerWeek"
+        )
+        if sessions is not None:
+            try:
+                context["selected_sessions_per_week"] = int(sessions)
+            except (TypeError, ValueError):
+                pass
+        return context
+
 
 class PlanDetailView(generics.RetrieveAPIView):
     """Read-only plan detail including weeks, days, exercises, nutrition, supplements."""
@@ -42,6 +55,19 @@ class PlanDetailView(generics.RetrieveAPIView):
     )
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["include_weeks"] = True
+        sessions = self.request.query_params.get("sessions_per_week") or self.request.query_params.get(
+            "sessionsPerWeek"
+        )
+        if sessions is not None:
+            try:
+                context["selected_sessions_per_week"] = int(sessions)
+            except (TypeError, ValueError):
+                pass
+        return context
 
 
 class OptOutPlanView(APIView):
@@ -359,6 +385,9 @@ class StartUserPlanView(APIView):
             "sessions_per_week"
         )
         start_date = request.data.get("startDate") or request.data.get("start_date")
+        training_days = request.data.get("trainingDaysPattern") or request.data.get(
+            "training_days_pattern"
+        )
 
         if not plan_id or sessions_per_week is None or not start_date:
             return Response(
@@ -366,12 +395,25 @@ class StartUserPlanView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Normalize training_days to a simple list of weekday codes like
+        # ["MON", "WED", "FRI"]. If the client omits this, we fall back to the
+        # PlanVersion's configured pattern inside startUserPlan.
+        if isinstance(training_days, (list, tuple)):
+            training_days_pattern = [
+                str(item).upper()
+                for item in training_days
+                if isinstance(item, str) and item
+            ]
+        else:
+            training_days_pattern = None
+
         try:
             user_plan = startUserPlan(
                 request.user,
                 str(plan_id),
                 int(sessions_per_week),
                 start_date,
+                training_days_pattern=training_days_pattern,
             )
         except PremiumRequiredError:
             return Response(

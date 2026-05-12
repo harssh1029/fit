@@ -9,7 +9,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  PanResponder,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +17,7 @@ import { API_BASE_URL } from "../../api/client";
 import BodyMuscleFront, { MuscleName } from "../../BodyMuscleFront";
 import BodyMuscleBack from "../../BodyMuscleBack";
 import { AppHeader } from "../../components/AppHeader";
+import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
 import { FilterChipRow } from "../../components/FilterChipRow";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { GLASS_ACCENT_GREEN, PS_BLUE } from "../../styles/theme";
@@ -36,17 +36,16 @@ import type {
   LevelFilter,
   MechanicFilter,
   ForceFilter,
+  EquipmentFilter,
   MuscleGroupApi,
 } from "../../App";
-
-const CHEST_PRESS_IMAGE_UP = require("../../assets/chest/0.jpg");
-const CHEST_PRESS_IMAGE_DOWN = require("../../assets/chest/1.jpg");
 
 const EXERCISE_FILTER_CHIPS: {
   key: Exclude<FilterSheetKey, null>;
   label: string;
 }[] = [
   { key: "muscles", label: "Muscles" },
+  { key: "equipment", label: "Equipment" },
   { key: "level", label: "Level" },
   { key: "mechanic", label: "Mechanic" },
   { key: "force", label: "Force" },
@@ -59,7 +58,6 @@ const ExerciseListScreen: React.FC = () => {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(
     null,
   );
-  const [heroImageIndex, setHeroImageIndex] = useState(0);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [muscleGroups, setMuscleGroups] = useState<MuscleGroupApi[]>([]);
   const [nextExercisesPageUrl, setNextExercisesPageUrl] = useState<
@@ -88,15 +86,18 @@ const ExerciseListScreen: React.FC = () => {
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [mechanicFilter, setMechanicFilter] = useState<MechanicFilter>("all");
   const [forceFilter, setForceFilter] = useState<ForceFilter>("all");
+  const [equipmentFilter, setEquipmentFilter] =
+    useState<EquipmentFilter>("all");
   const [draftLevelFilter, setDraftLevelFilter] =
     useState<LevelFilter>("all");
   const [draftMechanicFilter, setDraftMechanicFilter] =
     useState<MechanicFilter>("all");
   const [draftForceFilter, setDraftForceFilter] = useState<ForceFilter>("all");
+  const [draftEquipmentFilter, setDraftEquipmentFilter] =
+    useState<EquipmentFilter>("all");
   const [activeAlphabetLetter, setActiveAlphabetLetter] = useState<
     string | null
   >(null);
-  const [exerciseDetailLoading, setExerciseDetailLoading] = useState(false);
 
   const { profile } = useUserProfileBasic();
   const exercisesUserName =
@@ -119,58 +120,8 @@ const ExerciseListScreen: React.FC = () => {
     return () => clearTimeout(handle);
   }, [searchQuery]);
 
-  const selectedExerciseDetail = useMemo(() => {
-    if (!selectedExercise) {
-      return null;
-    }
-
-    const primaryMusclesLabel =
-      selectedExercise.primary_muscles.length > 0
-        ? selectedExercise.primary_muscles.join(", ")
-        : null;
-
-    const levelLabel = selectedExercise.level
-      ? selectedExercise.level.charAt(0).toUpperCase() +
-        selectedExercise.level.slice(1)
-      : "";
-
-    const equipmentLabel =
-      selectedExercise.equipment && selectedExercise.equipment.length > 0
-        ? selectedExercise.equipment[0]
-        : null;
-
-    const aboutText =
-      selectedExercise.description ||
-      "Strengthen the primary target muscles with controlled repetitions and focus on good technique.";
-
-    const howToPerformSteps =
-      selectedExercise.instructions && selectedExercise.instructions.length > 0
-        ? selectedExercise.instructions
-        : [
-            "Start with a light warm-up set and focus on your setup and alignment.",
-            "Lower the weight under control, keeping a stable brace throughout the movement.",
-            "Drive back to the start position without bouncing or rushing the reps.",
-          ];
-
-    const commonMistakes = [
-      "Using more weight than you can control with solid technique.",
-      "Letting posture or joint alignment collapse at the bottom of the rep.",
-      "Relying on momentum instead of controlled, smooth repetitions.",
-    ];
-
-    return {
-      primaryMusclesLabel,
-      levelLabel,
-      equipmentLabel,
-      aboutText,
-      howToPerformSteps,
-      commonMistakes,
-    };
-  }, [selectedExercise]);
-
-  // Initial load: fetch the first page of exercises and the full list of
-  // muscle groups. This gives us the metadata we need for later filter
-  // requests, while keeping the initial payload small via pagination.
+  // Initial load only fetches muscle metadata for the body-map filters.
+  // Exercise rows are fetched lazily when the list view opens.
   useEffect(() => {
     let isMounted = true;
 
@@ -179,27 +130,12 @@ const ExerciseListScreen: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const [exercisesResponse, musclesResponse] = await Promise.all([
-          fetch(
-            buildExercisesUrl(API_BASE_URL, {
-              limit: EXERCISES_PAGE_SIZE,
-            }),
-          ),
-          fetch(`${API_BASE_URL}/muscles/`),
-        ]);
-
-        if (!exercisesResponse.ok) {
-          throw new Error(
-            `Failed to load exercises (${exercisesResponse.status})`,
-          );
-        }
+        const musclesResponse = await fetch(`${API_BASE_URL}/muscles/`);
 
         if (!musclesResponse.ok) {
           throw new Error(`Failed to load muscles (${musclesResponse.status})`);
         }
 
-        const exercisesJson =
-          (await exercisesResponse.json()) as ExerciseListResponse;
         const musclesJson = await musclesResponse.json();
 
         // The muscles endpoint may be paginated ({ results: [...] }) or a raw list.
@@ -211,9 +147,6 @@ const ExerciseListScreen: React.FC = () => {
         }
 
         if (isMounted) {
-          setExercises(exercisesJson.results ?? []);
-          setNextExercisesPageUrl(exercisesJson.next ?? null);
-          setExerciseCount(exercisesJson.count ?? null);
           setMuscleGroups(muscleList);
         }
       } catch (err) {
@@ -280,6 +213,7 @@ const ExerciseListScreen: React.FC = () => {
           level: levelFilter,
           mechanic: mechanicFilter,
           force: forceFilter,
+          equipment: equipmentFilter,
           startsWith: activeAlphabetLetter,
         });
 
@@ -321,6 +255,7 @@ const ExerciseListScreen: React.FC = () => {
     levelFilter,
     mechanicFilter,
     forceFilter,
+    equipmentFilter,
     activeAlphabetLetter,
   ]);
 
@@ -334,6 +269,7 @@ const ExerciseListScreen: React.FC = () => {
     setLevelFilter("all");
     setMechanicFilter("all");
     setForceFilter("all");
+    setEquipmentFilter("all");
     setActiveFilterSheet(null);
     setActiveFilterMuscleNames(selectedMuscles);
     setActiveAlphabetLetter(null);
@@ -350,6 +286,7 @@ const ExerciseListScreen: React.FC = () => {
     setLevelFilter("all");
     setMechanicFilter("all");
     setForceFilter("all");
+    setEquipmentFilter("all");
     setActiveAlphabetLetter(null);
     setActiveFilterSheet(null);
   };
@@ -370,6 +307,8 @@ const ExerciseListScreen: React.FC = () => {
       setDraftMechanicFilter(mechanicFilter);
     } else if (chipKey === "force") {
       setDraftForceFilter(forceFilter);
+    } else if (chipKey === "equipment") {
+      setDraftEquipmentFilter(equipmentFilter);
     }
     setActiveFilterSheet(chipKey);
   };
@@ -382,6 +321,7 @@ const ExerciseListScreen: React.FC = () => {
     setLevelFilter(draftLevelFilter);
     setMechanicFilter(draftMechanicFilter);
     setForceFilter(draftForceFilter);
+    setEquipmentFilter(draftEquipmentFilter);
     setActiveAlphabetLetter(null);
     setActiveFilterSheet(null);
   };
@@ -418,51 +358,13 @@ const ExerciseListScreen: React.FC = () => {
     }
   };
 
-  const handleExercisePress = async (exercise: Exercise) => {
+  const handleExercisePress = (exercise: Exercise) => {
     setSelectedExercise(exercise);
-    setHeroImageIndex(0);
-    setExerciseDetailLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/exercises/${exercise.id}/`);
-      if (!response.ok) return;
-      const detail = (await response.json()) as Exercise;
-      setSelectedExercise(detail);
-    } finally {
-      setExerciseDetailLoading(false);
-    }
   };
 
   const handleCloseExerciseDetail = () => {
     setSelectedExercise(null);
   };
-
-  const heroImages = useMemo(() => {
-    const remote =
-      selectedExercise?.image_url ||
-      selectedExercise?.gif_url ||
-      selectedExercise?.thumbnail_url;
-    return remote
-      ? [{ uri: remote }, CHEST_PRESS_IMAGE_UP, CHEST_PRESS_IMAGE_DOWN]
-      : [CHEST_PRESS_IMAGE_UP, CHEST_PRESS_IMAGE_DOWN];
-  }, [selectedExercise]);
-
-  const heroPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dx) > 10,
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx < -40) {
-            setHeroImageIndex((prev) =>
-              prev < heroImages.length - 1 ? prev + 1 : prev,
-            );
-          } else if (gestureState.dx > 40) {
-            setHeroImageIndex((prev) => (prev > 0 ? prev - 1 : prev));
-          }
-        },
-      }),
-    [heroImages.length],
-  );
 
   const renderSingleSelectFilterSheet = <T extends string,>({
     title,
@@ -594,6 +496,27 @@ const ExerciseListScreen: React.FC = () => {
         options,
         value: draftForceFilter,
         onSelect: setDraftForceFilter,
+      });
+    }
+
+    if (activeFilterSheet === "equipment") {
+      const options: { key: EquipmentFilter; label: string }[] = [
+        { key: "all", label: "All equipment" },
+        { key: "bodyweight", label: "Bodyweight" },
+        { key: "barbell", label: "Barbell" },
+        { key: "dumbbell", label: "Dumbbell" },
+        { key: "cable", label: "Cable" },
+        { key: "machine", label: "Machine" },
+        { key: "resistance band", label: "Band" },
+        { key: "kettlebell", label: "Kettlebell" },
+      ];
+
+      return renderSingleSelectFilterSheet({
+        title: "Select equipment",
+        subtitle: "Filter by the main equipment used for the movement.",
+        options,
+        value: draftEquipmentFilter,
+        onSelect: setDraftEquipmentFilter,
       });
     }
 
@@ -812,7 +735,9 @@ const ExerciseListScreen: React.FC = () => {
             }
 
             if (chip.key === "mechanic") {
-              return mechanicFilter !== "all" || activeFilterSheet === "mechanic";
+              return (
+                mechanicFilter !== "all" || activeFilterSheet === "mechanic"
+              );
             }
 
             if (chip.key === "level") {
@@ -821,6 +746,12 @@ const ExerciseListScreen: React.FC = () => {
 
             if (chip.key === "force") {
               return forceFilter !== "all" || activeFilterSheet === "force";
+            }
+
+            if (chip.key === "equipment") {
+              return (
+                equipmentFilter !== "all" || activeFilterSheet === "equipment"
+              );
             }
 
             return false;
@@ -885,12 +816,13 @@ const ExerciseListScreen: React.FC = () => {
               paddingTop: 4,
               paddingRight: 34,
             }}
-            initialNumToRender={8}
-            maxToRenderPerBatch={8}
-            windowSize={5}
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            updateCellsBatchingPeriod={80}
+            windowSize={4}
             removeClippedSubviews
             onEndReached={handleLoadMoreExercises}
-            onEndReachedThreshold={0.5}
+            onEndReachedThreshold={0.35}
             ListFooterComponent={
               isLoadingMoreExercises ? (
                 <View style={{ paddingVertical: 16 }}>
@@ -903,7 +835,7 @@ const ExerciseListScreen: React.FC = () => {
                 item={item}
                 previousItem={index > 0 ? finalExercises[index - 1] : null}
                 isLight={isLight}
-                onPress={() => void handleExercisePress(item)}
+                onPress={() => handleExercisePress(item)}
               />
             )}
           />
@@ -939,288 +871,12 @@ const ExerciseListScreen: React.FC = () => {
           </View>
         </View>
 
-        {!!selectedExercise && (
-          <Modal
-            visible
-            transparent
-            animationType="slide"
-            onRequestClose={handleCloseExerciseDetail}
-          >
-            <View style={styles.exerciseDetailModalRoot}>
-              <TouchableOpacity
-                style={styles.exerciseDetailModalBackdrop}
-                activeOpacity={1}
-                onPress={handleCloseExerciseDetail}
-              />
-              <View
-                style={[
-                  styles.exerciseDetailModalCard,
-                  isLight && styles.exerciseDetailModalCardLight,
-                ]}
-              >
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 24 }}
-                >
-                  <View
-                    style={styles.exerciseDetailHero}
-                    {...heroPanResponder.panHandlers}
-                  >
-                    <View style={styles.exerciseDetailHeroImageWrapper}>
-                      <Image
-                        source={heroImages[heroImageIndex]}
-                        style={styles.exerciseDetailHeroImage}
-                        resizeMode="contain"
-                      />
-                    </View>
-
-                    {heroImages.length > 1 && (
-                      <>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          style={[
-                            styles.exerciseDetailHeroArrow,
-                            styles.exerciseDetailHeroArrowLeft,
-                            heroImageIndex === 0 && { opacity: 0.35 },
-                          ]}
-                          onPress={() => {
-                            if (heroImageIndex > 0) {
-                              setHeroImageIndex(heroImageIndex - 1);
-                            }
-                          }}
-                        >
-                          <Ionicons
-                            name="chevron-back"
-                            size={18}
-                            color="#E5E7EB"
-                          />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          style={[
-                            styles.exerciseDetailHeroArrow,
-                            styles.exerciseDetailHeroArrowRight,
-                            heroImageIndex === heroImages.length - 1 && {
-                              opacity: 0.35,
-                            },
-                          ]}
-                          onPress={() => {
-                            if (heroImageIndex < heroImages.length - 1) {
-                              setHeroImageIndex(heroImageIndex + 1);
-                            }
-                          }}
-                        >
-                          <Ionicons
-                            name="chevron-forward"
-                            size={18}
-                            color="#E5E7EB"
-                          />
-                        </TouchableOpacity>
-                      </>
-                    )}
-                    {exerciseDetailLoading && (
-                      <View style={exerciseStyles.detailLoadingOverlay}>
-                        <ActivityIndicator color={GLASS_ACCENT_GREEN} />
-                      </View>
-                    )}
-
-                    {selectedExerciseDetail?.primaryMusclesLabel && (
-                      <View style={styles.exerciseDetailHeroTagRow}>
-                        <View style={styles.exerciseTagPill}>
-                          <Text style={styles.exerciseTagLabel}>
-                            {selectedExerciseDetail.primaryMusclesLabel.toUpperCase()}
-                          </Text>
-                        </View>
-                        {selectedExerciseDetail.levelLabel ? (
-                          <View style={styles.exerciseMetaPill}>
-                            <Ionicons
-                              name="flame-outline"
-                              size={14}
-                              color={isLight ? "#0F172A" : "#E5E7EB"}
-                            />
-                            <Text
-                              style={[
-                                styles.exerciseMetaPillLabel,
-                                isLight
-                                  ? styles.exerciseMetaPillLabelLight
-                                  : styles.exerciseMetaPillLabelDark,
-                              ]}
-                            >
-                              {selectedExerciseDetail.levelLabel}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.exerciseDetailBody}>
-                    {selectedExercise && (
-                      <>
-                        <Text
-                          style={[
-                            styles.exerciseCardTitle,
-                            isLight
-                              ? styles.exerciseCardTitleLight
-                              : styles.exerciseCardTitleDark,
-                          ]}
-                        >
-                          {selectedExercise.name}
-                        </Text>
-
-                        <View style={styles.exerciseDetailMetaRow}>
-                          {selectedExerciseDetail?.equipmentLabel && (
-                            <View style={styles.exerciseDetailMetaItem}>
-                              <Text style={styles.exerciseDetailMetaLabel}>
-                                Equipment
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.exerciseDetailMetaValue,
-                                  isLight
-                                    ? styles.exerciseDetailMetaValueLight
-                                    : styles.exerciseDetailMetaValueDark,
-                                ]}
-                              >
-                                {selectedExerciseDetail.equipmentLabel}
-                              </Text>
-                            </View>
-                          )}
-
-                          {selectedExerciseDetail?.primaryMusclesLabel && (
-                            <View style={styles.exerciseDetailMetaItem}>
-                              <Text style={styles.exerciseDetailMetaLabel}>
-                                Target
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.exerciseDetailMetaValue,
-                                  isLight
-                                    ? styles.exerciseDetailMetaValueLight
-                                    : styles.exerciseDetailMetaValueDark,
-                                ]}
-                              >
-                                {selectedExerciseDetail.primaryMusclesLabel}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        {selectedExerciseDetail?.aboutText && (
-                          <View style={styles.exerciseDetailSection}>
-                            <Text
-                              style={[
-                                styles.exerciseDetailSectionTitle,
-                                isLight &&
-                                  styles.exerciseDetailSectionTitleLight,
-                              ]}
-                            >
-                              About this exercise
-                            </Text>
-                            <Text
-                              style={[
-                                styles.exerciseDetailSectionText,
-                                isLight &&
-                                  styles.exerciseDetailSectionTextLight,
-                              ]}
-                            >
-                              {selectedExerciseDetail.aboutText}
-                            </Text>
-                          </View>
-                        )}
-
-                        {selectedExerciseDetail?.howToPerformSteps && (
-                          <View style={styles.exerciseDetailSection}>
-                            <Text
-                              style={[
-                                styles.exerciseDetailSectionTitle,
-                                isLight &&
-                                  styles.exerciseDetailSectionTitleLight,
-                              ]}
-                            >
-                              How to perform
-                            </Text>
-                            {selectedExerciseDetail.howToPerformSteps.map(
-                              (step, index) => (
-                                <View
-                                  key={index}
-                                  style={styles.exerciseDetailBulletRow}
-                                >
-                                  <Text style={styles.exerciseDetailBulletDot}>
-                                    •
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.exerciseDetailSectionText,
-                                      isLight &&
-                                        styles.exerciseDetailSectionTextLight,
-                                    ]}
-                                  >
-                                    {step}
-                                  </Text>
-                                </View>
-                              ),
-                            )}
-                          </View>
-                        )}
-
-                        {selectedExerciseDetail?.commonMistakes && (
-                          <View style={styles.exerciseDetailSection}>
-                            <Text
-                              style={[
-                                styles.exerciseDetailSectionTitle,
-                                isLight &&
-                                  styles.exerciseDetailSectionTitleLight,
-                              ]}
-                            >
-                              Common mistakes
-                            </Text>
-                            {selectedExerciseDetail.commonMistakes.map(
-                              (mistake, index) => (
-                                <View
-                                  key={index}
-                                  style={styles.exerciseDetailBulletRow}
-                                >
-                                  <Text style={styles.exerciseDetailBulletDot}>
-                                    •
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.exerciseDetailSectionText,
-                                      isLight &&
-                                        styles.exerciseDetailSectionTextLight,
-                                    ]}
-                                  >
-                                    {mistake}
-                                  </Text>
-                                </View>
-                              ),
-                            )}
-                          </View>
-                        )}
-                      </>
-                    )}
-                  </View>
-                </ScrollView>
-
-                <TouchableOpacity
-                  style={[
-                    styles.exerciseDetailCloseButton,
-                    isLight && styles.exerciseDetailCloseButtonLight,
-                  ]}
-                  onPress={handleCloseExerciseDetail}
-                >
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={isLight ? "#0F172A" : "#E5E7EB"}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        )}
+        <ExerciseDetailSheet
+          visible={!!selectedExercise}
+          isLight={isLight}
+          initialExercise={selectedExercise}
+          onClose={handleCloseExerciseDetail}
+        />
 
         <TouchableOpacity
           style={[
@@ -1254,6 +910,7 @@ const ExerciseListScreen: React.FC = () => {
           setLevelFilter("all");
           setMechanicFilter("all");
           setForceFilter("all");
+          setEquipmentFilter("all");
           setActiveAlphabetLetter(null);
           setActiveFilterSheet(null);
           setShowAllExercises(true);
@@ -1413,6 +1070,11 @@ const ExerciseListRow: React.FC<{
   const previousLetter = previousItem ? firstLetterForExercise(previousItem) : null;
   const showHeader = letter !== previousLetter;
   const thumbnailUrl = item.thumbnail_url || item.image_url || "";
+  const [thumbLoading, setThumbLoading] = useState(!!thumbnailUrl);
+
+  useEffect(() => {
+    setThumbLoading(!!thumbnailUrl);
+  }, [thumbnailUrl]);
 
   return (
     <View>
@@ -1443,11 +1105,20 @@ const ExerciseListRow: React.FC<{
           {thumbnailUrl ? (
             <>
               <Image
+                key={thumbnailUrl}
                 source={{ uri: thumbnailUrl }}
                 style={exerciseStyles.thumbImage}
-                resizeMode="cover"
+                resizeMode="contain"
+                onLoadStart={() => setThumbLoading(true)}
+                onLoadEnd={() => setThumbLoading(false)}
+                onError={() => setThumbLoading(false)}
               />
               <View pointerEvents="none" style={exerciseStyles.thumbGloss} />
+              {thumbLoading ? (
+                <View style={exerciseStyles.thumbLoadingOverlay}>
+                  <ActivityIndicator size="small" color={GLASS_ACCENT_GREEN} />
+                </View>
+              ) : null}
             </>
           ) : (
             <Ionicons
@@ -1456,6 +1127,11 @@ const ExerciseListRow: React.FC<{
               color={isLight ? "#64748B" : "#94A3B8"}
             />
           )}
+          {item.has_demo ? (
+            <View style={exerciseStyles.demoBadge}>
+              <Ionicons name="play" size={10} color="#FFFFFF" />
+            </View>
+          ) : null}
         </View>
         <View style={exerciseStyles.compactTextBlock}>
           <Text
@@ -1520,38 +1196,38 @@ const exerciseStyles = StyleSheet.create({
     color: "#0F172A",
   },
   compactCard: {
-    minHeight: 76,
+    minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
-    borderRadius: 17,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.16)",
-    backgroundColor: "rgba(17,24,39,0.9)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#111827",
     overflow: "hidden",
     shadowColor: "#000000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
   compactCardLight: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#DDE3ED",
-    shadowColor: "#64748B",
-    shadowOpacity: 0.07,
+    borderColor: "#E5E7EB",
+    shadowColor: "#111827",
+    shadowOpacity: 0.06,
   },
   thumbWrap: {
-    width: 78,
-    height: 76,
+    width: 82,
+    height: 78,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "#F8FAFC",
     borderRightWidth: 1,
     borderRightColor: "rgba(148,163,184,0.14)",
   },
   thumbWrapLight: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FFFFFF",
     borderRightColor: "#E2E8F0",
   },
   thumbImage: {
@@ -1564,7 +1240,26 @@ const exerciseStyles = StyleSheet.create({
     left: 0,
     right: 0,
     height: "42%",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  thumbLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.18)",
+  },
+  demoBadge: {
+    position: "absolute",
+    right: 7,
+    bottom: 7,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563EB",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.72)",
   },
   compactTextBlock: {
     flex: 1,

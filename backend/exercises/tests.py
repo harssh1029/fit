@@ -76,7 +76,7 @@ class ExerciseEndpointsTests(APITestCase):
 		response = self.client.get('/api/v1/exercises/', {'muscles': 'chest'})
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		ids = {item['id'] for item in response.data['results']}
-		self.assertIn('chest_demo', ids)
+		self.assertTrue(any(ex_id.startswith('local_chest_') for ex_id in ids))
 
 	def test_filter_exercises_by_multiple_muscles(self):
 		response = self.client.get(
@@ -84,27 +84,45 @@ class ExerciseEndpointsTests(APITestCase):
 		)
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		ids = {item['id'] for item in response.data['results']}
-		self.assertIn('chest_demo', ids)
-		self.assertIn('biceps_demo', ids)
-		self.assertIn('hamstrings_demo', ids)
+		self.assertTrue(
+			any(
+				ex_id.startswith(('local_chest_', 'local_upper_arms_', 'local_upper_legs_'))
+				for ex_id in ids
+			)
+		)
 
 	def test_filter_exercises_for_single_body_part(self):
 		response = self.client.get('/api/v1/exercises/', {'muscles': 'calves'})
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		ids = {item['id'] for item in response.data['results']}
-		self.assertIn('calves_demo', ids)
+		self.assertTrue(any(ex_id.startswith('local_lower_legs_') for ex_id in ids))
 
-	def test_list_omits_heavy_media_and_detail_includes_it(self):
+	def test_list_uses_thumbnail_media_and_detail_includes_gif_metadata(self):
 		self.exercise.image_url = 'https://cdn.example.com/chest-thumb.webp'
 		self.exercise.gif_url = 'https://cdn.example.com/chest-demo.gif'
 		self.exercise.video_url = 'https://cdn.example.com/chest-demo.mp4'
-		self.exercise.save(update_fields=['image_url', 'gif_url', 'video_url'])
+		self.exercise.instructions = ['Set up with control.']
+		self.exercise.common_mistakes = ['Do not rush the rep.']
+		self.exercise.guideline = 'Keep the rep smooth.'
+		self.exercise.save(
+			update_fields=[
+				'image_url',
+				'gif_url',
+				'video_url',
+				'instructions',
+				'common_mistakes',
+				'guideline',
+			]
+		)
 
-		list_response = self.client.get('/api/v1/exercises/', {'muscles': 'chest'})
+		list_response = self.client.get(
+			'/api/v1/exercises/', {'search': 'Chest Demo Exercise'}
+		)
 		item = next(
 			row for row in list_response.data['results'] if row['id'] == self.exercise.id
 		)
 		self.assertEqual(item['thumbnail_url'], self.exercise.image_url)
+		self.assertTrue(item['has_demo'])
 		self.assertNotIn('gif_url', item)
 		self.assertNotIn('video_url', item)
 
@@ -112,6 +130,22 @@ class ExerciseEndpointsTests(APITestCase):
 		self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
 		self.assertEqual(detail_response.data['gif_url'], self.exercise.gif_url)
 		self.assertEqual(detail_response.data['video_url'], self.exercise.video_url)
+		self.assertEqual(detail_response.data['instructions'], ['Set up with control.'])
+		self.assertEqual(detail_response.data['common_mistakes'], ['Do not rush the rep.'])
+		self.assertEqual(detail_response.data['guideline'], 'Keep the rep smooth.')
+
+	def test_list_thumbnail_falls_back_to_gif_without_exposing_gif_url(self):
+		self.exercise.image_url = ''
+		self.exercise.gif_url = 'https://cdn.example.com/chest-demo.gif'
+		self.exercise.save(update_fields=['image_url', 'gif_url'])
+
+		response = self.client.get(
+			'/api/v1/exercises/', {'search': 'Chest Demo Exercise'}
+		)
+		item = next(row for row in response.data['results'] if row['id'] == self.exercise.id)
+		self.assertEqual(item['thumbnail_url'], self.exercise.gif_url)
+		self.assertTrue(item['has_demo'])
+		self.assertNotIn('gif_url', item)
 
 	def test_server_side_level_mechanic_and_force_filters(self):
 		self.exercise.level = 'advanced'
@@ -121,7 +155,24 @@ class ExerciseEndpointsTests(APITestCase):
 
 		response = self.client.get(
 			'/api/v1/exercises/',
-			{'level': 'advanced', 'mechanic': 'isolation', 'force': 'push'},
+			{
+				'level': 'advanced',
+				'mechanic': 'isolation',
+				'force': 'push',
+				'search': 'Chest Demo Exercise',
+			},
+		)
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		ids = {item['id'] for item in response.data['results']}
+		self.assertIn(self.exercise.id, ids)
+
+	def test_server_side_equipment_filter(self):
+		self.exercise.equipment = ['barbell', 'bench']
+		self.exercise.save(update_fields=['equipment'])
+
+		response = self.client.get(
+			'/api/v1/exercises/',
+			{'equipment': 'barbell', 'search': 'Chest Demo Exercise'},
 		)
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		ids = {item['id'] for item in response.data['results']}

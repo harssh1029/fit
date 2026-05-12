@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { API_BASE_URL } from "../../api/client";
 import { AppHeader } from "../../components/AppHeader";
+import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
 import { GLASS_ACCENT_GREEN } from "../../styles/theme";
 import {
   useAuth,
@@ -20,6 +21,7 @@ import {
 } from "../../App";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
 import { useCommunity } from "../../hooks/useCommunity";
+import { loadExerciseDemoIds } from "../../utils/exerciseLookup";
 import type { UserProfile } from "../../App";
 
 const AccountScreen: React.FC = () => {
@@ -31,6 +33,12 @@ const AccountScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPrSheetVisible, setIsPrSheetVisible] = useState(false);
+  const [activeExerciseName, setActiveExerciseName] = useState<string | null>(
+    null,
+  );
+  const [demoExerciseIds, setDemoExerciseIds] = useState<
+    Record<string, string>
+  >({});
   const [isWorkoutHistorySheetVisible, setIsWorkoutHistorySheetVisible] =
     useState(false);
   const {
@@ -43,6 +51,26 @@ const AccountScreen: React.FC = () => {
     useCommunity();
   const accountUserName =
     profile?.profile.display_name || profile?.username || null;
+
+  useEffect(() => {
+    let isMounted = true;
+    const names = exercisePrs.map((pr) => pr.exerciseLabel);
+
+    if (!names.length) {
+      setDemoExerciseIds({});
+      return;
+    }
+
+    void loadExerciseDemoIds(names).then((ids) => {
+      if (isMounted) {
+        setDemoExerciseIds(ids);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [exercisePrs]);
 
   useEffect(() => {
     let isMounted = true;
@@ -705,24 +733,46 @@ const AccountScreen: React.FC = () => {
               style={styles.homeAllActiveListScroll}
               showsVerticalScrollIndicator={false}
             >
-              {exercisePrs.map((pr) => (
-                <View
-                  key={pr.segmentId}
-                  style={[
-                    styles.profilePrCard,
-                    isLight && styles.profilePrCardLight,
-                  ]}
-                >
-                  <View style={styles.profilePrRow}>
-                    <View style={styles.profilePrTextCol}>
-                      <Text
-                        style={[
-                          styles.profilePrExercise,
-                          isLight && styles.profilePrExerciseLight,
-                        ]}
-                      >
-                        {pr.exerciseLabel}
-                      </Text>
+              {exercisePrs.map((pr) => {
+                const demoExerciseId = demoExerciseIds[pr.exerciseLabel];
+                return (
+                  <View
+                    key={pr.segmentId}
+                    style={[
+                      styles.profilePrCard,
+                      isLight && styles.profilePrCardLight,
+                    ]}
+                  >
+                    <View style={styles.profilePrRow}>
+                    <TouchableOpacity
+                      style={styles.profilePrTextCol}
+                      activeOpacity={demoExerciseId ? 0.82 : 1}
+                      disabled={!demoExerciseId}
+                      onPress={() => {
+                        if (demoExerciseId) {
+                          setActiveExerciseName(pr.exerciseLabel);
+                        }
+                      }}
+                    >
+                      <View style={styles.viewWorkoutExerciseTapRow}>
+                        <Text
+                          style={[
+                            styles.profilePrExercise,
+                            isLight && styles.profilePrExerciseLight,
+                            { flex: 1 },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {pr.exerciseLabel}
+                        </Text>
+                        {demoExerciseId ? (
+                          <Ionicons
+                            name="play-circle-outline"
+                            size={17}
+                            color={isLight ? "#2563EB" : "#93C5FD"}
+                          />
+                        ) : null}
+                      </View>
                       {pr.workoutTitle ? (
                         <Text
                           style={[
@@ -733,7 +783,7 @@ const AccountScreen: React.FC = () => {
                           {pr.workoutTitle}
                         </Text>
                       ) : null}
-                    </View>
+                    </TouchableOpacity>
                     <View style={styles.profilePrBadgeRow}>
                       <View style={styles.profilePrBadge}>
                         <Text style={styles.profilePrBadgeLabel}>Weight</Text>
@@ -750,11 +800,21 @@ const AccountScreen: React.FC = () => {
                     </View>
                   </View>
                 </View>
-              ))}
+                );
+              })}
             </ScrollView>
           </View>
         </View>
       </Modal>
+      <ExerciseDetailSheet
+        visible={!!activeExerciseName}
+        isLight={isLight}
+        exerciseId={
+          activeExerciseName ? demoExerciseIds[activeExerciseName] : null
+        }
+        exerciseName={activeExerciseName}
+        onClose={() => setActiveExerciseName(null)}
+      />
     </>
   );
 };

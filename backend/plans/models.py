@@ -25,6 +25,7 @@ class Plan(models.Model):
     result = models.TextField()
     sessions_per_week = models.PositiveSmallIntegerField(default=7)
     default_sessions_per_week = models.PositiveSmallIntegerField(default=4)
+    max_sessions_per_week = models.PositiveSmallIntegerField(default=6)
     long_description = models.TextField(blank=True)
     tags = models.JSONField(default=list, blank=True)
     supported_sessions_per_week = models.JSONField(default=list, blank=True)
@@ -76,6 +77,7 @@ class PlanWeek(models.Model):
     title = models.CharField(max_length=255)
     focus = models.CharField(max_length=255)
     coach_note = models.TextField(blank=True)
+    recovery_priority = models.CharField(max_length=255, blank=True)
     intensity_theme = models.CharField(max_length=255, blank=True)
     highlights = models.JSONField(default=list, blank=True)
 
@@ -93,12 +95,18 @@ class PlanDay(models.Model):
     DAY_TYPE_CHOICES = [
         ('strength', 'Strength'),
         ('cardio', 'Cardio'),
+        ('hybrid', 'Hybrid'),
         ('recovery', 'Recovery'),
         ('mixed', 'Mixed'),
         ('hybrid_strength_run', 'Hybrid Strength Run'),
         ('run_upper_engine', 'Run Upper Engine'),
         ('compromised_running', 'Compromised Running'),
         ('hyrox_simulation', 'HYROX Simulation'),
+    ]
+    PRIORITY_CHOICES = [
+        ('P1', 'Priority 1'),
+        ('P2', 'Priority 2'),
+        ('P3', 'Priority 3'),
     ]
 
     plan_week = models.ForeignKey(
@@ -108,6 +116,9 @@ class PlanDay(models.Model):
         help_text='Absolute day index in the plan (e.g. 1-21).'
     )
     title = models.CharField(max_length=255)
+    priority = models.CharField(max_length=2, choices=PRIORITY_CHOICES, default='P1')
+    priority_order = models.PositiveSmallIntegerField(default=1)
+    workout_order = models.PositiveSmallIntegerField(default=1)
     description = models.TextField(
         blank=True,
         help_text='Coach notes / long-form description of the session.',
@@ -121,6 +132,8 @@ class PlanDay(models.Model):
     day_type = models.CharField(max_length=32, choices=DAY_TYPE_CHOICES)
     intensity = models.CharField(max_length=32, blank=True)
     rpe_target = models.CharField(max_length=32, blank=True)
+    goal = models.TextField(blank=True)
+    fatigue_score = models.PositiveSmallIntegerField(default=5)
     primary_focus = models.CharField(max_length=255, blank=True)
     secondary_focus = models.CharField(max_length=255, blank=True)
     coach_note = models.TextField(blank=True)
@@ -209,74 +222,75 @@ class PlanExercise(models.Model):
 
 
 class UserPlan(models.Model):
-	"""Link between a user and a Plan, with enrollment and progress metadata.
+    """Link between a user and a Plan, with enrollment and progress metadata.
 
-	This is the per-user instance of a Plan and is the anchor for plan progress,
-	Race Readiness, and other journey-level analytics.
-	"""
+    This is the per-user instance of a Plan and is the anchor for plan progress,
+    Race Readiness, and other journey-level analytics.
+    """
 
-	STATUS_CHOICES = [
-		('active', 'Active'),
-		('completed', 'Completed'),
-		('cancelled', 'Cancelled'),
-		('paused', 'Paused'),
-	]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('paused', 'Paused'),
+    ]
 
-	user = models.ForeignKey(
-		User,
-		related_name='user_plans',
-		on_delete=models.CASCADE,
-	)
-	plan = models.ForeignKey(
-		Plan,
-		related_name='user_plans',
-		on_delete=models.CASCADE,
-	)
-	plan_version = models.ForeignKey(
-		PlanVersion,
-		related_name='user_plans',
-		null=True,
-		blank=True,
-		on_delete=models.PROTECT,
-	)
-	is_active = models.BooleanField(
-		default=True,
-		help_text='Whether this is the user\'s currently active instance of the plan.',
-	)
-	status = models.CharField(
-		max_length=16,
-		choices=STATUS_CHOICES,
-		default='active',
-	)
-	started_at = models.DateTimeField(null=True, blank=True)
-	expected_end_at = models.DateTimeField(null=True, blank=True)
-	completed_at = models.DateTimeField(null=True, blank=True)
-	sessions_per_week = models.PositiveSmallIntegerField(default=4)
-	start_date = models.DateField(null=True, blank=True)
-	end_date = models.DateField(null=True, blank=True)
-	original_end_date = models.DateField(null=True, blank=True)
-	is_recalibrated = models.BooleanField(default=False)
-	recalibration_count = models.PositiveSmallIntegerField(default=0)
-	sessions_completed = models.PositiveIntegerField(
-		default=0,
-		help_text='Cached count of completed WorkoutSessions for this user plan.',
-	)
-	completed_sessions = models.PositiveIntegerField(default=0)
-	missed_sessions = models.PositiveIntegerField(default=0)
-	total_sessions = models.PositiveIntegerField(default=0)
-	completion_percent = models.DecimalField(default=0, max_digits=5, decimal_places=2)
-	created_at = models.DateTimeField(auto_now_add=True)
-	updated_at = models.DateTimeField(auto_now=True)
+    user = models.ForeignKey(
+        User,
+        related_name='user_plans',
+        on_delete=models.CASCADE,
+    )
+    plan = models.ForeignKey(
+        Plan,
+        related_name='user_plans',
+        on_delete=models.CASCADE,
+    )
+    plan_version = models.ForeignKey(
+        PlanVersion,
+        related_name='user_plans',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this is the user's currently active instance of the plan.",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default='active',
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    expected_end_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    sessions_per_week = models.PositiveSmallIntegerField(default=4)
+    training_days_pattern = models.JSONField(default=list, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    original_end_date = models.DateField(null=True, blank=True)
+    is_recalibrated = models.BooleanField(default=False)
+    recalibration_count = models.PositiveSmallIntegerField(default=0)
+    sessions_completed = models.PositiveIntegerField(
+        default=0,
+        help_text='Cached count of completed WorkoutSessions for this user plan.',
+    )
+    completed_sessions = models.PositiveIntegerField(default=0)
+    missed_sessions = models.PositiveIntegerField(default=0)
+    total_sessions = models.PositiveIntegerField(default=0)
+    completion_percent = models.DecimalField(default=0, max_digits=5, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-	class Meta:
-		ordering = ['-created_at']
-		indexes = [
-			models.Index(fields=['user', 'is_active']),
-			models.Index(fields=['plan']),
-		]
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['plan']),
+        ]
 
-	def __str__(self) -> str:  # pragma: no cover - trivial
-		return f"UserPlan(user={self.user_id}, plan={self.plan_id}, status={self.status})"
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return f"UserPlan(user={self.user_id}, plan={self.plan_id}, status={self.status})"
 
 
 class UserScheduledWorkout(models.Model):

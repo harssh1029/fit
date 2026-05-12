@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -8,6 +8,8 @@ import {
   type ViewWorkoutDay,
   FancyWorkoutTypeIcon,
 } from "../../App";
+import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
+import { loadExerciseDemoIds } from "../../utils/exerciseLookup";
 
 export type ChallengeDetailModalProps = {
   week: ViewWorkoutWeek | null;
@@ -26,6 +28,35 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
 }) => {
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [unlockExpanded, setUnlockExpanded] = useState(false);
+  const [activeExerciseName, setActiveExerciseName] = useState<string | null>(
+    null,
+  );
+  const [demoExerciseIds, setDemoExerciseIds] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    let isMounted = true;
+    const names =
+      week?.days.flatMap((day) =>
+        (day.segments ?? []).map((segment) => segment.label),
+      ) ?? [];
+
+    if (!names.length) {
+      setDemoExerciseIds({});
+      return;
+    }
+
+    void loadExerciseDemoIds(names).then((ids) => {
+      if (isMounted) {
+        setDemoExerciseIds(ids);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [week?.id, week?.days]);
 
   if (!week) return null;
 
@@ -42,15 +73,13 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
       <View key={day.id}>
         <View style={styles.viewWorkoutDayRow}>
           <View style={styles.viewWorkoutCardWrapper}>
-            <TouchableOpacity
-              activeOpacity={0.9}
+            <View
               style={[
                 styles.viewWorkoutCard,
                 isLight
                   ? styles.viewWorkoutCardLight
                   : styles.viewWorkoutCardDark,
               ]}
-              onPress={() => setExpandedDayId(isExpanded ? null : day.id)}
             >
               <View style={styles.viewWorkoutCardHeaderRow}>
                 <View style={[styles.viewWorkoutIconCircleRun, circleStyle]}>
@@ -103,23 +132,43 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
                     </View>
                   )}
                 </View>
-                <Ionicons
-                  name={
-                    isExpanded ? "chevron-up-outline" : "chevron-down-outline"
+                <TouchableOpacity
+                  activeOpacity={0.82}
+                  onPress={() => setExpandedDayId(isExpanded ? null : day.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isExpanded ? "Collapse workout day" : "Expand workout day"
                   }
-                  size={18}
-                  color={isLight ? "#4B5563" : "#E5E7EB"}
-                />
+                >
+                  <Ionicons
+                    name={
+                      isExpanded
+                        ? "chevron-up-outline"
+                        : "chevron-down-outline"
+                    }
+                    size={18}
+                    color={isLight ? "#4B5563" : "#E5E7EB"}
+                  />
+                </TouchableOpacity>
               </View>
 
               {isExpanded && (
                 <>
                   {day.segments && day.segments.length > 0 && (
                     <View style={styles.viewWorkoutSegmentsGroup}>
-                      {day.segments.map((segment) => (
-                        <View
+                      {day.segments.map((segment) => {
+                        const demoExerciseId = demoExerciseIds[segment.label];
+                        return (
+                        <TouchableOpacity
                           key={segment.id}
+                          activeOpacity={demoExerciseId ? 0.82 : 1}
                           style={styles.viewWorkoutSegmentRow}
+                          disabled={!demoExerciseId}
+                          onPress={() => {
+                            if (demoExerciseId) {
+                              setActiveExerciseName(segment.label);
+                            }
+                          }}
                         >
                           <View style={styles.viewWorkoutSegmentColLabel}>
                             <Text
@@ -132,15 +181,24 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
                             </Text>
                           </View>
                           <View style={styles.viewWorkoutSegmentColPrimary}>
-                            <Text
-                              style={[
-                                styles.viewWorkoutSegmentPrimary,
-                                isLight &&
-                                  styles.viewWorkoutSegmentPrimaryLight,
-                              ]}
-                            >
-                              {segment.primary}
-                            </Text>
+                            <View style={styles.viewWorkoutExerciseTapRow}>
+                              <Text
+                                style={[
+                                  styles.viewWorkoutSegmentPrimary,
+                                  isLight &&
+                                    styles.viewWorkoutSegmentPrimaryLight,
+                                ]}
+                              >
+                                {segment.primary}
+                              </Text>
+                              {demoExerciseId ? (
+                                <Ionicons
+                                  name="play-circle-outline"
+                                  size={16}
+                                  color={isLight ? "#2563EB" : "#93C5FD"}
+                                />
+                              ) : null}
+                            </View>
                             {segment.secondary ? (
                               <Text
                                 style={[
@@ -153,8 +211,9 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
                               </Text>
                             ) : null}
                           </View>
-                        </View>
-                      ))}
+                        </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   )}
                   {day.notes ? (
@@ -179,7 +238,7 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
                   ) : null}
                 </>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
         {index < week.days.length - 1 && (
@@ -331,6 +390,15 @@ const ChallengeDetailModal: React.FC<ChallengeDetailModalProps> = ({
           </ScrollView>
         </View>
       </View>
+      <ExerciseDetailSheet
+        visible={!!activeExerciseName}
+        isLight={isLight}
+        exerciseId={
+          activeExerciseName ? demoExerciseIds[activeExerciseName] : null
+        }
+        exerciseName={activeExerciseName}
+        onClose={() => setActiveExerciseName(null)}
+      />
     </Modal>
   );
 };

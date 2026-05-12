@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { ExerciseDetailSheet } from "../../../components/ExerciseDetailSheet";
 import {
   useAuth,
   styles,
@@ -19,6 +20,7 @@ import {
   API_BASE_URL,
 } from "../../../App";
 import { useWorkoutHistory } from "../../../hooks/useWorkoutHistory";
+import { loadExerciseDemoIds } from "../../../utils/exerciseLookup";
 
 export type ViewWorkoutWeekModalProps = {
   week: ViewWorkoutWeek | null;
@@ -44,9 +46,46 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
     useWorkoutHistory();
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [completingDayId, setCompletingDayId] = useState<string | null>(null);
+  const [activeExerciseName, setActiveExerciseName] = useState<string | null>(
+    null,
+  );
+  const [demoExerciseIds, setDemoExerciseIds] = useState<
+    Record<string, string>
+  >({});
   const [completedDayIds, setCompletedDayIds] = useState<
     Record<string, boolean>
   >({});
+
+  useEffect(() => {
+    if (week?.days?.length) {
+      setExpandedDayId(week.days[0].id);
+    } else {
+      setExpandedDayId(null);
+    }
+  }, [week?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const names =
+      week?.days.flatMap((day) =>
+        (day.segments ?? []).map((segment) => segment.label),
+      ) ?? [];
+
+    if (!names.length) {
+      setDemoExerciseIds({});
+      return;
+    }
+
+    void loadExerciseDemoIds(names).then((ids) => {
+      if (isMounted) {
+        setDemoExerciseIds(ids);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [week?.id, week?.days]);
 
   useEffect(() => {
     if (!week || !workoutHistoryItems.length) return;
@@ -252,17 +291,13 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
                 <View key={day.id}>
                   <View style={styles.viewWorkoutDayRow}>
                     <View style={styles.viewWorkoutCardWrapper}>
-                      <TouchableOpacity
-                        activeOpacity={0.9}
+                      <View
                         style={[
                           styles.viewWorkoutCard,
                           isLight
                             ? styles.viewWorkoutCardLight
                             : styles.viewWorkoutCardDark,
                         ]}
-                        onPress={() =>
-                          setExpandedDayId(isExpanded ? null : day.id)
-                        }
                       >
                         <View style={styles.viewWorkoutCardHeaderRow}>
                           <View
@@ -325,21 +360,44 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
                               </View>
                             )}
                           </View>
-                          <Ionicons
-                            name={isExpanded ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color={isLight ? "#6B7280" : "#9CA3AF"}
-                          />
+                          <TouchableOpacity
+                            activeOpacity={0.82}
+                            onPress={() =>
+                              setExpandedDayId(isExpanded ? null : day.id)
+                            }
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              isExpanded
+                                ? "Collapse workout day"
+                                : "Expand workout day"
+                            }
+                          >
+                            <Ionicons
+                              name={isExpanded ? "chevron-up" : "chevron-down"}
+                              size={20}
+                              color={isLight ? "#6B7280" : "#9CA3AF"}
+                            />
+                          </TouchableOpacity>
                         </View>
 
                         {isExpanded && (
                           <>
                             {day.segments && day.segments.length > 0 && (
                               <View style={styles.viewWorkoutSegmentsGroup}>
-                                {day.segments.map((segment) => (
-                                  <View
+                                {day.segments.map((segment) => {
+                                  const demoExerciseId =
+                                    demoExerciseIds[segment.label];
+                                  return (
+                                  <TouchableOpacity
                                     key={segment.id}
+                                    activeOpacity={demoExerciseId ? 0.82 : 1}
                                     style={styles.viewWorkoutSegmentRow}
+                                    disabled={!demoExerciseId}
+                                    onPress={() => {
+                                      if (demoExerciseId) {
+                                        setActiveExerciseName(segment.label);
+                                      }
+                                    }}
                                   >
                                     <View
                                       style={styles.viewWorkoutSegmentColLabel}
@@ -359,15 +417,28 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
                                         styles.viewWorkoutSegmentColPrimary
                                       }
                                     >
-                                      <Text
-                                        style={[
-                                          styles.viewWorkoutSegmentPrimary,
-                                          isLight &&
-                                            styles.viewWorkoutSegmentPrimaryLight,
-                                        ]}
+                                      <View
+                                        style={styles.viewWorkoutExerciseTapRow}
                                       >
-                                        {segment.primary}
-                                      </Text>
+                                        <Text
+                                          style={[
+                                            styles.viewWorkoutSegmentPrimary,
+                                            isLight &&
+                                              styles.viewWorkoutSegmentPrimaryLight,
+                                          ]}
+                                        >
+                                          {segment.primary}
+                                        </Text>
+                                        {demoExerciseId ? (
+                                          <Ionicons
+                                            name="play-circle-outline"
+                                            size={16}
+                                            color={
+                                              isLight ? "#2563EB" : "#93C5FD"
+                                            }
+                                          />
+                                        ) : null}
+                                      </View>
                                       {segment.secondary ? (
                                         <Text
                                           style={[
@@ -380,8 +451,9 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
                                         </Text>
                                       ) : null}
                                     </View>
-                                  </View>
-                                ))}
+                                  </TouchableOpacity>
+                                  );
+                                })}
                               </View>
                             )}
                             {day.notes ? (
@@ -406,7 +478,7 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
                             ) : null}
                           </>
                         )}
-                      </TouchableOpacity>
+                      </View>
 
                       {canMarkComplete && (
                         <TouchableOpacity
@@ -446,6 +518,15 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
           </ScrollView>
         </View>
       </View>
+      <ExerciseDetailSheet
+        visible={!!activeExerciseName}
+        isLight={isLight}
+        exerciseId={
+          activeExerciseName ? demoExerciseIds[activeExerciseName] : null
+        }
+        exerciseName={activeExerciseName}
+        onClose={() => setActiveExerciseName(null)}
+      />
     </Modal>
   );
 };

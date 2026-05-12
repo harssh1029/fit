@@ -81,6 +81,15 @@ class Exercise(models.Model):
         blank=True,
         help_text='Step-by-step instructions; list of strings.',
     )
+    common_mistakes = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Common mistakes to avoid; list of strings.',
+    )
+    guideline = models.TextField(
+        blank=True,
+        help_text='Single coaching guideline for this exercise.',
+    )
     description = models.TextField(blank=True)
 
     class Meta:

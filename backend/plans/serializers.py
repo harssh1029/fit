@@ -13,6 +13,7 @@ from .models import (
     UserPlan,
     UserScheduledWorkout,
 )
+from .services import getVisibleWorkoutsForWeek
 
 
 class PlanExerciseSerializer(serializers.ModelSerializer):
@@ -65,12 +66,17 @@ class PlanDaySerializer(serializers.ModelSerializer):
             'id',
             'day_index',
             'title',
+            'priority',
+            'priority_order',
+            'workout_order',
             'description',
             'duration',
             'duration_minutes',
             'day_type',
             'intensity',
             'rpe_target',
+            'goal',
+            'fatigue_score',
             'primary_focus',
             'secondary_focus',
             'coach_note',
@@ -82,7 +88,15 @@ class PlanDaySerializer(serializers.ModelSerializer):
 
 
 class PlanWeekSerializer(serializers.ModelSerializer):
-    days = PlanDaySerializer(many=True, read_only=True)
+    days = serializers.SerializerMethodField()
+
+    def get_days(self, obj):
+        selected_sessions = self.context.get('selected_sessions_per_week')
+        if selected_sessions:
+            days = getVisibleWorkoutsForWeek(obj, int(selected_sessions))
+        else:
+            days = obj.days.all().order_by('workout_order', 'day_index')
+        return PlanDaySerializer(days, many=True, context=self.context).data
 
     class Meta:
         model = PlanWeek
@@ -92,6 +106,7 @@ class PlanWeekSerializer(serializers.ModelSerializer):
             'title',
             'focus',
             'coach_note',
+            'recovery_priority',
             'intensity_theme',
             'highlights',
             'days',
@@ -119,18 +134,62 @@ class PlanVersionSerializer(serializers.ModelSerializer):
         ]
 
 
+class PlanVersionSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlanVersion
+        fields = [
+            'id',
+            'plan_id',
+            'sessions_per_week',
+            'title',
+            'description',
+            'is_default',
+            'is_premium',
+            'split_type',
+            'training_days_pattern',
+            'total_sessions',
+            'weekly_structure',
+        ]
+
+
 class PlanSerializer(serializers.ModelSerializer):
     weeks = serializers.SerializerMethodField()
-    versions = PlanVersionSerializer(many=True, read_only=True)
+    versions = serializers.SerializerMethodField()
     user_progress = serializers.SerializerMethodField()
 
+    def get_versions(self, obj):
+        return PlanVersionSummarySerializer(
+            obj.versions.all().order_by('sessions_per_week'),
+            many=True,
+            context=self.context,
+        ).data
+
     def get_weeks(self, obj):
+        if self.context.get('include_weeks') is False:
+            return []
+
+        selected_sessions = self.context.get('selected_sessions_per_week')
+        master_weeks = obj.weeks.filter(plan_version__isnull=True).order_by('number')
+
+        if master_weeks.exists():
+            if selected_sessions is None:
+                return []
+            return PlanWeekSerializer(
+                master_weeks,
+                many=True,
+                context={**self.context, 'selected_sessions_per_week': selected_sessions},
+            ).data
+
         default_version = obj.versions.filter(is_default=True).first()
-        if default_version is not None:
+        if default_version is not None and default_version.weeks.exists():
             default_weeks = default_version.weeks.all().order_by('number')
         else:
-            default_weeks = obj.weeks.filter(plan_version__isnull=True).order_by('number')
-        return PlanWeekSerializer(default_weeks, many=True).data
+            default_weeks = master_weeks
+        return PlanWeekSerializer(
+            default_weeks,
+            many=True,
+            context={**self.context, 'selected_sessions_per_week': selected_sessions},
+        ).data
 
     def get_user_progress(self, obj):
         request = self.context.get('request')
@@ -211,6 +270,7 @@ class PlanSerializer(serializers.ModelSerializer):
             'level',
             'duration_weeks',
             'default_sessions_per_week',
+            'max_sessions_per_week',
             'goal',
             'summary',
             'audience',
@@ -260,6 +320,7 @@ class UserPlanSerializer(serializers.ModelSerializer):
             'plan_version',
             'status',
             'sessions_per_week',
+	            'training_days_pattern',
             'start_date',
             'end_date',
             'original_end_date',

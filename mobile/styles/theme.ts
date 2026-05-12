@@ -4,20 +4,23 @@
 // PlayStation-inspired design language, we layer
 // additional PlayStation-specific tokens below.
 
-export const DARK_BG = "#050814";
-export const DARK_CARD = "#171C2A";
-export const DARK_CARD_ALT = "#191E30";
-export const DARK_ACCENT_ORANGE = "#FF7A3C";
-export const DARK_ACCENT_ORANGE_SOFT = "#FF9055";
-export const DARK_TEXT_PRIMARY = "#F7F9FF";
-export const DARK_TEXT_MUTED = "#8C93A8";
+export const DARK_BG = "#05070D";
+export const DARK_CARD = "#151A24";
+export const DARK_CARD_ALT = "#1B2230";
+export const DARK_ACCENT_ORANGE = "#C96F43";
+export const DARK_ACCENT_ORANGE_SOFT = "#D9875E";
+export const DARK_TEXT_PRIMARY = "#FFFFFF";
+export const DARK_TEXT_MUTED = "#9CA3AF";
 
-export const LIGHT_BG = "#F0F2F5";
+export const LIGHT_BG = "#F7F7F5";
 export const LIGHT_CARD = "#FFFFFF";
-export const LIGHT_CARD_ALT = "#EEF2FF";
-export const LIGHT_ACCENT_ORANGE = "#FF7A3C";
+export const LIGHT_CARD_ALT = "#F9FAFB";
+export const LIGHT_ACCENT_ORANGE = "#C96F43";
 export const LIGHT_TEXT_PRIMARY = "#111827";
-export const LIGHT_TEXT_MUTED = "#4B5563";
+export const LIGHT_TEXT_MUTED = "#6B7280";
+export const LIGHT_TEXT_SUBTLE = "#9CA3AF";
+export const LIGHT_BORDER_SOFT = "#E5E7EB";
+export const LIGHT_BORDER_SUBTLE = "#EEF0F3";
 
 // Sage glass theme – legacy; mapped back onto the original
 // dark navy / orange palette.
@@ -26,7 +29,7 @@ export const SAGE_GRADIENT_END = "#5A7268";
 
 export const GLASS_BG_DARK = DARK_BG;
 export const GLASS_CARD_DARK = DARK_CARD;
-export const GLASS_BORDER_DARK = "rgba(15, 23, 42, 0.75)";
+export const GLASS_BORDER_DARK = "rgba(255,255,255,0.08)";
 
 // PlayStation-inspired accent system
 // ----------------------------------
@@ -35,7 +38,7 @@ export const GLASS_BORDER_DARK = "rgba(15, 23, 42, 0.75)";
 // them primarily to auth flows.
 
 // PlayStation Blue – primary CTA on dark surfaces
-export const PS_BLUE = "#0070cc";
+export const PS_BLUE = "#0B7DD8";
 
 // PlayStation Cyan – reserved for hover/active states
 // (on mobile we echo this in subtle pressed states).
@@ -51,6 +54,7 @@ export const GLASS_ACCENT_GREEN = "#A3D2E7";
 export const GLASS_ACCENT_GREEN_SOFT = "#90C4DA";
 export const GLASS_TEXT_PRIMARY = DARK_TEXT_PRIMARY;
 export const GLASS_TEXT_MUTED = DARK_TEXT_MUTED;
+export const SUCCESS_GREEN = "#16A34A";
 
 // Aliases for backwards compatibility
 export const LIGHT_CARD_ELEVATED = LIGHT_CARD_ALT;

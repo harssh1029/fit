@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
+  ImageBackground,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -11,12 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import {
-  GLASS_ACCENT_GREEN,
-  DARK_TEXT_PRIMARY,
-  DARK_TEXT_MUTED,
-  LIGHT_TEXT_MUTED,
-} from "../../styles/theme";
+import { GLASS_ACCENT_GREEN } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
 import { API_BASE_URL } from "../../api/client";
 import { usePlanDetail } from "../../hooks/usePlanDetail";
@@ -28,20 +22,14 @@ import {
   useThemeMode,
   styles,
   type PlanDetailProps,
-  type PlanDayDetail,
   type ViewWorkoutWeek,
   type ViewNutritionWeek,
   ViewWorkoutWeekModal,
   ViewNutritionWeekModal,
   mapPlanWeekToViewWorkoutWeek,
+  mapPlanWeekToViewNutritionWeek,
 } from "../../App";
-
-const formatPlanDate = (value: string | null | undefined) => {
-  if (!value) return "Not set";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not set";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
+import { getPlanImageSource } from "../../utils/planImages";
 
 const humanizeGoal = (value: string) =>
   value
@@ -50,84 +38,166 @@ const humanizeGoal = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-const getPrimaryOutcome = (result: string) => {
-  const [first] = result.split(".");
-  return first || result;
+const getShortPhrase = (value: string | null | undefined, fallback: string) => {
+  const cleaned = (value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return fallback;
+  const [sentence] = cleaned.split(".");
+  const words = (sentence || cleaned).split(" ").filter(Boolean);
+  return words.slice(0, 4).join(" ");
 };
 
-const getGuidelineNote = (description: string, fallback: string) => {
-  if (!description) return fallback;
-  const [firstSentence] = description.split(".");
-  return firstSentence ? `${firstSentence}.` : fallback;
-};
+const buildPlanDetailCopy = (
+  planName: string,
+  audience: string,
+  summary: string,
+  result: string,
+  goalLabel: string,
+) => {
+  const isHyroxPlan = /hyrox/i.test(planName);
+  const isHalfMarathonPlan = /half\s*marathon/i.test(planName);
+  const isMarathonPlan = /marathon/i.test(planName);
+  const isLeanMusclePlan = /lean\s*muscle|muscle\s*builder/i.test(planName);
+  const isBusyProfessionalPlan = /busy\s*professional/i.test(planName);
+  const isHybridAthletePlan = /hybrid\s*athlete/i.test(planName);
+  const isFatLossShredPlan = /fat\s*loss|shred/i.test(planName);
 
-const getTimelineTag = (day: PlanDayDetail) => {
-  const title = day.title.toLowerCase();
-  const type = day.type;
-  if (title.includes("interval") || title.includes("speed")) {
-    return { label: "Speed", icon: "flash", tone: "amber" };
+  if (isFatLossShredPlan) {
+    return {
+      goalTitle: "Athletic Fat Loss",
+      goalSubtitle: "Burn fat, preserve muscle, and build conditioning.",
+      forText: "Adaptive beginner-to-advanced",
+      focusText: "Metabolic strength and intervals",
+      resultText: "Leaner, fitter, more energetic",
+      expectItems: [
+        "Muscle-retaining strength",
+        "Premium conditioning blocks",
+        "Recovery-aware fat loss",
+      ],
+    };
   }
-  if (title.includes("compromised") || title.includes("simulation")) {
-    return { label: "Pressure", icon: "pulse", tone: "purple" };
-  }
-  if (title.includes("sled") || title.includes("strength")) {
-    return { label: "Strength", icon: "barbell", tone: "orange" };
-  }
-  if (type === "recovery") {
-    return { label: "Reset", icon: "leaf", tone: "green" };
-  }
-  return { label: "Engine", icon: "flash", tone: "green" };
-};
 
-const getTimelineIntensity = (day: PlanDayDetail) => {
-  const title = day.title.toLowerCase();
-  if (title.includes("light") || title.includes("easy")) return 2;
-  if (
-    title.includes("simulation") ||
-    title.includes("compromised") ||
-    title.includes("interval")
-  ) {
-    return 4;
+  if (isHybridAthletePlan) {
+    return {
+      goalTitle: "Hybrid Athlete Capacity",
+      goalSubtitle: "Build strength, endurance, and durability under fatigue.",
+      forText: "Intermediate & advanced athletes",
+      focusText: "Strength, running, conditioning",
+      resultText: "Stronger, faster, more fatigue resistant",
+      expectItems: [
+        "Hybrid race-style sessions",
+        "Strength and engine balance",
+        "Fatigue-resistant performance",
+      ],
+    };
   }
-  return 3;
-};
 
-const getTrainingDayLabel = (dayIndex: number, sessionsPerWeek: number) => {
-  const patterns: Record<number, string[]> = {
-    3: ["Mon", "Wed", "Fri"],
-    4: ["Mon", "Tue", "Thu", "Sat"],
-    5: ["Mon", "Tue", "Wed", "Fri", "Sat"],
-    6: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  if (isBusyProfessionalPlan) {
+    return {
+      goalTitle: "Efficient Athletic Fitness",
+      goalSubtitle:
+        "Build strength, energy, and consistency around a busy life.",
+      forText: "Busy professionals & founders",
+      focusText: "Strength, conditioning, mobility",
+      resultText: "More energy, lean muscle, less burnout",
+      expectItems: [
+        "45-60 min efficient sessions",
+        "Recovery-aware progression",
+        "Posture and work-capacity focus",
+      ],
+    };
+  }
+
+  if (isLeanMusclePlan) {
+    return {
+      goalTitle: "Lean Athletic Muscle",
+      goalSubtitle: "Build dense muscle, athletic output, and clean movement.",
+      forText: "Intermediate & advanced lifters",
+      focusText: "Strength, hypertrophy, conditioning",
+      resultText: "Leaner, stronger, more athletic physique",
+      expectItems: [
+        "Progressive overload",
+        "Athletic conditioning",
+        "Recovery-managed volume",
+      ],
+    };
+  }
+
+  if (isHalfMarathonPlan) {
+    return {
+      goalTitle: "Half Marathon Performance",
+      goalSubtitle: "Build speed, HM pace control, and finishing power.",
+      forText: "Intermediate & advanced runners",
+      focusText: "Threshold, VO2, HM pace, fast finishes",
+      resultText: "Sharper speed, stronger race finish",
+      expectItems: [
+        "Race-pace progression",
+        "Fast long-run finishes",
+        "Economy and tendon durability",
+      ],
+    };
+  }
+
+  if (isMarathonPlan) {
+    return {
+      goalTitle: "Marathon Elite Build",
+      goalSubtitle: "Build race pace, durability, and late-race confidence.",
+      forText: "Intermediate & advanced runners",
+      focusText: "Threshold, marathon pace, long-run progression",
+      resultText: "Faster, stronger, more fatigue resistant",
+      expectItems: [
+        "Race-specific long runs",
+        "Fueling and pacing practice",
+        "Strength built for durability",
+      ],
+    };
+  }
+
+  return {
+    goalTitle: isHyroxPlan ? "Hyrox Race Prep" : goalLabel,
+    goalSubtitle: isHyroxPlan
+      ? "Build race-day fitness and confidence."
+      : getShortPhrase(summary, "Build fitness and confidence."),
+    forText: isHyroxPlan
+      ? "Intermediate & advanced hybrid"
+      : getShortPhrase(audience, "Motivated athletes"),
+    focusText: isHyroxPlan
+      ? "Race-specific running, sled work, functional strength"
+      : getShortPhrase(summary, "Structured training"),
+    resultText: isHyroxPlan
+      ? "Stronger station output, better race performance"
+      : getShortPhrase(result, "Better performance"),
+    expectItems: isHyroxPlan
+      ? [
+          "High-intensity workouts",
+          "Performance-based progression",
+          "Built for real race conditions",
+        ]
+      : [
+          "Structured weekly training",
+          "Progressive workout flow",
+          "Clear race-ready outcomes",
+        ],
   };
-  const pattern = patterns[sessionsPerWeek] ?? ["Mon", "Tue", "Thu", "Sat"];
-  return pattern[(dayIndex - 1) % pattern.length];
 };
 
-const ProgressDots: React.FC<{
-  total: number;
-  completed: number;
-  isLight: boolean;
-}> = ({ total, completed, isLight }) => {
-  const dotCount = Math.max(8, Math.min(24, total || 12));
-  const filledCount =
-    total > 0 ? Math.round((Math.min(completed, total) / total) * dotCount) : 0;
-
-  return (
-    <View style={styles.planProgressDotsRow}>
-      {Array.from({ length: dotCount }).map((_, index) => (
-        <View
-          key={index}
-          style={[
-            styles.planProgressDot,
-            isLight && styles.planProgressDotLight,
-            index < filledCount && styles.planProgressDotFilled,
-            index < filledCount && isLight && styles.planProgressDotFilledLight,
-          ]}
-        />
-      ))}
-    </View>
-  );
-};
+const WEEKDAY_CODES = [
+  "MON",
+  "TUE",
+  "WED",
+  "THU",
+  "FRI",
+  "SAT",
+  "SUN",
+] as const;
+const WEEKDAY_LABELS = [
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+  "Sun",
+] as const;
 
 const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
   route,
@@ -142,20 +212,99 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
   const plansUserName =
     profile?.profile.display_name || profile?.username || null;
 
-  const { plan, loading, error } = usePlanDetail(planId);
   const { activeUserPlan, reload: reloadActiveUserPlan } = useActiveUserPlan();
+  const [pendingSessionsPerWeek, setPendingSessionsPerWeek] = useState<
+    number | null
+  >(null);
+  const [submittedSessionsPerWeek, setSubmittedSessionsPerWeek] = useState<
+    number | null
+  >(null);
+  const [selectedTrainingDays, setSelectedTrainingDays] = useState<string[]>(
+    [],
+  );
+  const { plan, loading, error } = usePlanDetail(
+    planId,
+    submittedSessionsPerWeek,
+  );
   const { reload: reloadDashboardSummary } = useDashboardSummary();
 
   const [activeViewWorkoutWeek, setActiveViewWorkoutWeek] =
     useState<ViewWorkoutWeek | null>(null);
   const [activeNutritionWeek, setActiveNutritionWeek] =
     useState<ViewNutritionWeek | null>(null);
-  const [selectedWeekNumber, setSelectedWeekNumber] = useState<number | null>(
+  const [isOptingOut, setIsOptingOut] = useState(false);
+  const [isCalculatingSchedule, setIsCalculatingSchedule] = useState(false);
+  const calculateTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const [isOptingOut, setIsOptingOut] = useState(false);
-  const [showScheduleOptions, setShowScheduleOptions] = useState(false);
-  const scheduleReveal = React.useRef(new Animated.Value(0)).current;
+
+  useEffect(
+    () => () => {
+      if (calculateTimer.current) {
+        clearTimeout(calculateTimer.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!plan) return;
+
+    const activeSchedule =
+      activeUserPlan?.plan.id === plan.id
+        ? (activeUserPlan?.plan_version?.sessions_per_week ??
+          activeUserPlan?.sessions_per_week)
+        : null;
+
+    if (activeSchedule) {
+      if (pendingSessionsPerWeek !== activeSchedule) {
+        setPendingSessionsPerWeek(activeSchedule);
+      }
+      if (submittedSessionsPerWeek !== activeSchedule) {
+        setSubmittedSessionsPerWeek(activeSchedule);
+      }
+      return;
+    }
+
+    if (pendingSessionsPerWeek) return;
+
+    const initialSchedule =
+      activeSchedule ?? plan.defaultSessionsPerWeek ?? plan.sessionsPerWeek;
+
+    setPendingSessionsPerWeek(initialSchedule);
+  }, [activeUserPlan, pendingSessionsPerWeek, plan, submittedSessionsPerWeek]);
+
+  // Seed training-day pattern from the selected plan version whenever the
+  // plan or target weekly rhythm changes. If the user adjusts the pattern
+  // manually, we only reset it when the underlying version changes.
+  useEffect(() => {
+    if (!plan || !pendingSessionsPerWeek) return;
+    const version = plan.versions?.find(
+      (item) => item.sessionsPerWeek === pendingSessionsPerWeek,
+    );
+    if (version?.trainingDaysPattern?.length) {
+      setSelectedTrainingDays(version.trainingDaysPattern);
+    } else {
+      setSelectedTrainingDays([]);
+    }
+  }, [plan, pendingSessionsPerWeek]);
+
+  const selectWeeklyRhythm = (days: number) => {
+    setPendingSessionsPerWeek(days);
+  };
+
+  const submitWeeklyRhythm = () => {
+    if (!pendingSessionsPerWeek) return;
+    if (calculateTimer.current) {
+      clearTimeout(calculateTimer.current);
+    }
+    setIsCalculatingSchedule(true);
+    setSubmittedSessionsPerWeek(pendingSessionsPerWeek);
+    calculateTimer.current = setTimeout(() => {
+      setIsCalculatingSchedule(false);
+      calculateTimer.current = null;
+    }, 950);
+  };
 
   const canMarkComplete =
     !!profile?.profile.active_plan_id &&
@@ -163,8 +312,8 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
 
   const isPremiumUser = Boolean(
     (profile?.profile.personal_bests as any)?.is_premium ||
-      (profile?.profile.personal_bests as any)?.premium ||
-      (profile?.profile.personal_bests as any)?.subscription === "premium",
+    (profile?.profile.personal_bests as any)?.premium ||
+    (profile?.profile.personal_bests as any)?.subscription === "premium",
   );
 
   const backToPlansLink = (
@@ -263,6 +412,24 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
       return;
     }
 
+    // Require a concrete set of training days when the user has selected any,
+    // and make sure the count matches the chosen weekly frequency.
+    if (
+      selectedTrainingDays.length > 0 &&
+      selectedTrainingDays.length !== sessionsPerWeek
+    ) {
+      Alert.alert(
+        "Select training days",
+        `Choose ${sessionsPerWeek} training days to match your schedule.`,
+      );
+      return;
+    }
+
+    const effectiveTrainingDays =
+      selectedTrainingDays.length === sessionsPerWeek
+        ? selectedTrainingDays
+        : (version?.trainingDaysPattern ?? []);
+
     const today = new Date().toISOString().slice(0, 10);
     const response = await fetch(`${API_BASE_URL}/user-plans/start`, {
       method: "POST",
@@ -274,6 +441,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         planId,
         sessionsPerWeek,
         startDate: today,
+        trainingDaysPattern: effectiveTrainingDays,
       }),
     });
 
@@ -285,25 +453,19 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
       return;
     }
     if (!response.ok) {
-      Alert.alert("Could not start plan", `Server returned ${response.status}.`);
+      Alert.alert(
+        "Could not start plan",
+        `Server returned ${response.status}.`,
+      );
       return;
     }
 
     await reloadProfile();
     await reloadActiveUserPlan();
     reloadDashboardSummary();
+    setPendingSessionsPerWeek(sessionsPerWeek);
+    setSubmittedSessionsPerWeek(sessionsPerWeek);
     Alert.alert("Plan started", "Your workouts have been added to your plan.");
-  };
-
-  const toggleScheduleOptions = () => {
-    const nextValue = showScheduleOptions ? 0 : 1;
-    setShowScheduleOptions(!showScheduleOptions);
-    Animated.timing(scheduleReveal, {
-      toValue: nextValue,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
   };
 
   const recalibratePlan = () => {
@@ -357,7 +519,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     );
   };
 
-  if (loading) {
+  if (loading && !plan) {
     return (
       <View
         style={[styles.screenContainer, isLight && styles.screenContainerLight]}
@@ -399,52 +561,43 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
 
   const levelLabel = plan.level.charAt(0).toUpperCase() + plan.level.slice(1);
   const goalLabel = humanizeGoal(plan.goal);
-  const progress = plan.userProgress ?? null;
-  const completedSessions = progress?.completedSessions ?? 0;
-  const totalSessions =
-    progress?.totalSessions ??
-    plan.weeks.reduce((total, week) => total + week.days.length, 0);
-  const completionPercent = progress?.completionPercent ?? 0;
-  const currentWeekNumber = progress?.currentWeekNumber;
-  const defaultSchedule = plan.defaultSessionsPerWeek ?? plan.sessionsPerWeek;
-  const resultSummary = getPrimaryOutcome(plan.result || plan.summary);
-  const selectedWeek =
-    plan.weeks.find(
-      (week) =>
-        week.number ===
-        (selectedWeekNumber ?? currentWeekNumber ?? plan.weeks[0]?.number),
-    ) ?? plan.weeks[0];
-  const selectedWorkoutWeek = selectedWeek
-    ? mapPlanWeekToViewWorkoutWeek(selectedWeek)
-    : null;
   const isThisActivePlan = activeUserPlan?.plan.id === plan.id;
-  const currentSchedule = isThisActivePlan
-    ? activeUserPlan?.plan_version?.sessions_per_week ??
-      activeUserPlan?.sessions_per_week ??
-      defaultSchedule
-    : defaultSchedule;
-  const currentVersion = plan.versions?.find(
-    (item) => item.sessionsPerWeek === currentSchedule,
+  const activePlanSchedule = isThisActivePlan
+    ? (activeUserPlan?.plan_version?.sessions_per_week ??
+      activeUserPlan?.sessions_per_week)
+    : null;
+  const currentSchedule = activePlanSchedule ?? submittedSessionsPerWeek;
+  const supportedSchedules = plan.supportedSessionsPerWeek?.length
+    ? plan.supportedSessionsPerWeek
+    : [3, 4, 5, 6];
+  const rhythmOptions = Array.from(new Set(supportedSchedules))
+    .filter((item) => item >= 3 && item <= 6)
+    .sort((a, b) => a - b);
+  const shouldShowScheduleOptions = !isThisActivePlan;
+  const isPreviewCurrent =
+    !!submittedSessionsPerWeek &&
+    pendingSessionsPerWeek === submittedSessionsPerWeek;
+  const isBuildingSchedule =
+    !!currentSchedule && (isCalculatingSchedule || loading);
+  const canSubmitRhythm =
+    !isThisActivePlan &&
+    !!pendingSessionsPerWeek &&
+    (!submittedSessionsPerWeek ||
+      pendingSessionsPerWeek !== submittedSessionsPerWeek);
+  const detailCopy = buildPlanDetailCopy(
+    plan.name,
+    plan.audience,
+    plan.summary,
+    plan.result,
+    goalLabel || getShortPhrase(plan.goal, "Training"),
   );
-  const currentScheduleLabel =
-    currentVersion?.weeklyStructure?.join(" · ") ||
-    `${currentSchedule} focused sessions each week`;
-  const guidelineNote = getGuidelineNote(
-    plan.longDescription || "",
-    "A serious HYROX preparation block combining running, strength, sled work, carrying, and race simulation.",
-  );
-  const missedCount = isThisActivePlan ? activeUserPlan?.missed_sessions ?? 0 : 0;
-  const scheduleRevealStyle = {
-    opacity: scheduleReveal,
-    transform: [
-      {
-        translateY: scheduleReveal.interpolate({
-          inputRange: [0, 1],
-          outputRange: [-8, 0],
-        }),
-      },
-    ],
-  };
+  const goalImage = getPlanImageSource(plan);
+  const missedCount = isThisActivePlan
+    ? (activeUserPlan?.missed_sessions ?? 0)
+    : 0;
+  const selectedDayLabels = WEEKDAY_CODES.map((code, index) =>
+    selectedTrainingDays.includes(code) ? WEEKDAY_LABELS[index] : null,
+  ).filter(Boolean) as string[];
 
   const openPlanOptions = () => {
     if (canMarkComplete) {
@@ -454,14 +607,20 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
       ]);
       return;
     }
-    Alert.alert("Plan options", "Start a schedule option below to activate this plan.");
+    Alert.alert(
+      "Plan options",
+      "Start a schedule option below to activate this plan.",
+    );
   };
 
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
-        style={[styles.screenContainer, isLight && styles.screenContainerLight]}
-        contentContainerStyle={styles.plansScrollContent}
+        style={[
+          styles.planDetailScreen,
+          !isLight && styles.planDetailScreenDark,
+        ]}
+        contentContainerStyle={styles.planDetailScrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.planDetailTopNav}>
@@ -470,13 +629,15 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             onPress={() => navigation.goBack()}
             style={[
               styles.planDetailNavButton,
-              isLight && styles.planDetailNavButtonLight,
+              isLight
+                ? styles.planDetailNavButtonLight
+                : styles.planDetailNavButtonDark,
             ]}
           >
             <Ionicons
               name="chevron-back"
-              size={22}
-              color={isLight ? "#0F172A" : DARK_TEXT_PRIMARY}
+              size={25}
+              color={isLight ? "#111827" : "#F8FAFC"}
             />
           </TouchableOpacity>
           <Text
@@ -494,25 +655,27 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             onPress={openPlanOptions}
             style={[
               styles.planDetailNavButton,
-              isLight && styles.planDetailNavButtonLight,
+              isLight
+                ? styles.planDetailNavButtonLight
+                : styles.planDetailNavButtonDark,
             ]}
           >
             <Ionicons
               name="ellipsis-vertical"
-              size={20}
-              color={isLight ? "#0F172A" : DARK_TEXT_PRIMARY}
+              size={22}
+              color={isLight ? "#111827" : "#F8FAFC"}
             />
           </TouchableOpacity>
         </View>
 
-        <View
-          style={[styles.planDetailHero, isLight && styles.planDetailHeroLight]}
-        >
+        <View style={styles.planDetailHero}>
           <View style={styles.planDetailHeroHeader}>
             <Text
               style={[
                 styles.planDetailTitle,
-                isLight ? styles.planDetailTitleLight : styles.planDetailTitleDark,
+                isLight
+                  ? styles.planDetailTitleLight
+                  : styles.planDetailTitleDark,
               ]}
               numberOfLines={2}
             >
@@ -522,14 +685,12 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
               <View
                 style={[
                   styles.planDetailActivePill,
-                  isLight && styles.planDetailActivePillLight,
+                  isLight
+                    ? styles.planDetailActivePillLight
+                    : styles.planDetailActivePillDark,
                 ]}
               >
-                <Ionicons
-                  name="radio-button-on"
-                  size={13}
-                  color={isLight ? "#475569" : "#CBD5E1"}
-                />
+                <Ionicons name="radio-button-on" size={16} color="#34A853" />
                 <Text
                   style={[
                     styles.planDetailActivePillText,
@@ -544,42 +705,19 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             )}
           </View>
 
-          {!!plan.subtitle && (
-            <Text
-              style={[
-                styles.planDetailSummary,
-                isLight
-                  ? styles.planDetailSummaryLight
-                  : styles.planDetailSummaryDark,
-              ]}
-            >
-              {plan.subtitle}
-            </Text>
-          )}
-
-          <Text
-            style={[
-              styles.planDetailSummary,
-              isLight
-                ? styles.planDetailSummaryLight
-                : styles.planDetailSummaryDark,
-            ]}
-            numberOfLines={4}
-          >
-            {plan.summary || plan.goal}
-          </Text>
-
           <View style={styles.planDetailFactRow}>
             <View
               style={[
                 styles.planDetailFactChip,
-                isLight && styles.planDetailFactChipLight,
+                isLight
+                  ? styles.planDetailFactChipLight
+                  : styles.planDetailFactChipDark,
               ]}
             >
               <Ionicons
                 name="flash-outline"
-                size={14}
-                color={isLight ? "#475569" : "#CBD5E1"}
+                size={16}
+                color={isLight ? "#667085" : "#A7B0C3"}
               />
               <Text
                 style={[
@@ -595,13 +733,15 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             <View
               style={[
                 styles.planDetailFactChip,
-                isLight && styles.planDetailFactChipLight,
+                isLight
+                  ? styles.planDetailFactChipLight
+                  : styles.planDetailFactChipDark,
               ]}
             >
               <Ionicons
                 name="calendar-outline"
-                size={14}
-                color={isLight ? "#475569" : "#CBD5E1"}
+                size={16}
+                color={isLight ? "#667085" : "#A7B0C3"}
               />
               <Text
                 style={[
@@ -617,13 +757,15 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             <View
               style={[
                 styles.planDetailFactChip,
-                isLight && styles.planDetailFactChipLight,
+                isLight
+                  ? styles.planDetailFactChipLight
+                  : styles.planDetailFactChipDark,
               ]}
             >
               <Ionicons
                 name="barbell-outline"
-                size={14}
-                color={isLight ? "#475569" : "#CBD5E1"}
+                size={16}
+                color={isLight ? "#667085" : "#A7B0C3"}
               />
               <Text
                 style={[
@@ -633,276 +775,164 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                     : styles.planDetailFactTextDark,
                 ]}
               >
-                {defaultSchedule} days/week
+                Up to {plan.maxSessionsPerWeek ?? plan.sessionsPerWeek}{" "}
+                days/week
               </Text>
-            </View>
-          </View>
-
-          <View style={styles.planDetailProgressBlock}>
-            <View style={styles.planDetailProgressHeader}>
-              <Text
-                style={[
-                  styles.planDetailProgressText,
-                  isLight
-                    ? styles.planDetailProgressTextLight
-                    : styles.planDetailProgressTextDark,
-                ]}
-              >
-                {currentWeekNumber
-                  ? `Week ${currentWeekNumber} of ${plan.durationWeeks}`
-                  : `${plan.durationWeeks} week plan`}
-              </Text>
-              <Text
-                style={[
-                  styles.planDetailProgressText,
-                  isLight
-                    ? styles.planDetailProgressTextLight
-                    : styles.planDetailProgressTextDark,
-                ]}
-              >
-                {completionPercent}% completed
-              </Text>
-            </View>
-            <ProgressDots
-              total={totalSessions}
-              completed={completedSessions}
-              isLight={isLight}
-            />
-            <View style={styles.planDetailProgressDates}>
-              <View style={styles.planDetailDateItem}>
-                <Ionicons
-                  name="calendar-outline"
-                  size={13}
-                  color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
-                />
-                <Text
-                  style={[
-                    styles.planDetailDateText,
-                    isLight
-                      ? styles.planDetailDateTextLight
-                      : styles.planDetailDateTextDark,
-                  ]}
-                >
-                  Started {formatPlanDate(progress?.startedAt)}
-                </Text>
-              </View>
-              <View style={styles.planDetailDateItem}>
-                <Ionicons
-                  name="calendar-clear-outline"
-                  size={13}
-                  color={isLight ? LIGHT_TEXT_MUTED : DARK_TEXT_MUTED}
-                />
-                <Text
-                  style={[
-                    styles.planDetailDateText,
-                    isLight
-                      ? styles.planDetailDateTextLight
-                      : styles.planDetailDateTextDark,
-                  ]}
-                >
-                  Ends {formatPlanDate(progress?.expectedEndAt)}
-                </Text>
-              </View>
             </View>
           </View>
         </View>
 
-        <View style={styles.planDetailInsightRow}>
-          <View
-            style={[
-              styles.planDetailInsightCard,
-              isLight && styles.planDetailInsightCardLight,
-            ]}
-          >
-            <View
-              style={[
-                styles.planDetailInsightIcon,
-                styles.planDetailInsightIconBlue,
-              ]}
-            >
-              <Ionicons name="locate-outline" size={26} color="#FFFFFF" />
-            </View>
-            <Text
-              style={[
-                styles.planDetailInsightLabel,
-                isLight
-                  ? styles.planDetailInsightLabelLight
-                  : styles.planDetailInsightLabelDark,
-              ]}
-            >
-              Race focus
-            </Text>
-            <Text
-              style={[
-                styles.planDetailInsightText,
-                isLight
-                  ? styles.planDetailInsightTextLight
-                  : styles.planDetailInsightTextDark,
-              ]}
-              numberOfLines={2}
-            >
-              {goalLabel}
-            </Text>
-            <Text
-              style={[
-                styles.planDetailInsightSubtext,
-                isLight
-                  ? styles.planDetailInsightSubtextLight
-                  : styles.planDetailInsightSubtextDark,
-              ]}
-              numberOfLines={3}
-            >
-              Prepare for race day with clear station-to-run transfer.
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.planDetailInsightCard,
-              isLight && styles.planDetailInsightCardLight,
-              { marginRight: 0 },
-            ]}
-          >
-            <View
-              style={[
-                styles.planDetailInsightIcon,
-                styles.planDetailInsightIconGreen,
-              ]}
-            >
-              <Ionicons name="trending-up-outline" size={26} color="#FFFFFF" />
-            </View>
-            <Text
-              style={[
-                styles.planDetailInsightLabel,
-                isLight
-                  ? styles.planDetailInsightLabelLight
-                  : styles.planDetailInsightLabelDark,
-              ]}
-            >
-              Expected result
-            </Text>
-            <Text
-              style={[
-                styles.planDetailInsightText,
-                isLight
-                  ? styles.planDetailInsightTextLight
-                  : styles.planDetailInsightTextDark,
-              ]}
-              numberOfLines={3}
-            >
-              {resultSummary}
-            </Text>
-            <Text
-              style={[
-                styles.planDetailInsightSubtext,
-                isLight
-                  ? styles.planDetailInsightSubtextLight
-                  : styles.planDetailInsightSubtextDark,
-              ]}
-              numberOfLines={2}
-            >
-              Improved running, station efficiency and confidence.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.planDetailGuidelinesCard,
-            isLight && styles.planDetailGuidelinesCardLight,
-          ]}
+        <ImageBackground
+          source={goalImage}
+          style={styles.planDetailGoalCard}
+          imageStyle={styles.planDetailGoalImage}
         >
-          <Text
-            style={[
-              styles.planDetailGuidelinesTitle,
-              isLight
-                ? styles.planDetailGuidelinesTitleLight
-                : styles.planDetailGuidelinesTitleDark,
-            ]}
-          >
-            PLAN GUIDELINES
-          </Text>
-          {[
-            {
-              label: "Level",
-              value: levelLabel,
-              icon: "flash",
-              tone: styles.planDetailGuidelineIconBlue,
-            },
-            {
-              label: "Sessions",
-              value: `${completedSessions} / ${totalSessions || 0} Completed`,
-              icon: "checkmark",
-              tone: styles.planDetailGuidelineIconGreen,
-            },
-            {
-              label: "Schedule",
-              value: `${currentSchedule} days per week`,
-              icon: "calendar-clear",
-              tone: styles.planDetailGuidelineIconPurple,
-            },
-          ].map((item) => (
-            <View
-              key={item.label}
-              style={[
-                styles.planDetailGuidelineRowItem,
-                isLight && styles.planDetailGuidelineRowItemLight,
-              ]}
-            >
-              <View style={[styles.planDetailGuidelineIcon, item.tone]}>
-                <Ionicons name={item.icon as any} size={22} color="#FFFFFF" />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  style={[
-                    styles.planDetailGuidelineLabel,
-                    isLight
-                      ? styles.planDetailGuidelineLabelLight
-                      : styles.planDetailGuidelineLabelDark,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.planDetailGuidelineValue,
-                    isLight
-                      ? styles.planDetailGuidelineValueLight
-                      : styles.planDetailGuidelineValueDark,
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.value}
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={isLight ? "#64748B" : DARK_TEXT_MUTED}
-              />
-            </View>
-          ))}
+          <View style={styles.planDetailGoalScrim} />
+          <View style={styles.planDetailGoalContent}>
+            <Text style={styles.planDetailGoalEyebrow}>Goal</Text>
+            <Text style={styles.planDetailGoalTitle}>
+              {detailCopy.goalTitle}
+            </Text>
+            <Text style={styles.planDetailGoalText} numberOfLines={3}>
+              {detailCopy.goalSubtitle}
+            </Text>
+          </View>
+          <View style={styles.planDetailGoalFlag}>
+            <Ionicons name="flag-outline" size={28} color="#FFFFFF" />
+          </View>
+        </ImageBackground>
+
+        <View style={styles.planDetailInfoGrid}>
           <View
             style={[
-              styles.planDetailGuidelineNoteBox,
-              isLight && styles.planDetailGuidelineNoteBoxLight,
+              styles.planDetailInfoCard,
+              !isLight && styles.planDetailInfoCardDark,
             ]}
           >
-            <Ionicons
-              name="sparkles"
-              size={18}
-              color={isLight ? "#2B7CD3" : "#7DD3FC"}
-              style={{ marginTop: 2, marginRight: 12 }}
-            />
-            <Text
+            <View
               style={[
-                styles.planDetailGuidelinesBody,
-                isLight
-                  ? styles.planDetailGuidelinesBodyLight
-                  : styles.planDetailGuidelinesBodyDark,
+                styles.planDetailInfoIcon,
+                styles.planDetailInfoIconGreen,
               ]}
             >
-              {guidelineNote}
+              <Ionicons name="radio-outline" size={24} color="#0D7A34" />
+            </View>
+            <View style={styles.planDetailInfoCopy}>
+              <Text
+                style={[
+                  styles.planDetailInfoLabel,
+                  !isLight && styles.planDetailInfoLabelDark,
+                ]}
+              >
+                For
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailInfoValue,
+                  !isLight && styles.planDetailInfoValueDark,
+                ]}
+                numberOfLines={3}
+              >
+                {detailCopy.forText}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.planDetailInfoCard,
+              !isLight && styles.planDetailInfoCardDark,
+            ]}
+          >
+            <View
+              style={[styles.planDetailInfoIcon, styles.planDetailInfoIconBlue]}
+            >
+              <Ionicons name="walk-outline" size={24} color="#1677D2" />
+            </View>
+            <View style={styles.planDetailInfoCopy}>
+              <Text
+                style={[
+                  styles.planDetailInfoLabel,
+                  !isLight && styles.planDetailInfoLabelDark,
+                ]}
+              >
+                Focus
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailInfoValue,
+                  !isLight && styles.planDetailInfoValueDark,
+                ]}
+                numberOfLines={3}
+              >
+                {detailCopy.focusText}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.planDetailInfoCard,
+              !isLight && styles.planDetailInfoCardDark,
+            ]}
+          >
+            <View
+              style={[styles.planDetailInfoIcon, styles.planDetailInfoIconGold]}
+            >
+              <Ionicons name="analytics-outline" size={24} color="#101828" />
+            </View>
+            <View style={styles.planDetailInfoCopy}>
+              <Text
+                style={[
+                  styles.planDetailInfoLabel,
+                  !isLight && styles.planDetailInfoLabelDark,
+                ]}
+              >
+                Result
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailInfoValue,
+                  !isLight && styles.planDetailInfoValueDark,
+                ]}
+                numberOfLines={3}
+              >
+                {detailCopy.resultText}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.planDetailInfoCard,
+              styles.planDetailExpectCard,
+              !isLight && styles.planDetailExpectCardDark,
+            ]}
+          >
+            <Text
+              style={[
+                styles.planDetailInfoLabel,
+                !isLight && styles.planDetailInfoLabelDark,
+              ]}
+            >
+              What to expect
             </Text>
+            <View style={styles.planDetailExpectList}>
+              {detailCopy.expectItems.map((item) => (
+                <View key={item} style={styles.planDetailExpectRow}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={19}
+                    color={isLight ? "#344054" : "#CBD5E1"}
+                  />
+                  <Text
+                    style={[
+                      styles.planDetailExpectText,
+                      !isLight && styles.planDetailExpectTextDark,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
         </View>
 
@@ -910,7 +940,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           <View
             style={[
               styles.planCurrentScheduleCard,
-              isLight && styles.planCurrentScheduleCardLight,
+              !isLight && styles.planCurrentScheduleCardDark,
             ]}
           >
             <View style={styles.planCurrentScheduleHeader}>
@@ -918,15 +948,17 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                 style={[
                   styles.planCurrentScheduleIcon,
                   isLight && styles.planCurrentScheduleIconLight,
+                  !isLight && styles.planCurrentScheduleIconDark,
                 ]}
               >
-                <Ionicons
-                  name="calendar-outline"
-                  size={19}
-                  color={isLight ? "#0F172A" : "#E5E7EB"}
-                />
+                <Ionicons name="calendar-outline" size={22} color="#0B73D9" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={styles.planScheduleStepBadge}>
+                  <Text style={styles.planScheduleStepBadgeText}>
+                    STEP 2 OF 4
+                  </Text>
+                </View>
                 <Text
                   style={[
                     styles.planCurrentScheduleEyebrow,
@@ -935,7 +967,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                       : styles.planCurrentScheduleEyebrowDark,
                   ]}
                 >
-                  Current rhythm
+                  Training rhythm
                 </Text>
                 <Text
                   style={[
@@ -945,45 +977,256 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                       : styles.planCurrentScheduleTitleDark,
                   ]}
                 >
-                  {currentSchedule} days/week
+                  {isThisActivePlan
+                    ? "Your weekly schedule"
+                    : "Choose your weekly schedule"}
                 </Text>
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.88}
-                style={[
-                  styles.planCurrentScheduleButton,
-                  isLight && styles.planCurrentScheduleButtonLight,
-                ]}
-                onPress={toggleScheduleOptions}
-              >
-                <Ionicons
-                  name={showScheduleOptions ? "chevron-up" : "options-outline"}
-                  size={16}
-                  color={isLight ? "#0F172A" : "#E5E7EB"}
-                />
                 <Text
                   style={[
-                    styles.planCurrentScheduleButtonText,
+                    styles.planScheduleOptionsHint,
                     isLight
-                      ? styles.planCurrentScheduleButtonTextLight
-                      : styles.planCurrentScheduleButtonTextDark,
+                      ? styles.planScheduleOptionsHintLight
+                      : styles.planScheduleOptionsHintDark,
                   ]}
                 >
-                  {showScheduleOptions ? "Done" : "Change"}
+                  {isThisActivePlan
+                    ? "This is the workout rhythm saved for your active plan."
+                    : "Pick how many days you want to train and select your preferred workout days."}
                 </Text>
-              </TouchableOpacity>
+              </View>
             </View>
-            <Text
+            <View
               style={[
-                styles.planCurrentScheduleDescription,
-                isLight
-                  ? styles.planCurrentScheduleDescriptionLight
-                  : styles.planCurrentScheduleDescriptionDark,
+                styles.planScheduleDivider,
+                !isLight && styles.planScheduleDividerDark,
               ]}
-              numberOfLines={2}
-            >
-              {currentScheduleLabel}
-            </Text>
+            />
+            {shouldShowScheduleOptions && (
+              <View>
+                <View style={styles.planScheduleSectionHeader}>
+                  <Ionicons name="bar-chart-outline" size={21} color="#2E7BE6" />
+                  <View style={styles.planScheduleSectionCopy}>
+                    <Text
+                      style={[
+                        styles.planScheduleOptionsTitle,
+                        isLight
+                          ? styles.planScheduleOptionsTitleLight
+                          : styles.planScheduleOptionsTitleDark,
+                      ]}
+                    >
+                      Workouts per week
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.planScheduleChoiceRow}>
+                  {rhythmOptions.map((days) => {
+                    const isSelected = days === pendingSessionsPerWeek;
+                    const isSupported = supportedSchedules.includes(days);
+                    return (
+                      <TouchableOpacity
+                        key={days}
+                        activeOpacity={0.88}
+                        style={[
+                          styles.planScheduleChoice,
+                          !isLight && styles.planScheduleChoiceDark,
+                          isSelected && styles.planScheduleChoiceSelected,
+                          isSelected &&
+                            !isLight &&
+                            styles.planScheduleChoiceSelectedDark,
+                          !isSupported && styles.planScheduleChoiceDisabled,
+                        ]}
+                        onPress={() => {
+                          if (!isSupported) {
+                            Alert.alert(
+                              "Coming soon",
+                              `${days} workouts per week is not available for this plan yet.`,
+                            );
+                            return;
+                          }
+                          selectWeeklyRhythm(days);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.planScheduleChoiceText,
+                            !isLight && styles.planScheduleChoiceTextDark,
+                            isSelected && styles.planScheduleChoiceTextSelected,
+                          ]}
+                        >
+                          {days}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {!!pendingSessionsPerWeek && (
+                  <View style={styles.planScheduleTrainingSection}>
+                    <View style={styles.planScheduleSectionHeader}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={20}
+                        color="#2E7BE6"
+                      />
+                      <View style={styles.planScheduleSectionCopy}>
+                        <Text
+                          style={[
+                            styles.planScheduleOptionsTitle,
+                            isLight
+                              ? styles.planScheduleOptionsTitleLight
+                              : styles.planScheduleOptionsTitleDark,
+                          ]}
+                        >
+                          Training days
+                        </Text>
+                        <Text
+                          style={[
+                            styles.planScheduleOptionsHint,
+                            isLight
+                              ? styles.planScheduleOptionsHintLight
+                              : styles.planScheduleOptionsHintDark,
+                          ]}
+                        >
+                          Choose {pendingSessionsPerWeek} days that fit your
+                          week.
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.planScheduleDaysRow}>
+                      {WEEKDAY_CODES.map((code, index) => {
+                        const label = WEEKDAY_LABELS[index];
+                        const isSelected = selectedTrainingDays.includes(code);
+                        return (
+                          <TouchableOpacity
+                            key={code}
+                            activeOpacity={0.88}
+                            style={[
+                              styles.planScheduleDayButton,
+                              !isLight && styles.planScheduleDayButtonDark,
+                              isSelected && styles.planScheduleDayButtonSelected,
+                              isSelected &&
+                                !isLight &&
+                                styles.planScheduleDayButtonSelectedDark,
+                            ]}
+                            onPress={() => {
+                              setSelectedTrainingDays((prev) => {
+                                const exists = prev.includes(code);
+                                if (exists) {
+                                  return prev.filter((d) => d !== code);
+                                }
+                                if (prev.length >= pendingSessionsPerWeek) {
+                                  return prev;
+                                }
+                                return [...prev, code];
+                              });
+                            }}
+                          >
+                            {isSelected && (
+                              <View style={styles.planScheduleDayCheck}>
+                                <Ionicons
+                                  name="checkmark"
+                                  size={12}
+                                  color="#07111F"
+                                />
+                              </View>
+                            )}
+                            <Text
+                              style={[
+                                styles.planScheduleDayButtonText,
+                                !isLight &&
+                                  styles.planScheduleDayButtonTextDark,
+                                isSelected &&
+                                  styles.planScheduleDayButtonTextSelected,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View
+                      style={[
+                        styles.planScheduleSelectedSummary,
+                        !isLight && styles.planScheduleSelectedSummaryDark,
+                      ]}
+                    >
+                      <View style={styles.planScheduleSelectedIcon}>
+                        <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                      </View>
+                      <Text
+                        style={[
+                          styles.planCurrentScheduleDescription,
+                          isLight
+                            ? styles.planCurrentScheduleDescriptionLight
+                            : styles.planCurrentScheduleDescriptionDark,
+                        ]}
+                      >
+                        {selectedDayLabels.length
+                          ? `Selected: ${selectedDayLabels.join(", ")}`
+                          : "Tap the days that fit your week."}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+            {isThisActivePlan && currentSchedule ? (
+              <View style={styles.planScheduleTrainingSection}>
+                <View style={styles.planScheduleSectionHeader}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={20}
+                    color="#2E7BE6"
+                  />
+                  <View style={styles.planScheduleSectionCopy}>
+                    <Text
+                      style={[
+                        styles.planScheduleOptionsTitle,
+                        isLight
+                          ? styles.planScheduleOptionsTitleLight
+                          : styles.planScheduleOptionsTitleDark,
+                      ]}
+                    >
+                      {currentSchedule} workouts per week
+                    </Text>
+                    <Text
+                      style={[
+                        styles.planScheduleOptionsHint,
+                        isLight
+                          ? styles.planScheduleOptionsHintLight
+                          : styles.planScheduleOptionsHintDark,
+                      ]}
+                    >
+                      {selectedDayLabels.length
+                        ? selectedDayLabels.join(", ")
+                        : "Your selected plan schedule"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+            {canSubmitRhythm && (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[
+                  styles.planDetailPrimaryButton,
+                  isLight && styles.planDetailPrimaryButtonLight,
+                ]}
+                onPress={submitWeeklyRhythm}
+              >
+                <Text
+                  style={[
+                    styles.planDetailPrimaryButtonText,
+                    isLight && styles.planDetailPrimaryButtonTextLight,
+                  ]}
+                >
+                  {pendingSessionsPerWeek
+                    ? `Build my ${pendingSessionsPerWeek}-day plan`
+                    : "Build my plan"}
+                </Text>
+                <Ionicons name="arrow-forward" size={21} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
           </View>
 
           {missedCount > 0 && (
@@ -1049,336 +1292,241 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
             </View>
           )}
 
-          {showScheduleOptions && (
-            <Animated.View style={scheduleRevealStyle}>
-              <View style={styles.planScheduleOptionsHeader}>
-                <Text
-                  style={[
-                    styles.planScheduleOptionsTitle,
-                    isLight
-                      ? styles.planScheduleOptionsTitleLight
-                      : styles.planScheduleOptionsTitleDark,
-                  ]}
-                >
-                  Other weekly options
-                </Text>
-                <Text
-                  style={[
-                    styles.planScheduleOptionsHint,
-                    isLight
-                      ? styles.planScheduleOptionsHintLight
-                      : styles.planScheduleOptionsHintDark,
-                  ]}
-                >
-                  Choose only if recovery supports it.
-                </Text>
-              </View>
-              {[3, 4, 5, 6]
-                .filter((days) => days !== currentSchedule)
-                .map((days) => {
-                  const version = plan.versions?.find(
-                    (item) => item.sessionsPerWeek === days,
-                  );
-                  const isDefault = days === (plan.defaultSessionsPerWeek ?? 4);
-                  const isPremium = version?.isPremium ?? !isDefault;
-                  const statusLabel = isDefault
-                    ? "Recommended"
-                    : isPremium
-                      ? "Premium"
-                      : "Included";
-                  return (
-                    <TouchableOpacity
-                      key={days}
-                      activeOpacity={0.9}
-                      style={[
-                        styles.planScheduleOption,
-                        isLight && styles.planScheduleOptionLight,
-                      ]}
-                      onPress={() => void startPlan(days, isPremium)}
-                    >
-                      <View
-                        style={[
-                          styles.planScheduleOptionIcon,
-                          isLight && styles.planScheduleOptionIconLight,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.planScheduleOptionIconText,
-                            isLight
-                              ? styles.planScheduleOptionIconTextLight
-                              : styles.planScheduleOptionIconTextDark,
-                          ]}
-                        >
-                          {days}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text
-                          style={[
-                            styles.planScheduleOptionTitle,
-                            isLight
-                              ? styles.planScheduleOptionTitleLight
-                              : styles.planScheduleOptionTitleDark,
-                          ]}
-                        >
-                          {days} days/week
-                        </Text>
-                        <Text
-                          style={[
-                            styles.planScheduleOptionDescription,
-                            isLight
-                              ? styles.planScheduleOptionDescriptionLight
-                              : styles.planScheduleOptionDescriptionDark,
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {version?.weeklyStructure?.join(" · ") ||
-                            "Planned expansion"}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.planScheduleBadge,
-                          isLight && styles.planScheduleBadgeLight,
-                          isPremium && styles.planScheduleBadgePremium,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.planScheduleBadgeText,
-                            isLight
-                              ? styles.planScheduleBadgeTextLight
-                              : styles.planScheduleBadgeTextDark,
-                          ]}
-                        >
-                          {statusLabel}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-            </Animated.View>
-          )}
-        </View>
-
-        <View style={styles.planDetailContainer}>
-          <View
-            style={[
-              styles.planWeekTabs,
-              isLight && styles.planWeekTabsLight,
-            ]}
-          >
-            {plan.weeks.map((week) => {
-              const isSelected = selectedWeek?.id === week.id;
-              return (
-                <TouchableOpacity
-                  key={week.id}
-                  activeOpacity={0.88}
-                  onPress={() => setSelectedWeekNumber(week.number)}
-                  style={[
-                    styles.planWeekTab,
-                    isLight && styles.planWeekTabLight,
-                    isSelected && styles.planWeekTabActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.planWeekTabText,
-                      isLight
-                        ? styles.planWeekTabTextLight
-                        : styles.planWeekTabTextDark,
-                      isSelected && styles.planWeekTabTextActive,
-                    ]}
-                  >
-                    Week {week.number}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {!!selectedWeek && (
-            <>
+          {!isThisActivePlan && isPreviewCurrent && !isBuildingSchedule && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[
+                styles.planDetailPrimaryButton,
+                isLight && styles.planDetailPrimaryButtonLight,
+              ]}
+              onPress={() => {
+                if (!currentSchedule) return;
+                const version = plan.versions?.find(
+                  (item) => item.sessionsPerWeek === currentSchedule,
+                );
+                void startPlan(currentSchedule, version?.isPremium ?? false);
+              }}
+            >
               <Text
                 style={[
-                  styles.planWeekTimelineMeta,
-                  isLight
-                    ? styles.planWeekTimelineMetaLight
-                    : styles.planWeekTimelineMetaDark,
+                  styles.planDetailPrimaryButtonText,
+                  isLight && styles.planDetailPrimaryButtonTextLight,
                 ]}
               >
-                {selectedWeek.number} OF {plan.weeks.length} WEEKS
+                Start {currentSchedule} days/week
               </Text>
-              <View
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {isBuildingSchedule && (
+          <View style={styles.planDetailContainer}>
+            <View
+              style={[
+                styles.planCalculatingCard,
+                isLight && styles.planCalculatingCardLight,
+              ]}
+            >
+              <ActivityIndicator color={isLight ? "#0EA5E9" : "#38BDF8"} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={[
+                    styles.planCalculatingTitle,
+                    isLight
+                      ? styles.planCalculatingTitleLight
+                      : styles.planCalculatingTitleDark,
+                  ]}
+                >
+                  BUILDING YOUR {currentSchedule}-DAY WEEK
+                </Text>
+                <Text
+                  style={[
+                    styles.planCalculatingText,
+                    isLight
+                      ? styles.planCalculatingTextLight
+                      : styles.planCalculatingTextDark,
+                  ]}
+                >
+                  Filtering the master plan into the right training rhythm.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {isPreviewCurrent && !isBuildingSchedule && (
+          <View style={styles.planDetailContainer}>
+            <View style={styles.planDetailSectionHeaderRow}>
+              <Text
                 style={[
-                  styles.planWeekTimelineCard,
-                  isLight && styles.planWeekTimelineCardLight,
+                  styles.planDetailHeading,
+                  isLight
+                    ? styles.planDetailHeadingLight
+                    : styles.planDetailHeadingDark,
                 ]}
               >
-                <View style={styles.planWeekTimelineRail} />
-                {selectedWeek.days.map((day, index) => {
-                  const tag = getTimelineTag(day);
-                  const bars = getTimelineIntensity(day);
-                  const isLast = index === selectedWeek.days.length - 1;
-                  return (
-                    <TouchableOpacity
-                      key={day.id}
-                      activeOpacity={0.88}
+                WEEK DETAILS
+              </Text>
+              <Text
+                style={[
+                  styles.planDetailSectionSubtext,
+                  isLight
+                    ? styles.planDetailSectionSubtextLight
+                    : styles.planDetailSectionSubtextDark,
+                ]}
+              >
+                Open a week for the full workout split.
+              </Text>
+            </View>
+            <View style={styles.planDetailWeekList}>
+              {plan.weeks.map((week) => {
+                const workoutWeek = mapPlanWeekToViewWorkoutWeek(week);
+                const nutritionWeek = mapPlanWeekToViewNutritionWeek(week);
+                return (
+                  <TouchableOpacity
+                    key={week.id}
+                    activeOpacity={0.9}
+                    style={styles.planDetailWeekCardOuter}
+                    onPress={() => setActiveViewWorkoutWeek(workoutWeek)}
+                  >
+                    <View
                       style={[
-                        styles.planWeekTimelineItem,
-                        isLast && styles.planWeekTimelineItemLast,
+                        styles.planDetailWeekCard,
+                        isLight && styles.planDetailWeekCardLight,
                       ]}
-                      onPress={() =>
-                        selectedWorkoutWeek &&
-                        setActiveViewWorkoutWeek(selectedWorkoutWeek)
-                      }
                     >
-                      <View style={styles.planWeekTimelineNumber}>
-                        <Text style={styles.planWeekTimelineNumberText}>
-                          {index + 1}
-                        </Text>
-                      </View>
-                      <View style={styles.planWeekTimelineContent}>
-                        <Text
+                      <View style={styles.planDetailWeekHeader}>
+                        <View
                           style={[
-                            styles.planWeekTimelineDayMeta,
-                            isLight
-                              ? styles.planWeekTimelineDayMetaLight
-                              : styles.planWeekTimelineDayMetaDark,
+                            styles.planDetailWeekNumber,
+                            isLight && styles.planDetailWeekNumberLight,
                           ]}
                         >
-                          {getTrainingDayLabel(index + 1, currentSchedule)} · Day{" "}
-                          {day.day}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.planDetailWeekNumberText,
+                              isLight
+                                ? styles.planDetailWeekNumberTextLight
+                                : styles.planDetailWeekNumberTextDark,
+                            ]}
+                          >
+                            {week.number}
+                          </Text>
+                        </View>
                         <Text
                           style={[
-                            styles.planWeekTimelineTitle,
+                            styles.planDetailWeekTitle,
                             isLight
-                              ? styles.planWeekTimelineTitleLight
-                              : styles.planWeekTimelineTitleDark,
+                              ? styles.planDetailWeekTitleLight
+                              : styles.planDetailWeekTitleDark,
                           ]}
                           numberOfLines={2}
                         >
-                          {day.title}
+                          {week.title}
                         </Text>
-                        <View style={styles.planWeekTimelineDetailRow}>
-                          <View
+                      </View>
+                      <Text
+                        style={[
+                          styles.planDetailWeekDescription,
+                          isLight
+                            ? styles.planDetailWeekDescriptionLight
+                            : styles.planDetailWeekDescriptionDark,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {week.description}
+                      </Text>
+                      <View style={styles.planWeekMetaRow}>
+                        <View
+                          style={[
+                            styles.planWeekMetaPill,
+                            isLight && styles.planWeekMetaPillLight,
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.planWeekTimelineTag,
-                              tag.tone === "green" &&
-                                styles.planWeekTimelineTagGreen,
-                              tag.tone === "amber" &&
-                                styles.planWeekTimelineTagAmber,
-                              tag.tone === "purple" &&
-                                styles.planWeekTimelineTagPurple,
-                              tag.tone === "orange" &&
-                                styles.planWeekTimelineTagOrange,
+                              styles.planWeekMetaText,
+                              isLight
+                                ? styles.planWeekMetaTextLight
+                                : styles.planWeekMetaTextDark,
                             ]}
                           >
-                            <Ionicons
-                              name={tag.icon as any}
-                              size={12}
-                              color={
-                                tag.tone === "amber"
-                                  ? "#B7791F"
-                                  : tag.tone === "purple"
-                                    ? "#7C3AED"
-                                    : tag.tone === "orange"
-                                      ? "#EA580C"
-                                      : "#16A34A"
-                              }
-                            />
-                            <Text
-                              style={[
-                                styles.planWeekTimelineTagText,
-                                tag.tone === "amber" &&
-                                  styles.planWeekTimelineTagTextAmber,
-                                tag.tone === "purple" &&
-                                  styles.planWeekTimelineTagTextPurple,
-                                tag.tone === "orange" &&
-                                  styles.planWeekTimelineTagTextOrange,
-                              ]}
-                            >
-                              {tag.label}
-                            </Text>
-                          </View>
+                            {week.days.length} workouts
+                          </Text>
                         </View>
-                        <View style={styles.planWeekTimelineFooter}>
-                          <View style={styles.planWeekTimelineDuration}>
-                            <Ionicons
-                              name="time-outline"
-                              size={15}
-                              color={isLight ? "#64748B" : DARK_TEXT_MUTED}
-                            />
+                        {!!week.recoveryPriority && (
+                          <View
+                            style={[
+                              styles.planWeekMetaPill,
+                              isLight && styles.planWeekMetaPillLight,
+                            ]}
+                          >
                             <Text
                               style={[
-                                styles.planWeekTimelineDurationText,
+                                styles.planWeekMetaText,
                                 isLight
-                                  ? styles.planWeekTimelineDurationTextLight
-                                  : styles.planWeekTimelineDurationTextDark,
+                                  ? styles.planWeekMetaTextLight
+                                  : styles.planWeekMetaTextDark,
                               ]}
+                              numberOfLines={1}
                             >
-                              {day.duration}
+                              {week.recoveryPriority}
                             </Text>
                           </View>
-                          <View style={styles.planWeekIntensityBars}>
-                            {Array.from({ length: 5 }).map((_, barIndex) => (
-                              <View
-                                key={barIndex}
-                                style={[
-                                  styles.planWeekIntensityBar,
-                                  barIndex < bars &&
-                                    styles.planWeekIntensityBarActive,
-                                  { height: 7 + barIndex * 3 },
-                                ]}
-                              />
-                            ))}
-                          </View>
-                        </View>
+                        )}
                       </View>
-                      <View
-                        style={[
-                          styles.planWeekTimelineCheck,
-                          isLight && styles.planWeekTimelineCheckLight,
-                        ]}
-                      >
-                        <Ionicons name="checkmark" size={18} color="#2B7CD3" />
+                      <View style={styles.planDetailWeekActions}>
+                        <TouchableOpacity
+                          activeOpacity={0.88}
+                          style={[
+                            styles.planWeekViewFullButton,
+                            isLight && styles.planWeekViewFullButtonLight,
+                          ]}
+                          onPress={() => setActiveViewWorkoutWeek(workoutWeek)}
+                        >
+                          <Text
+                            style={[
+                              styles.planWeekViewFullButtonLabel,
+                              isLight
+                                ? styles.planWeekViewFullButtonLabelLight
+                                : styles.planWeekViewFullButtonLabelDark,
+                            ]}
+                          >
+                            Workouts
+                          </Text>
+                        </TouchableOpacity>
+                        {nutritionWeek && (
+                          <TouchableOpacity
+                            activeOpacity={0.88}
+                            style={[
+                              styles.planWeekViewFullButton,
+                              isLight && styles.planWeekViewFullButtonLight,
+                              { marginLeft: 8 },
+                            ]}
+                            onPress={() =>
+                              setActiveNutritionWeek(nutritionWeek)
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.planWeekViewFullButtonLabel,
+                                isLight
+                                  ? styles.planWeekViewFullButtonLabelLight
+                                  : styles.planWeekViewFullButtonLabelDark,
+                              ]}
+                            >
+                              Nutrition
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity
-                  activeOpacity={0.88}
-                  style={[
-                    styles.planWeekTimelineButton,
-                    isLight && styles.planWeekTimelineButtonLight,
-                  ]}
-                  onPress={() =>
-                    selectedWorkoutWeek &&
-                    setActiveViewWorkoutWeek(selectedWorkoutWeek)
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.planWeekTimelineButtonText,
-                      isLight
-                        ? styles.planWeekTimelineButtonTextLight
-                        : styles.planWeekTimelineButtonTextDark,
-                    ]}
-                  >
-                    View full week
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={18}
-                    color={isLight ? "#0F172A" : DARK_TEXT_PRIMARY}
-                  />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </ScrollView>
       <ViewWorkoutWeekModal
         week={activeViewWorkoutWeek}

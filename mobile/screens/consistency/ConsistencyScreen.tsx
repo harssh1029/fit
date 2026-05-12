@@ -14,6 +14,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
 import { usePlans } from "../../hooks/usePlans";
 import { useThemeMode, styles, type WorkoutHistoryEntry } from "../../App";
+import { DARK_CARD, LIGHT_TEXT_PRIMARY } from "../../styles/theme";
 
 type PlanFilter = {
   id: string;
@@ -540,15 +541,15 @@ const consistencyStyles = StyleSheet.create({
     color: "#0F172A",
   },
   summaryCard: {
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 26,
+    padding: 22,
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.16)",
-    backgroundColor: "rgba(17,24,39,0.82)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: DARK_CARD,
   },
   summaryCardLight: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#DDE3ED",
+    borderColor: "#E5E7EB",
   },
   summaryHeader: {
     flexDirection: "row",
@@ -557,8 +558,11 @@ const consistencyStyles = StyleSheet.create({
   },
   monthTitle: {
     color: "#F8FAFC",
-    fontSize: 21,
-    fontWeight: "700",
+    fontSize: 23,
+    lineHeight: 29,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
   monthTitleLight: {
     color: "#0F172A",
@@ -752,9 +756,9 @@ const consistencyStyles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   modalCard: {
-    borderRadius: 22,
-    padding: 14,
-    backgroundColor: "#111827",
+    borderRadius: 26,
+    padding: 20,
+    backgroundColor: DARK_CARD,
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.18)",
   },
@@ -764,12 +768,15 @@ const consistencyStyles = StyleSheet.create({
   },
   modalTitle: {
     color: "#F8FAFC",
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
     marginBottom: 10,
   },
   modalTitleLight: {
-    color: "#0F172A",
+    color: LIGHT_TEXT_PRIMARY,
   },
   planOption: {
     minHeight: 48,

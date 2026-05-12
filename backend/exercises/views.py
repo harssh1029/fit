@@ -1,3 +1,7 @@
+from pathlib import Path
+
+from django.conf import settings
+from django.http import FileResponse, Http404
 from django.db.models import Q
 from rest_framework import generics, status
 from rest_framework.pagination import LimitOffsetPagination
@@ -31,9 +35,10 @@ class ExerciseListView(generics.ListAPIView):
 	- starts_with: first letter for alphabet navigation
 	- search: free text over name/description
 
-	List responses intentionally include only still thumbnails, never GIF/video
-	media. Detail fetches carry the heavier media URLs after a user opens one
-	exercise.
+	List responses are paginated and omit direct gif_url/video fields. The
+	thumbnail_url may point at the exercise GIF when no still image exists, so
+	the UI can keep the library visually accurate without loading full detail
+	payloads.
 	"""
 
 	serializer_class = ExerciseSerializer
@@ -119,6 +124,26 @@ class MuscleGroupListView(generics.ListAPIView):
 	queryset = MuscleGroup.objects.all()
 	serializer_class = MuscleGroupSerializer
 	permission_classes = [AllowAny]
+
+
+class LocalExerciseGifView(APIView):
+	"""Serve GIFs from the local dataset during development.
+
+	The database stores these URLs under /api/v1/exercise-gifs/<group>/<file>.
+	Later, cloud storage can replace the stored gif_url values without changing
+	the mobile detail UI.
+	"""
+
+	permission_classes = [AllowAny]
+
+	def get(self, request, gif_path: str, *args, **kwargs):
+		root = (Path(settings.BASE_DIR).parent / "dataset_gifs_by_name").resolve()
+		target = (root / gif_path).resolve()
+		if root not in target.parents or target.suffix.lower() != ".gif":
+			raise Http404
+		if not target.exists() or not target.is_file():
+			raise Http404
+		return FileResponse(target.open("rb"), content_type="image/gif")
 
 
 class ExerciseImportFromExerciseDBView(APIView):
