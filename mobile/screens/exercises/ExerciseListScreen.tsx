@@ -1189,7 +1189,7 @@ const exerciseStyles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 6,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#F8FAFC",
   },
   letterHeaderLight: {
@@ -1268,7 +1268,7 @@ const exerciseStyles = StyleSheet.create({
   },
   compactTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#F8FAFC",
   },
   compactTitleLight: {
@@ -1305,7 +1305,7 @@ const exerciseStyles = StyleSheet.create({
   },
   alphabetText: {
     fontSize: 9,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#64748B",
   },
   alphabetTextLight: {

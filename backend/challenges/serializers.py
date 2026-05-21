@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Challenge
+from .models import Challenge, TrainingChallenge
 from .services import evaluate_challenge_unlock
 
 
@@ -53,3 +53,42 @@ class ChallengeSerializer(serializers.ModelSerializer):
         rep["card"] = card
         rep["unlockProgress"] = evaluation.as_dict()
         return rep
+
+
+class TrainingChallengeSerializer(serializers.ModelSerializer):
+	groupId = serializers.IntegerField(source="group_id", read_only=True)
+	createdById = serializers.IntegerField(source="created_by_id", read_only=True)
+	durationDays = serializers.IntegerField(source="duration_days", read_only=True)
+	eligibleWorkoutTypes = serializers.JSONField(source="eligible_workout_types", read_only=True)
+	eligibleBodyParts = serializers.JSONField(source="eligible_body_parts", read_only=True)
+	minimumDuration = serializers.IntegerField(source="minimum_duration", read_only=True)
+	requiredSessions = serializers.IntegerField(source="required_sessions", read_only=True)
+	allowedIntensity = serializers.JSONField(source="allowed_intensity", read_only=True)
+	badgeIcon = serializers.CharField(source="badge_icon", read_only=True)
+	rewardXp = serializers.IntegerField(source="reward_xp", read_only=True)
+	participantCount = serializers.IntegerField(source="participant_count", read_only=True)
+
+	class Meta:
+		model = TrainingChallenge
+		fields = [
+			"id",
+			"name",
+			"description",
+			"requirement",
+			"durationDays",
+			"eligibleWorkoutTypes",
+			"eligibleBodyParts",
+			"minimumDuration",
+			"requiredSessions",
+			"allowedIntensity",
+			"visibility",
+			"is_official",
+			"groupId",
+			"createdById",
+			"start_date",
+			"end_date",
+			"badgeIcon",
+			"rewardXp",
+			"status",
+			"participantCount",
+		]

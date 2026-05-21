@@ -31,6 +31,10 @@ export type MuscleSelection = {
 interface Props {
   isLight: boolean;
   onSelectionChange?: (selection: MuscleSelection) => void;
+  activeMuscles?: MuscleName[];
+  readOnly?: boolean;
+  highlightColor?: string;
+  fillProgress?: number;
   /**
    * When this value changes, the internal selection is cleared.
    * Used by the parent to reset the map when returning from the
@@ -112,6 +116,18 @@ const colorGroupFill = (svg: string, groupId: string, fill: string): string => {
     );
     return `${open as string}${recoloredInner}${close as string}`;
   });
+};
+
+const injectFillGradient = (
+  svg: string,
+  fillId: string,
+  activeColor: string,
+  baseColor: string,
+  progress: number,
+) => {
+  const pct = Math.max(0, Math.min(1, progress)) * 100;
+  const defs = `<defs><linearGradient id="${fillId}" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="${activeColor}"/><stop offset="${pct}%" stop-color="${activeColor}"/><stop offset="${pct}%" stop-color="${baseColor}"/><stop offset="100%" stop-color="${baseColor}"/></linearGradient></defs>`;
+  return svg.replace(/(<svg[^>]*>)/, `$1${defs}`);
 };
 
 // Positions for the circular joint markers that are already drawn in the SVG.
@@ -260,11 +276,16 @@ const HOTSPOTS: Hotspot[] = [
 const BodyMuscleFront: React.FC<Props> = ({
   isLight,
   onSelectionChange,
+  activeMuscles,
+  readOnly,
+  highlightColor,
+  fillProgress,
   resetKey,
   singleSelect,
 }) => {
   const [selectedMuscles, setSelectedMuscles] = useState<MuscleName[]>([]);
   const [hoveredMuscle, setHoveredMuscle] = useState<MuscleName | null>(null);
+  const displayedMuscles = activeMuscles ?? selectedMuscles;
 
   useEffect(() => {
     setSelectedMuscles([]);
@@ -273,10 +294,16 @@ const BodyMuscleFront: React.FC<Props> = ({
 
   const themedSvgXml = useMemo(() => {
     const baseColor = isLight ? "#d1d5db" : "#4B5563";
-    const highlightColor = "#FF7A3C";
+    const activeColor = highlightColor ?? "#7C6BFF";
+    const progress = fillProgress ?? 1;
+    const fillId = "front-active-fill";
+    const activeFill = progress < 1 ? `url(#${fillId})` : activeColor;
 
     // Start from the raw asset each time so our replacements are predictable.
     let svg = stripClassAttributes(stripMarkerGroups(FRONT_SVG_XML));
+    if (progress < 1) {
+      svg = injectFillGradient(svg, fillId, activeColor, baseColor, progress);
+    }
     // Some paths use the design-token-like value "mw-red" for fill; map that
     // to currentColor so we can style it consistently.
     svg = svg.replace(/fill="mw-red"/g, 'fill="currentColor"');
@@ -287,26 +314,28 @@ const BodyMuscleFront: React.FC<Props> = ({
 
     // Build the set of muscles that should be visually highlighted: all
     // selected ones plus the one under the pointer (if any).
-    const activeMuscles = new Set<MuscleName>(selectedMuscles);
-    if (hoveredMuscle) {
-      activeMuscles.add(hoveredMuscle);
+    const visualMuscles = new Set<MuscleName>(displayedMuscles);
+    if (!readOnly && hoveredMuscle) {
+      visualMuscles.add(hoveredMuscle);
     }
 
-    for (const muscle of activeMuscles) {
+    for (const muscle of visualMuscles) {
       const groupIds = MUSCLE_GROUP_IDS[muscle] ?? [];
       for (const id of groupIds) {
-        svg = colorGroupFill(svg, id, highlightColor);
+        svg = colorGroupFill(svg, id, activeFill);
       }
     }
 
     return svg;
-  }, [hoveredMuscle, isLight, selectedMuscles]);
+  }, [displayedMuscles, fillProgress, highlightColor, hoveredMuscle, isLight, readOnly]);
 
   const handlePress = (muscle: MuscleName) => {
+    if (readOnly) return;
     // Compute next selection from current state, then update parent
     // outside of React's render phase to avoid setState-during-render
     // warnings when notifying the ExerciseListScreen.
-    const alreadyActive = selectedMuscles.includes(muscle);
+    const source = activeMuscles ?? selectedMuscles;
+    const alreadyActive = source.includes(muscle);
     let next: MuscleName[];
     let nowActive: boolean;
     if (singleSelect) {
@@ -321,12 +350,14 @@ const BodyMuscleFront: React.FC<Props> = ({
       }
     } else {
       next = alreadyActive
-        ? selectedMuscles.filter((m) => m !== muscle)
-        : [...selectedMuscles, muscle];
+        ? source.filter((m) => m !== muscle)
+        : [...source, muscle];
       nowActive = !alreadyActive;
     }
 
-    setSelectedMuscles(next);
+    if (!activeMuscles) {
+      setSelectedMuscles(next);
+    }
 
     if (onSelectionChange) {
       onSelectionChange({
@@ -338,10 +369,12 @@ const BodyMuscleFront: React.FC<Props> = ({
   };
 
   const handleHoverIn = (muscle: MuscleName) => {
+    if (readOnly) return;
     setHoveredMuscle(muscle);
   };
 
   const handleHoverOut = (muscle: MuscleName) => {
+    if (readOnly) return;
     setHoveredMuscle((current) => (current === muscle ? null : current));
   };
 
@@ -354,11 +387,9 @@ const BodyMuscleFront: React.FC<Props> = ({
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         style={StyleSheet.absoluteFillObject}
       >
-        {HOTSPOTS.map((spot) => {
+        {!readOnly && HOTSPOTS.map((spot) => {
           const size = spot.size ?? 80;
           const radius = size / 2;
-          const isActive = selectedMuscles.includes(spot.muscle);
-
           return (
             <Circle
               key={spot.id}

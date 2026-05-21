@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from exercises.models import Exercise
 from insights.services import recalculate_user_metrics
+from workouts.services import score_completed_workout
 from workouts.models import SessionExercise, WorkoutSession
 
 from .models import Plan, PlanDay, UserPlan
@@ -15,7 +16,6 @@ from .serializers import PlanSerializer, UserPlanSerializer
 from .services import (
     PremiumRequiredError,
     checkMissedWorkouts,
-    completeWorkout,
     recalibrateUserPlan,
     startUserPlan,
     user_has_premium,
@@ -311,6 +311,43 @@ class CompletePlanDayView(APIView):
                 updated_fields.append("updated_at")
                 session.save(update_fields=updated_fields)
 
+        session.title = plan_day.title
+        session.workout_type = plan_day.day_type if plan_day.day_type in {
+            "strength",
+            "cardio",
+            "conditioning",
+            "mobility",
+            "sport",
+            "recovery",
+        } else "strength"
+        session.entry_source = "plan_workout"
+        session.intensity = (plan_day.intensity or "moderate").replace(" ", "_").lower()
+        session.focus_label = plan_day.primary_focus or plan_day.day_type.title()
+        session.modes = [session.workout_type]
+        session.metadata = {
+            **(session.metadata or {}),
+            "type": "plan_workout",
+            "title": plan_day.title,
+            "mode": session.workout_type,
+            "modes": [session.workout_type],
+            "focus_label": session.focus_label,
+            "intensity": session.intensity,
+            "plan_day_id": plan_day.id,
+            "plan_id": plan.id,
+        }
+        session.save(
+            update_fields=[
+                "title",
+                "workout_type",
+                "entry_source",
+                "intensity",
+                "focus_label",
+                "modes",
+                "metadata",
+                "updated_at",
+            ]
+        )
+
         # Create or update per-exercise SessionExercise rows based on the
         # structured PlanDay exercises. We first try a direct
         # Exercise.name case-insensitive match to the
@@ -361,6 +398,7 @@ class CompletePlanDayView(APIView):
             user_plan.sessions_completed = completed_count
             user_plan.save(update_fields=["sessions_completed", "updated_at"])
 
+        score_completed_workout(session, as_of=now)
         snapshot = recalculate_user_metrics(user, as_of=now)
 
         return Response(
@@ -469,12 +507,61 @@ class CompleteScheduledWorkoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            user_plan = UserPlan.objects.get(id=id, user=request.user)
-            updated = completeWorkout(user_plan.id, int(scheduled_workout_id))
+            scheduled_workout_id_int = int(scheduled_workout_id)
+            updated = UserPlan.objects.select_related("plan").get(id=id, user=request.user)
         except UserPlan.DoesNotExist:
             return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        scheduled = (
+            updated.scheduled_workouts.select_related("plan_day", "plan_day__plan_week")
+            .filter(id=scheduled_workout_id_int)
+            .first()
+        )
+        if scheduled is not None:
+            now = scheduled.completed_at or timezone.now()
+            plan_day = scheduled.plan_day
+            session, _ = WorkoutSession.objects.get_or_create(
+                user=request.user,
+                plan=updated.plan,
+                user_plan=updated,
+                workout_template_id=plan_day.workout_template_id or "",
+                planned_week_number=scheduled.week_number,
+                planned_day_key=str(plan_day.day_index),
+                defaults={
+                    "status": "completed",
+                    "completed_at": now,
+                    "duration_minutes": plan_day.duration_minutes or None,
+                    "title": plan_day.title,
+                    "workout_type": plan_day.day_type if plan_day.day_type in {"strength", "cardio", "conditioning", "mobility", "sport", "recovery"} else "strength",
+                    "entry_source": "plan_workout",
+                    "intensity": (plan_day.intensity or "moderate").replace(" ", "_").lower(),
+                    "focus_label": plan_day.primary_focus or plan_day.day_type.title(),
+                    "modes": [plan_day.day_type],
+                    "metadata": {
+                        "type": "plan_workout",
+                        "title": plan_day.title,
+                        "mode": plan_day.day_type,
+                        "focus_label": plan_day.primary_focus or plan_day.day_type.title(),
+                        "plan_day_id": plan_day.id,
+                        "scheduled_workout_id": scheduled.id,
+                    },
+                },
+            )
+            if session.status != "completed":
+                session.status = "completed"
+                session.completed_at = now
+                session.save(update_fields=["status", "completed_at", "updated_at"])
+            for plan_ex in plan_day.exercises.all():
+                if plan_ex.exercise_id:
+                    SessionExercise.objects.get_or_create(
+                        session=session,
+                        exercise_id=plan_ex.exercise_id,
+                        defaults={"is_completed": True, "completed_at": now},
+                    )
+            score_completed_workout(session, as_of=now)
+            updated.refresh_from_db()
+            recalculate_user_metrics(request.user, as_of=now)
         return Response(UserPlanSerializer(updated).data, status=status.HTTP_200_OK)
 
 

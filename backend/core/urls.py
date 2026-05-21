@@ -16,10 +16,19 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from accounts.views import MeView, RegisterView
+from accounts.views import (
+	MeView,
+	ProfileFollowersView,
+	ProfileFollowingView,
+	ProfileSummaryView,
+	PublicProfileView,
+	RegisterView,
+)
 
 
 urlpatterns = [
@@ -30,6 +39,10 @@ urlpatterns = [
 		path('api/v1/auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt-refresh'),
 		# User profile
 		path('api/v1/me/', MeView.as_view(), name='me'),
+		path('api/v1/profiles/me/summary/', ProfileSummaryView.as_view(), name='profile-summary'),
+		path('api/v1/profiles/<int:user_id>/public/', PublicProfileView.as_view(), name='profile-public'),
+		path('api/v1/profiles/<int:user_id>/followers/', ProfileFollowersView.as_view(), name='profile-followers'),
+		path('api/v1/profiles/<int:user_id>/following/', ProfileFollowingView.as_view(), name='profile-following'),
 			# Domain APIs
 			path('api/v1/', include('exercises.urls')),
 			path('api/v1/', include('plans.urls')),
@@ -37,4 +50,8 @@ urlpatterns = [
 			path('api/v1/', include('workouts.urls')),
 			path('api/v1/', include('challenges.urls')),
 			path('api/v1/', include('community.urls')),
+			path('api/v1/', include('achievements.urls')),
 ]
+
+if settings.DEBUG:
+	urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

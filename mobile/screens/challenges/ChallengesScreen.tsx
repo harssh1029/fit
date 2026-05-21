@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -22,9 +22,15 @@ import {
   PS_BLUE,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
+import {
+  FitnessIcon3D,
+  type FitnessIcon3DName,
+} from "../../components/FitnessIcon3D";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useChallenges } from "../../hooks/useChallenges";
+import { useCommunity } from "../../hooks/useCommunity";
 import type { ApiChallenge, ChallengeStatus } from "../../types/challenges";
+import type { PremiumChallengeCard, PremiumChallengeSections } from "../../types/community";
 import {
   useThemeMode,
   styles,
@@ -37,20 +43,35 @@ type ChallengeDifficulty = "Beginner" | "Intermediate" | "Advanced";
 
 type Challenge = ApiChallenge;
 
+const iconForChallenge = (
+  difficulty: ChallengeDifficulty,
+  tags: string[] = [],
+): FitnessIcon3DName => {
+  const text = tags.join(" ").toLowerCase();
+  if (text.includes("cardio") || text.includes("run")) return "run";
+  if (text.includes("mobility") || text.includes("recovery")) return "recovery";
+  if (text.includes("core")) return "target";
+  if (text.includes("upper") || text.includes("lower")) return "gym";
+
+  if (difficulty === "Beginner") return "sports";
+  if (difficulty === "Intermediate") return "hybrid";
+  return "strength";
+};
+
 const CHALLENGE_GLASS_CARD_DARK = {
   shadowColor: "#000000",
-  shadowOpacity: 0.2,
-  shadowRadius: 20,
-  shadowOffset: { width: 0, height: 12 },
-  elevation: 4,
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
 } as any;
 
 const CHALLENGE_GLASS_CARD_LIGHT = {
   shadowColor: "#64748B",
-  shadowOpacity: 0.11,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 9 },
-  elevation: 4,
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
 } as any;
 
 const mapChallengeToViewWorkoutWeek = (
@@ -220,15 +241,44 @@ const ChallengesScreen: React.FC = () => {
   const isLight = mode === "light";
   const { profile } = useUserProfileBasic();
   const { challenges, loading, error, setChallengeCompleted } = useChallenges();
+  const { loadTrainingChallenges, joinTrainingChallenge } = useCommunity();
   const challengesUserName =
     profile?.profile.display_name || profile?.username || null;
 
   const [selected, setSelected] = useState<Challenge | null>(null);
   const [activeDifficulty, setActiveDifficulty] =
     useState<ChallengeDifficulty>("Beginner");
+  const [premiumSections, setPremiumSections] = useState<PremiumChallengeSections>({
+    active: [],
+    trending: [],
+    official: [],
+    community: [],
+    completed: [],
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const sections = await loadTrainingChallenges();
+        if (mounted) setPremiumSections(sections);
+      } catch {
+        // Body Battle remains available if the new challenge endpoint is unavailable.
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [loadTrainingChallenges]);
 
   const openChallenge = (challenge: Challenge) => {
     setSelected(challenge);
+  };
+
+  const joinPremiumChallenge = async (challenge: PremiumChallengeCard) => {
+    await joinTrainingChallenge(challenge.id);
+    setPremiumSections(await loadTrainingChallenges());
   };
 
   const closeModal = () => {
@@ -256,13 +306,6 @@ const ChallengesScreen: React.FC = () => {
       }
     };
 
-    const iconNameForDifficulty: React.ComponentProps<typeof Ionicons>["name"] =
-      difficulty === "Beginner"
-        ? "walk-outline"
-        : difficulty === "Intermediate"
-          ? "barbell-outline"
-          : "flame-outline";
-
     const defaultTagForDifficulty: Record<ChallengeDifficulty, string> = {
       Beginner: "Beginner",
       Intermediate: "Intermediate",
@@ -287,6 +330,10 @@ const ChallengesScreen: React.FC = () => {
               challenge.card.body_map_tags.length > 0
                 ? challenge.card.body_map_tags.join(" \\u00b7 ")
                 : defaultTagForDifficulty[difficulty];
+            const challengeIcon = iconForChallenge(
+              difficulty,
+              challenge.card.body_map_tags,
+            );
 
             let tagColorStyle = challengeStyles.tagBeginner;
             if (difficulty === "Intermediate") {
@@ -365,15 +412,7 @@ const ChallengesScreen: React.FC = () => {
                   {/* Top row: icon + title + body tags */}
                   <View style={challengeStyles.cardTopRow}>
                     <View style={iconCircleBase}>
-                      <Text
-                        style={[
-                          styles.viewWorkoutHeaderTitle,
-                          { color: "#FFFFFF", fontSize: 18 },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {challenge.card.icon || "⭐"}
-                      </Text>
+                      <FitnessIcon3D name={challengeIcon} size={30} active />
                     </View>
                     <View style={challengeStyles.cardTitleBlock}>
                       <Text
@@ -566,6 +605,121 @@ const ChallengesScreen: React.FC = () => {
               </View>
             );
           })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderPremiumChallenge = (challenge: PremiumChallengeCard) => (
+    <View
+      key={challenge.id}
+      style={[
+        styles.viewWorkoutCard,
+        isLight ? styles.viewWorkoutCardLight : styles.viewWorkoutCardDark,
+        challengeStyles.challengeCardBase,
+        isLight && challengeStyles.challengeCardBaseLight,
+      ]}
+    >
+      <View style={challengeStyles.cardTopRow}>
+        <View style={styles.viewWorkoutIconCircleStrength}>
+          <FitnessIcon3D
+            name={challenge.completed ? "progress" : "trophy"}
+            size={30}
+            active
+          />
+        </View>
+        <View style={challengeStyles.cardTitleBlock}>
+          <Text
+            style={[
+              styles.viewWorkoutHeaderTitle,
+              isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
+            ]}
+            numberOfLines={2}
+          >
+            {challenge.name}
+          </Text>
+          <Text
+            style={[
+              challengeStyles.cardRoleLabel,
+              isLight ? challengeStyles.headerSubtitleLight : challengeStyles.headerSubtitleDark,
+            ]}
+            numberOfLines={1}
+          >
+            {challenge.participants} participants / {challenge.daysLeft}d left
+          </Text>
+        </View>
+      </View>
+      <Text
+        style={[
+          styles.viewWorkoutHeaderSubtitle,
+          isLight ? challengeStyles.cardSubtitleLight : challengeStyles.cardSubtitleDark,
+        ]}
+        numberOfLines={2}
+      >
+        {challenge.requirement}
+      </Text>
+      <View
+        style={[
+          challengeStyles.progressCardMeterBarTrack,
+          isLight && challengeStyles.progressCardMeterBarTrackLight,
+          { marginTop: 12 },
+        ]}
+      >
+        <View
+          style={[
+            challengeStyles.progressCardMeterBarFill,
+            { width: `${Math.max(4, challenge.progress.percent)}%` as any },
+          ]}
+        />
+      </View>
+      <View style={challengeStyles.cardBottomRow}>
+        <Text
+          style={[
+            challengeStyles.cardMetaPrimaryText,
+            isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
+          ]}
+          numberOfLines={1}
+        >
+          Reward: {challenge.badgeRewardPreview || "Badge"} +{challenge.xpReward} XP
+        </Text>
+        <TouchableOpacity
+          activeOpacity={0.86}
+          disabled={challenge.joined || challenge.completed}
+          onPress={() => void joinPremiumChallenge(challenge)}
+          style={[
+            challengeStyles.cardArrowCircle,
+            isLight ? challengeStyles.cardArrowCircleLight : challengeStyles.cardArrowCircleDark,
+          ]}
+        >
+          <Ionicons
+            name={challenge.completed ? "checkmark" : challenge.joined ? "pulse-outline" : "add"}
+            size={18}
+            color={isLight ? "#111827" : "#E5E7EB"}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderPremiumSection = (title: string, items: PremiumChallengeCard[]) => {
+    if (!items.length) return null;
+    return (
+      <View style={[styles.planSection, challengeStyles.difficultySection]}>
+        <Text
+          style={[
+            styles.planSectionTitle,
+            isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
+            { marginBottom: 10 },
+          ]}
+        >
+          {title}
+        </Text>
+        <View style={challengeStyles.cardsGrid}>
+          {items.slice(0, 6).map((challenge) => (
+            <View key={challenge.id} style={challengeStyles.cardGridItem}>
+              {renderPremiumChallenge(challenge)}
+            </View>
+          ))}
         </View>
       </View>
     );
@@ -805,6 +959,12 @@ const ChallengesScreen: React.FC = () => {
           </View>
         </View>
 
+        {renderPremiumSection("Active", premiumSections.active)}
+        {renderPremiumSection("Trending", premiumSections.trending)}
+        {renderPremiumSection("Official", premiumSections.official)}
+        {renderPremiumSection("Created by Community", premiumSections.community)}
+        {renderPremiumSection("Completed", premiumSections.completed)}
+
         <View
           style={[
             challengeStyles.filterRow,
@@ -919,10 +1079,11 @@ const challengeStyles = StyleSheet.create({
   },
   progressCard: {
     marginTop: 4,
-    borderRadius: 24,
-    backgroundColor: "rgba(15,23,42,0.86)",
-    borderWidth: 1,
-    borderColor: "rgba(125,211,252,0.22)",
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.22,
@@ -932,7 +1093,7 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   progressCardLight: {
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "transparent",
     borderColor: "#CFE3F7",
     shadowOpacity: 0.12,
     ...CHALLENGE_GLASS_CARD_LIGHT,
@@ -955,7 +1116,7 @@ const challengeStyles = StyleSheet.create({
   progressCardTitle: {
     marginTop: 5,
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   progressCardHint: {
     marginTop: 7,
@@ -978,7 +1139,7 @@ const challengeStyles = StyleSheet.create({
   },
   progressScoreValue: {
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   progressScoreLabel: {
     marginTop: 2,
@@ -997,22 +1158,23 @@ const challengeStyles = StyleSheet.create({
     minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 17,
+    borderRadius: 0,
     paddingHorizontal: 10,
     marginRight: 8,
-    backgroundColor: "rgba(8,17,32,0.66)",
-    borderWidth: 1,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderBottomWidth: 1,
     borderColor: "rgba(125,211,252,0.14)",
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   progressStatPillLight: {
-    backgroundColor: "rgba(248,250,252,0.92)",
+    backgroundColor: "transparent",
     borderColor: "#CFE3F7",
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   progressStatValue: {
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   progressStatLabel: {
     marginTop: 1,
@@ -1233,10 +1395,11 @@ const challengeStyles = StyleSheet.create({
     color: "#111827",
   },
   challengeCardBase: {
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: DARK_CARD,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "transparent",
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.18,
@@ -1246,17 +1409,17 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   challengeCardBaseLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     borderColor: "#E5E7EB",
     shadowOpacity: 0.1,
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   challengeCardLockedLight: {
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "transparent",
     opacity: 0.8,
   },
   challengeCardLockedDark: {
-    backgroundColor: "#0B1020",
+    backgroundColor: "transparent",
     borderColor: "rgba(148,163,184,0.2)",
     opacity: 0.72,
   },
@@ -1287,7 +1450,7 @@ const challengeStyles = StyleSheet.create({
   },
   cardIndex: {
     fontSize: 28,
-    fontWeight: "800",
+    fontWeight: "700",
     letterSpacing: 1,
     marginBottom: 4,
   },

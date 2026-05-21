@@ -25,7 +25,6 @@ import type {
 } from "../../types/community";
 import {
   PS_BLUE,
-  GLASS_CARD_DARK,
   GLASS_BORDER_DARK,
   GLASS_TEXT_PRIMARY,
   GLASS_TEXT_MUTED,
@@ -110,7 +109,7 @@ const CommunityScreen: React.FC = () => {
             {
               marginTop: 8,
               marginBottom: 10,
-              backgroundColor: isLight ? "#F8FAFC" : "rgba(17,24,39,0.82)",
+              backgroundColor: "transparent",
               borderColor: isLight ? "#E2E8F0" : "rgba(148,163,184,0.16)",
               borderBottomWidth: 1,
               borderBottomColor: isLight ? "#E2E8F0" : "rgba(148,163,184,0.16)",
@@ -434,10 +433,11 @@ const SearchBox: React.FC<{
       alignItems: "center",
       paddingHorizontal: 12,
       paddingVertical: 9,
-      borderRadius: 999,
-      borderWidth: 1,
+      borderRadius: 0,
+      borderWidth: 0,
+      borderBottomWidth: 1,
       borderColor: isLight ? "#E5E7EB" : GLASS_BORDER_DARK,
-      backgroundColor: isLight ? "#FFFFFF" : GLASS_CARD_DARK,
+      backgroundColor: "transparent",
     }}
   >
     <Ionicons
@@ -919,10 +919,11 @@ const AddFriendModal: React.FC<{
             style={{
               marginTop: 12,
               minHeight: 76,
-              borderRadius: 18,
-              borderWidth: 1,
+              borderRadius: 0,
+              borderWidth: 0,
+              borderBottomWidth: 1,
               borderColor: isLight ? "#E5E7EB" : GLASS_BORDER_DARK,
-              backgroundColor: isLight ? "#FFFFFF" : GLASS_CARD_DARK,
+              backgroundColor: "transparent",
               paddingHorizontal: 12,
               paddingVertical: 10,
             }}
@@ -952,13 +953,13 @@ const AddFriendModal: React.FC<{
             <TouchableOpacity
               style={{
                 marginLeft: 8,
-                borderRadius: 999,
+                borderRadius: 0,
                 paddingHorizontal: 16,
                 alignItems: "center",
                 justifyContent: "center",
                 borderWidth: 1,
                 borderColor: isLight ? "#E5E7EB" : GLASS_BORDER_DARK,
-                backgroundColor: isLight ? "#FFFFFF" : GLASS_CARD_DARK,
+                backgroundColor: "transparent",
               }}
               onPress={handleInvite}
               activeOpacity={0.9}

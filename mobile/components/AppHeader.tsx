@@ -8,10 +8,13 @@ import { styles } from "../styles/appStyles";
 
 type RootTabParamList = {
   Home: undefined;
+  Record: undefined;
   Plans: undefined;
   Exercises: undefined;
   Challenges: undefined;
   Community: undefined;
+  Insights: undefined;
+  Friends: undefined;
   Consistency: undefined;
   Account: undefined;
 };
@@ -85,7 +88,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onThemeToggle,
   rightContent,
   topContent,
-  titleNumberOfLines = 1,
+  titleNumberOfLines = 2,
 }) => {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const navigation = useNavigation<RootTabNavigation>();
@@ -97,16 +100,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     onPress?: () => void;
   }> = [
     { label: "Home", icon: "home-outline", route: "Home" },
+    { label: "Record", icon: "radio-button-on", route: "Record" },
     { label: "Plans", icon: "calendar-outline", route: "Plans" },
+    { label: "Community", icon: "people-outline", route: "Community" },
+    { label: "Insights", icon: "analytics-outline", route: "Insights" },
     { label: "Exercises", icon: "barbell-outline", route: "Exercises" },
     { label: "Challenges", icon: "trophy-outline", route: "Challenges" },
-    { label: "Community", icon: "people-outline", route: "Community" },
+    { label: "Friends", icon: "people-circle-outline", route: "Friends" },
     { label: "Consistency", icon: "grid-outline", route: "Consistency" },
-    {
-      label: "Theme",
-      icon: "color-palette-outline",
-      onPress: onThemeToggle,
-    },
   ];
 
   return (
@@ -139,6 +140,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               isLight && styles.compactHeaderTitleLight,
             ]}
             numberOfLines={titleNumberOfLines}
+            ellipsizeMode="tail"
           >
             {title}
           </Text>
@@ -149,7 +151,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 isLight && styles.metricCaptionLight,
                 styles.compactHeaderSubtitle,
               ]}
-              numberOfLines={1}
+              numberOfLines={2}
+              ellipsizeMode="tail"
             >
               {subtitle}
             </Text>
@@ -200,6 +203,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   styles.headerMenuAccentText,
                   isLight && styles.headerMenuAccentTextLight,
                 ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 My Account
               </Text>
@@ -230,6 +235,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     styles.headerMenuItemText,
                     isLight && styles.headerMenuItemTextLight,
                   ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
                   {item.label}
                 </Text>

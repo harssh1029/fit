@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -29,7 +28,6 @@ import {
   mapPlanWeekToViewWorkoutWeek,
   mapPlanWeekToViewNutritionWeek,
 } from "../../App";
-import { getPlanImageSource } from "../../utils/planImages";
 
 const humanizeGoal = (value: string) =>
   value
@@ -591,7 +589,6 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     plan.result,
     goalLabel || getShortPhrase(plan.goal, "Training"),
   );
-  const goalImage = getPlanImageSource(plan);
   const missedCount = isThisActivePlan
     ? (activeUserPlan?.missed_sessions ?? 0)
     : 0;
@@ -782,25 +779,52 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           </View>
         </View>
 
-        <ImageBackground
-          source={goalImage}
-          style={styles.planDetailGoalCard}
-          imageStyle={styles.planDetailGoalImage}
+        <View
+          style={[
+            styles.planDetailGoalCard,
+            isLight && styles.planDetailGoalCardLight,
+          ]}
         >
-          <View style={styles.planDetailGoalScrim} />
           <View style={styles.planDetailGoalContent}>
-            <Text style={styles.planDetailGoalEyebrow}>Goal</Text>
-            <Text style={styles.planDetailGoalTitle}>
+            <Text
+              style={[
+                styles.planDetailGoalEyebrow,
+                isLight && styles.planDetailGoalEyebrowLight,
+              ]}
+            >
+              Goal
+            </Text>
+            <Text
+              style={[
+                styles.planDetailGoalTitle,
+                isLight && styles.planDetailGoalTitleLight,
+              ]}
+            >
               {detailCopy.goalTitle}
             </Text>
-            <Text style={styles.planDetailGoalText} numberOfLines={3}>
+            <Text
+              style={[
+                styles.planDetailGoalText,
+                isLight && styles.planDetailGoalTextLight,
+              ]}
+              numberOfLines={3}
+            >
               {detailCopy.goalSubtitle}
             </Text>
           </View>
-          <View style={styles.planDetailGoalFlag}>
-            <Ionicons name="flag-outline" size={28} color="#FFFFFF" />
+          <View
+            style={[
+              styles.planDetailGoalFlag,
+              isLight && styles.planDetailGoalFlagLight,
+            ]}
+          >
+            <Ionicons
+              name="flag-outline"
+              size={28}
+              color={isLight ? "#475569" : "#FFFFFF"}
+            />
           </View>
-        </ImageBackground>
+        </View>
 
         <View style={styles.planDetailInfoGrid}>
           <View

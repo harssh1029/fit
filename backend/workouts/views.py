@@ -1,7 +1,12 @@
 from datetime import timedelta
+from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
+from django.core.files.storage import default_storage
 from django.utils import timezone
+from django.utils.text import get_valid_filename
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +15,13 @@ from rest_framework.views import APIView
 from exercises.models import Exercise, MuscleGroup
 from insights.services import recalculate_user_metrics
 from plans.models import PlanDay, UserPlan
-from .models import SessionExercise, WorkoutSession
+from .models import SessionExercise, WorkoutDraft, WorkoutSession
+from .services import (
+	WorkoutValidationError,
+	build_session_from_payload,
+	log_workout,
+	score_completed_workout,
+)
 
 
 CUSTOM_BODY_GROUPS = {
@@ -194,8 +205,31 @@ class CustomWorkoutView(APIView):
 		]
 		body_groups = list(dict.fromkeys(body_groups))
 		cardio = bool(request.data.get("cardio", False))
+		mode = str(request.data.get("mode") or "custom").strip().lower()
+		generic_modes = {"cardio", "conditioning", "mobility", "sport"}
+		raw_modes = request.data.get("modes") or []
+		if not isinstance(raw_modes, list):
+			raw_modes = []
+		modes = [
+			str(item).strip().lower()
+			for item in raw_modes
+			if str(item).strip().lower() in {"strength", "cardio", "conditioning", "mobility", "sport"}
+		]
+		modes = list(dict.fromkeys(modes)) or [mode]
+		raw_muscles = request.data.get("muscles") or []
+		if not isinstance(raw_muscles, list):
+			raw_muscles = []
+		muscles = [
+			str(muscle).strip()
+			for muscle in raw_muscles
+			if str(muscle).strip()
+		]
+		muscles = list(dict.fromkeys(muscles))[:24]
+		body_map_side = str(request.data.get("body_map_side") or "front").strip().lower()
+		if body_map_side not in {"front", "back"}:
+			body_map_side = "front"
 
-		if not body_groups and not cardio:
+		if not body_groups and not cardio and mode not in generic_modes:
 			return Response(
 				{"detail": "Select at least one body part or cardio."},
 				status=status.HTTP_400_BAD_REQUEST,
@@ -206,6 +240,18 @@ class CustomWorkoutView(APIView):
 		except (TypeError, ValueError):
 			exercise_count = 0
 		exercise_count = max(0, min(exercise_count, 40))
+		raw_exercises = request.data.get("exercises") or []
+		exercises = []
+		if isinstance(raw_exercises, list):
+			for item in raw_exercises[:40]:
+				if not isinstance(item, dict):
+					continue
+				name = str(item.get("name") or "").strip()
+				volume = str(item.get("volume") or "").strip()
+				pr = bool(item.get("pr", False))
+				if not name and not volume:
+					continue
+				exercises.append({"name": name, "volume": volume, "pr": pr})
 
 		try:
 			duration_minutes = int(request.data.get("duration_minutes") or 0)
@@ -214,27 +260,45 @@ class CustomWorkoutView(APIView):
 		duration_minutes = max(1, min(duration_minutes or 30, 360))
 
 		now = timezone.now()
+		raw_title = str(request.data.get("title") or "").strip()
 		title_parts = []
 		if body_groups:
 			title_parts.append(", ".join(group.title() for group in body_groups))
 		if cardio:
 			title_parts.append("Cardio")
-		title = " + ".join(title_parts) or "Custom workout"
+		title = raw_title or " + ".join(title_parts) or f"{mode.title()} Session"
+		focus_label = str(request.data.get("focus_label") or "").strip()
+		intensity = str(request.data.get("intensity") or "").strip()
+		feeling = str(request.data.get("feeling") or "").strip()
+		notes = str(request.data.get("notes") or "").strip()
+		caption = str(request.data.get("caption") or "").strip()
+		image_url = str(request.data.get("image_url") or "").strip()
+		pr_note = str(request.data.get("pr") or "").strip()
 
-		session = WorkoutSession.objects.create(
-			user=user,
-			quick_workout_id=f"custom-{now.strftime('%Y%m%d%H%M%S')}",
-			status="completed",
-			completed_at=now,
-			duration_minutes=duration_minutes,
-			metadata={
-				"type": "custom_workout",
-				"title": title,
-				"body_groups": body_groups,
-				"cardio": cardio,
-				"exercise_count": exercise_count,
-			},
-		)
+		payload = {
+			"body_groups": body_groups,
+			"muscles": muscles,
+			"body_map_side": body_map_side,
+			"cardio": cardio,
+			"exercise_count": exercise_count,
+			"exercises": exercises,
+			"duration_minutes": duration_minutes,
+			"mode": mode,
+			"modes": modes,
+			"title": title,
+			"focus_label": focus_label,
+			"intensity": intensity or "moderate",
+			"feeling": feeling,
+			"notes": notes,
+			"caption": caption,
+			"image_url": image_url,
+			"pr": pr_note,
+			"entry_source": request.data.get("entry_source") or "manual",
+		}
+		try:
+			session = build_session_from_payload(user, payload, as_of=now)
+		except WorkoutValidationError as exc:
+			return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 		for group in body_groups:
 			exercise = _custom_exercise_for_group(group)
@@ -249,15 +313,169 @@ class CustomWorkoutView(APIView):
 				},
 			)
 
+		result = score_completed_workout(session, as_of=now)
 		snapshot = recalculate_user_metrics(user, as_of=now)
 		return Response(
 			{
 				"status": "completed",
 				"workout_session_id": session.id,
+				"activity_xp": result.score.activity_xp,
+				"leaderboard_xp": result.score.leaderboard_xp,
+				"activity_card": result.summary,
 				"metrics_snapshot_id": snapshot.id,
 			},
 			status=status.HTTP_201_CREATED,
 		)
+
+
+class WorkoutLogView(APIView):
+	"""Canonical endpoint for manual, recorded, plan, and challenge workout logs."""
+
+	permission_classes = [IsAuthenticated]
+
+	def post(self, request, *args, **kwargs):  # type: ignore[override]
+		try:
+			result = log_workout(request.user, request.data)
+		except WorkoutValidationError as exc:
+			return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+		except ValueError as exc:
+			return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+		recalculate_user_metrics(request.user, as_of=result.session.completed_at)
+		return Response(
+			{
+				"status": "completed",
+				"workout_session_id": result.session.id,
+				"activity_xp": result.score.activity_xp,
+				"leaderboard_xp": result.score.leaderboard_xp,
+				"challenge_points": result.score.challenge_points,
+				"activity_card": result.summary,
+			},
+			status=status.HTTP_201_CREATED,
+		)
+
+
+class WorkoutImageUploadView(APIView):
+	"""Upload an image that can be attached to a workout activity post."""
+
+	permission_classes = [IsAuthenticated]
+	parser_classes = [MultiPartParser, FormParser]
+
+	def post(self, request, *args, **kwargs):  # type: ignore[override]
+		upload = request.FILES.get("image")
+		if upload is None:
+			return Response({"detail": "Upload an image file."}, status=status.HTTP_400_BAD_REQUEST)
+
+		content_type = str(getattr(upload, "content_type", "") or "")
+		if not content_type.startswith("image/"):
+			return Response({"detail": "Only image uploads are supported."}, status=status.HTTP_400_BAD_REQUEST)
+
+		max_size = 8 * 1024 * 1024
+		if getattr(upload, "size", 0) > max_size:
+			return Response({"detail": "Image must be 8 MB or smaller."}, status=status.HTTP_400_BAD_REQUEST)
+
+		original_name = get_valid_filename(getattr(upload, "name", "") or "workout-image")
+		extension = Path(original_name).suffix.lower()
+		if extension not in {".jpg", ".jpeg", ".png", ".webp", ".heic"}:
+			extension = ".jpg"
+
+		path = f"workout_images/user_{request.user.id}/{uuid4().hex}{extension}"
+		saved_path = default_storage.save(path, upload)
+		image_url = default_storage.url(saved_path)
+		if not image_url.startswith(("http://", "https://")):
+			image_url = request.build_absolute_uri(image_url)
+		return Response({"image_url": image_url}, status=status.HTTP_201_CREATED)
+
+
+class WorkoutDraftListCreateView(APIView):
+	permission_classes = [IsAuthenticated]
+
+	def get(self, request, *args, **kwargs):  # type: ignore[override]
+		drafts = WorkoutDraft.objects.filter(user=request.user)[:50]
+		return Response(
+			[
+				{
+					"id": draft.id,
+					"title": draft.title,
+					"duration_seconds": draft.duration_seconds,
+					"payload": draft.payload,
+					"created_at": draft.created_at.isoformat(),
+					"updated_at": draft.updated_at.isoformat(),
+				}
+				for draft in drafts
+			]
+		)
+
+	def post(self, request, *args, **kwargs):  # type: ignore[override]
+		payload = request.data.get("payload") if isinstance(request.data.get("payload"), dict) else request.data
+		title = str(request.data.get("title") or payload.get("title") or "Workout draft").strip()
+		try:
+			duration_seconds = int(
+				request.data.get("duration_seconds")
+				or request.data.get("durationSeconds")
+				or payload.get("duration_seconds")
+				or payload.get("durationSeconds")
+				or 0
+			)
+		except (TypeError, ValueError):
+			duration_seconds = 0
+		draft = WorkoutDraft.objects.create(
+			user=request.user,
+			title=title,
+			duration_seconds=max(0, duration_seconds),
+			payload=payload,
+		)
+		return Response(
+			{
+				"id": draft.id,
+				"title": draft.title,
+				"duration_seconds": draft.duration_seconds,
+				"payload": draft.payload,
+				"created_at": draft.created_at.isoformat(),
+				"updated_at": draft.updated_at.isoformat(),
+			},
+			status=status.HTTP_201_CREATED,
+		)
+
+
+class WorkoutDraftDetailView(APIView):
+	permission_classes = [IsAuthenticated]
+
+	def _get_draft(self, request, draft_id: int) -> WorkoutDraft:
+		return WorkoutDraft.objects.get(id=draft_id, user=request.user)
+
+	def patch(self, request, draft_id: int, *args, **kwargs):  # type: ignore[override]
+		try:
+			draft = self._get_draft(request, draft_id)
+		except WorkoutDraft.DoesNotExist:
+			return Response({"detail": "Draft not found."}, status=status.HTTP_404_NOT_FOUND)
+		payload = request.data.get("payload") if isinstance(request.data.get("payload"), dict) else None
+		if payload is not None:
+			draft.payload = payload
+		if "title" in request.data:
+			draft.title = str(request.data.get("title") or "").strip()
+		if "duration_seconds" in request.data or "durationSeconds" in request.data:
+			try:
+				draft.duration_seconds = max(
+					0,
+					int(request.data.get("duration_seconds") or request.data.get("durationSeconds") or 0),
+				)
+			except (TypeError, ValueError):
+				draft.duration_seconds = 0
+		draft.save()
+		return Response(
+			{
+				"id": draft.id,
+				"title": draft.title,
+				"duration_seconds": draft.duration_seconds,
+				"payload": draft.payload,
+				"created_at": draft.created_at.isoformat(),
+				"updated_at": draft.updated_at.isoformat(),
+			}
+		)
+
+	def delete(self, request, draft_id: int, *args, **kwargs):  # type: ignore[override]
+		WorkoutDraft.objects.filter(id=draft_id, user=request.user).delete()
+		return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class FullWorkoutHistoryView(APIView):

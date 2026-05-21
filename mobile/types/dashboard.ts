@@ -39,6 +39,61 @@ export type DashboardBodyBattleMapMetric = {
   detail: any;
 };
 
+export type DashboardTrainingProfileMetric = {
+  available: boolean;
+  level: {
+    level: number;
+    title: string;
+    career_xp: number;
+    current_level_xp: number;
+    next_level_xp: number;
+    progress_percent: number;
+  };
+  body_focus: Array<{
+    key: string;
+    label: string;
+    xp: number;
+    target_xp: number;
+    percent: number;
+    rank: string;
+    sessions: number;
+    icon: string;
+    accent: string;
+  }>;
+  category_levels: Array<{
+    key: string;
+    label: string;
+    xp: number;
+    target_xp: number;
+    percent: number;
+    tier: string;
+    icon: string;
+    accent: string;
+  }>;
+  weekly_xp: number;
+  monthly_xp: number;
+  performance_score: number;
+  training_balance_score: number;
+  comparison_metrics?: {
+    default_metric: string;
+    metrics: Array<{
+      key: string;
+      label: string;
+      unit: string;
+      description?: string;
+      current: number;
+      average: number;
+      ideal: number;
+      trend: Array<{
+        label: string;
+        you: number;
+        average: number;
+        ideal: number;
+      }>;
+    }>;
+  };
+};
+
 export type DashboardMetrics = {
   fitness_age: DashboardFitnessAgeMetric;
   race_readiness: DashboardRaceReadinessMetric;
@@ -46,6 +101,7 @@ export type DashboardMetrics = {
   streak: DashboardStreakMetric;
   total_time: DashboardTotalTimeMetric;
   body_battle_map: DashboardBodyBattleMapMetric;
+  training_profile?: DashboardTrainingProfileMetric;
 };
 
 export type DashboardSummary = {

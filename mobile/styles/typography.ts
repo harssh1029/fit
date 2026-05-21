@@ -1,8 +1,8 @@
 import type { TextStyle } from "react-native";
 
 export const fontFamily = {
-  display: "PlayfairDisplay_700Bold",
-  displaySemi: "PlayfairDisplay_600SemiBold",
+  display: "Inter_700Bold",
+  displaySemi: "Inter_600SemiBold",
   ui: "Inter_400Regular",
   uiMedium: "Inter_500Medium",
   uiSemi: "Inter_600SemiBold",
@@ -13,43 +13,43 @@ export const typography = {
   fontFamily,
 
   displayHero: {
-    fontFamily: fontFamily.display,
-    fontSize: 52,
+    fontFamily: fontFamily.uiBold,
+    fontSize: 34,
     fontWeight: "700",
-    lineHeight: 49,
-    letterSpacing: -1,
+    lineHeight: 40,
+    letterSpacing: 0,
   } satisfies TextStyle,
 
   displayTitle: {
-    fontFamily: fontFamily.display,
-    fontSize: 42,
+    fontFamily: fontFamily.uiBold,
+    fontSize: 32,
     fontWeight: "700",
-    lineHeight: 40,
-    letterSpacing: -0.8,
+    lineHeight: 38,
+    letterSpacing: 0,
   } satisfies TextStyle,
 
   pageTitle: {
-    fontFamily: fontFamily.displaySemi,
-    fontSize: 34,
-    fontWeight: "600",
+    fontFamily: fontFamily.uiBold,
+    fontSize: 30,
+    fontWeight: "700",
     lineHeight: 36,
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   } satisfies TextStyle,
 
   sectionTitle: {
     fontFamily: fontFamily.uiBold,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
-    lineHeight: 29,
-    letterSpacing: -0.2,
+    lineHeight: 28,
+    letterSpacing: 0,
   } satisfies TextStyle,
 
   cardTitle: {
     fontFamily: fontFamily.uiBold,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    lineHeight: 27,
-    letterSpacing: -0.2,
+    lineHeight: 30,
+    letterSpacing: 0,
   } satisfies TextStyle,
 
   subheading: {
@@ -97,7 +97,7 @@ export const typography = {
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 15,
-    letterSpacing: 1.4,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   } satisfies TextStyle,
 

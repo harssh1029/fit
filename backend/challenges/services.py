@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Dict, List, Mapping, MutableMapping, Optional, Sequence, Set
 
 from django.contrib.auth import get_user_model
+from django.db.models import Count
+from django.utils import timezone
 
 from insights.models import UserMetricsSnapshot
 from insights.services import recalculate_user_metrics
 
-from .models import Challenge, UserChallengeCompletion
+from .models import Challenge, TrainingChallenge, UserChallengeCompletion, UserChallengeEnrollment, UserChallengeProgress
 
 User = get_user_model()
 
@@ -268,3 +271,375 @@ def evaluate_challenge_unlock(
 
 def challenge_is_unlocked_for_user(challenge: Challenge, user: Optional[User]) -> bool:
     return evaluate_challenge_unlock(challenge, user).is_unlocked
+
+
+OFFICIAL_TRAINING_CHALLENGES = [
+	{
+		"name": "Consistency King",
+		"description": "Complete 5 workouts in 7 days.",
+		"requirement": "5 workouts in 7 days",
+		"duration_days": 7,
+		"required_sessions": 5,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport", "recovery"],
+		"minimum_duration": 10,
+		"badge_icon": "shield-checkmark",
+		"reward_xp": 150,
+	},
+	{
+		"name": "Upper Body Month",
+		"description": "Complete 12 upper-body sessions this month.",
+		"requirement": "12 upper-body sessions",
+		"duration_days": 30,
+		"required_sessions": 12,
+		"eligible_workout_types": ["strength", "conditioning"],
+		"eligible_body_parts": ["chest", "shoulders", "arms", "back"],
+		"minimum_duration": 20,
+		"badge_icon": "barbell",
+		"reward_xp": 250,
+	},
+	{
+		"name": "Leg Builder",
+		"description": "Complete 8 lower-body sessions this month.",
+		"requirement": "8 lower-body sessions",
+		"duration_days": 30,
+		"required_sessions": 8,
+		"eligible_workout_types": ["strength", "conditioning"],
+		"eligible_body_parts": ["legs", "glutes", "quads", "hamstrings"],
+		"minimum_duration": 20,
+		"badge_icon": "walk",
+		"reward_xp": 220,
+	},
+	{
+		"name": "Morning Athlete",
+		"description": "Complete 5 workouts before 9 AM.",
+		"requirement": "5 workouts before 9 AM",
+		"duration_days": 14,
+		"required_sessions": 5,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport"],
+		"minimum_duration": 10,
+		"badge_icon": "sunrise",
+		"reward_xp": 180,
+	},
+	{
+		"name": "Workout Explorer",
+		"description": "Complete strength, cardio, mobility, and conditioning in one week.",
+		"requirement": "4 training modes in 7 days",
+		"duration_days": 7,
+		"required_sessions": 4,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility"],
+		"minimum_duration": 10,
+		"badge_icon": "compass",
+		"reward_xp": 180,
+	},
+	{
+		"name": "Plan Finisher",
+		"description": "Complete any full training plan.",
+		"requirement": "Finish a training plan",
+		"duration_days": 60,
+		"required_sessions": 1,
+		"eligible_workout_types": [],
+		"minimum_duration": 0,
+		"badge_icon": "flag",
+		"reward_xp": 300,
+	},
+	{
+		"name": "Comeback Week",
+		"description": "Complete 3 workouts after 14 inactive days.",
+		"requirement": "3 workouts after a break",
+		"duration_days": 7,
+		"required_sessions": 3,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport", "recovery"],
+		"minimum_duration": 10,
+		"badge_icon": "refresh",
+		"reward_xp": 160,
+	},
+	{
+		"name": "Community Grinder",
+		"description": "Contribute 5 workouts to a group challenge.",
+		"requirement": "5 group challenge workouts",
+		"duration_days": 14,
+		"required_sessions": 5,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport"],
+		"minimum_duration": 20,
+		"badge_icon": "people",
+		"reward_xp": 220,
+	},
+]
+
+COMMUNITY_TRAINING_CHALLENGE_MOCKUPS = [
+	{
+		"name": "Leg Day League",
+		"description": "Complete 5 lower-body sessions with moderate or hard intensity.",
+		"requirement": "5 leg sessions in 14 days",
+		"duration_days": 14,
+		"required_sessions": 5,
+		"eligible_workout_types": ["strength", "conditioning"],
+		"eligible_body_parts": ["lower_body", "legs", "glutes", "quads", "hamstrings"],
+		"minimum_duration": 30,
+		"allowed_intensity": ["moderate", "hard"],
+		"badge_icon": "walk",
+		"reward_xp": 220,
+		"participant_count": 6200,
+		"trending_score": 86,
+	},
+	{
+		"name": "Push Week",
+		"description": "Build a focused push week across chest, shoulders, and triceps.",
+		"requirement": "3 push workouts in 7 days",
+		"duration_days": 7,
+		"required_sessions": 3,
+		"eligible_workout_types": ["strength", "conditioning"],
+		"eligible_body_parts": ["upper_body", "chest", "shoulders", "triceps"],
+		"minimum_duration": 25,
+		"allowed_intensity": ["moderate", "hard"],
+		"badge_icon": "barbell",
+		"reward_xp": 150,
+		"participant_count": 24000,
+		"trending_score": 93,
+	},
+	{
+		"name": "Morning Club",
+		"description": "Stack five early sessions before 9 AM.",
+		"requirement": "5 workouts before 9 AM in 10 days",
+		"duration_days": 10,
+		"required_sessions": 5,
+		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport"],
+		"minimum_duration": 10,
+		"allowed_intensity": [],
+		"badge_icon": "sunny",
+		"reward_xp": 180,
+		"participant_count": 12800,
+		"trending_score": 88,
+	},
+	{
+		"name": "Office Pull Ladder",
+		"description": "A focused pull block for back and biceps.",
+		"requirement": "4 pull-focused sessions in 10 days",
+		"duration_days": 10,
+		"required_sessions": 4,
+		"eligible_workout_types": ["strength", "conditioning"],
+		"eligible_body_parts": ["upper_body", "back", "biceps", "lats"],
+		"minimum_duration": 25,
+		"allowed_intensity": ["moderate", "hard"],
+		"badge_icon": "people",
+		"reward_xp": 160,
+		"participant_count": 34,
+		"trending_score": 62,
+	},
+]
+
+
+def ensure_official_training_challenges() -> None:
+	today = timezone.localdate()
+	for index, payload in enumerate(OFFICIAL_TRAINING_CHALLENGES, start=1):
+		TrainingChallenge.objects.update_or_create(
+			name=payload["name"],
+			visibility=TrainingChallenge.VISIBILITY_OFFICIAL,
+			defaults={
+				"description": payload["description"],
+				"requirement": payload["requirement"],
+				"duration_days": payload["duration_days"],
+				"eligible_workout_types": payload.get("eligible_workout_types", []),
+				"eligible_body_parts": payload.get("eligible_body_parts", []),
+				"minimum_duration": payload["minimum_duration"],
+				"required_sessions": payload["required_sessions"],
+				"allowed_intensity": [],
+				"is_official": True,
+				"start_date": today - timedelta(days=7),
+				"end_date": today + timedelta(days=payload["duration_days"]),
+				"badge_icon": payload["badge_icon"],
+				"reward_xp": payload["reward_xp"],
+				"status": TrainingChallenge.STATUS_ACTIVE,
+				"trending_score": 100 - index,
+			},
+		)
+	for payload in COMMUNITY_TRAINING_CHALLENGE_MOCKUPS:
+		TrainingChallenge.objects.update_or_create(
+			name=payload["name"],
+			visibility=TrainingChallenge.VISIBILITY_COMMUNITY,
+			defaults={
+				"description": payload["description"],
+				"requirement": payload["requirement"],
+				"duration_days": payload["duration_days"],
+				"eligible_workout_types": payload.get("eligible_workout_types", []),
+				"eligible_body_parts": payload.get("eligible_body_parts", []),
+				"minimum_duration": payload["minimum_duration"],
+				"required_sessions": payload["required_sessions"],
+				"allowed_intensity": payload.get("allowed_intensity", []),
+				"is_official": False,
+				"start_date": today - timedelta(days=3),
+				"end_date": today + timedelta(days=payload["duration_days"]),
+				"badge_icon": payload["badge_icon"],
+				"reward_xp": payload["reward_xp"],
+				"status": TrainingChallenge.STATUS_ACTIVE,
+				"participant_count": payload["participant_count"],
+				"trending_score": payload["trending_score"],
+			},
+		)
+
+
+def enroll_user_in_training_challenge(user: User, challenge: TrainingChallenge) -> UserChallengeEnrollment:
+	enrollment, created = UserChallengeEnrollment.objects.get_or_create(user=user, challenge=challenge)
+	if created:
+		actual_count = challenge.enrollments.exclude(status=UserChallengeEnrollment.STATUS_LEFT).count()
+		challenge.participant_count = max(challenge.participant_count, actual_count)
+		challenge.save(update_fields=["participant_count", "updated_at"])
+	UserChallengeProgress.objects.get_or_create(enrollment=enrollment)
+	return enrollment
+
+
+def _session_matches_challenge(session, challenge: TrainingChallenge) -> bool:
+	if challenge.start_date and session.completed_at and session.completed_at.date() < challenge.start_date:
+		return False
+	if challenge.end_date and session.completed_at and session.completed_at.date() > challenge.end_date:
+		return False
+	if challenge.eligible_workout_types and session.workout_type not in challenge.eligible_workout_types:
+		return False
+	if challenge.eligible_body_parts:
+		required = set(str(item).lower().replace(" ", "_") for item in challenge.eligible_body_parts)
+		actual = set(str(item).lower().replace(" ", "_") for item in ((session.body_groups or []) + (session.muscles or [])))
+		upper = {"upper_body", "chest", "shoulders", "arms", "back", "biceps", "triceps", "lats", "trapezius"}
+		lower = {"lower_body", "legs", "glutes", "quads", "quadriceps", "hamstrings", "calves"}
+		core = {"core", "abs", "obliques"}
+		if "upper_body" in actual:
+			actual |= upper
+		if "lower_body" in actual:
+			actual |= lower
+		if "core" in actual:
+			actual |= core
+		if required & upper:
+			required |= upper
+		if required & lower:
+			required |= lower
+		if required & core:
+			required |= core
+		if not required.intersection(actual):
+			return False
+	if challenge.allowed_intensity and session.intensity not in challenge.allowed_intensity:
+		return False
+	if (session.duration_minutes or 0) < challenge.minimum_duration:
+		return False
+	if challenge.name == "Morning Athlete" and session.completed_at and session.completed_at.hour >= 9:
+		return False
+	return True
+
+
+def update_training_challenge_progress_for_workout(session, score=None) -> None:
+	from achievements.services import evaluate_challenge_completion
+	from community.models import CommunityActivity
+
+	active = UserChallengeEnrollment.objects.filter(
+		user=session.user,
+		status=UserChallengeEnrollment.STATUS_ACTIVE,
+		challenge__status=TrainingChallenge.STATUS_ACTIVE,
+	).select_related("challenge")
+	for enrollment in active:
+		challenge = enrollment.challenge
+		if not _session_matches_challenge(session, challenge):
+			continue
+		progress, _ = UserChallengeProgress.objects.get_or_create(enrollment=enrollment)
+		ids = list(progress.qualifying_workout_ids or [])
+		if session.id not in ids:
+			ids.append(session.id)
+		progress.qualifying_workout_ids = ids
+		progress.sessions_completed = min(len(ids), challenge.required_sessions)
+		progress.points += int(getattr(score, "challenge_points", 0) or getattr(score, "activity_xp", 0) or 0)
+		progress.active_days = len(
+			{
+				item.completed_at.date()
+				for item in session.user.workout_sessions.filter(id__in=ids, completed_at__isnull=False)
+			}
+		)
+		progress.progress_percent = min(100, int(round((progress.sessions_completed / max(1, challenge.required_sessions)) * 100)))
+		progress.save()
+		if progress.sessions_completed >= challenge.required_sessions:
+			enrollment.status = UserChallengeEnrollment.STATUS_COMPLETED
+			enrollment.completed_at = session.completed_at or timezone.now()
+			enrollment.save(update_fields=["status", "completed_at"])
+			CommunityActivity.objects.update_or_create(
+				user=session.user,
+				activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
+				metadata__source_id=f'training_challenge:{challenge.id}',
+				defaults={
+					"title": f"Completed {challenge.name}",
+					"description": "Challenge completed",
+					"metadata": {
+						"source_id": f'training_challenge:{challenge.id}',
+						"event_type": "challenge_completed",
+						"challenge_id": challenge.id,
+						"challenge_name": challenge.name,
+						"frontend_summary": {
+							"title": challenge.name,
+							"xp": challenge.reward_xp,
+							"challenge_badge": challenge.badge_icon or "Challenge",
+						},
+					},
+					"occurred_at": enrollment.completed_at,
+				},
+			)
+			evaluate_challenge_completion(
+				session.user,
+				challenge=challenge,
+				context={
+					"challenge_completed_count": UserChallengeEnrollment.objects.filter(user=session.user, status=UserChallengeEnrollment.STATUS_COMPLETED).count(),
+					"challenge_joined_count": UserChallengeEnrollment.objects.filter(user=session.user).count(),
+					"challenges_completed_this_month": UserChallengeEnrollment.objects.filter(
+						user=session.user,
+						status=UserChallengeEnrollment.STATUS_COMPLETED,
+						completed_at__year=enrollment.completed_at.year,
+						completed_at__month=enrollment.completed_at.month,
+					).count() if enrollment.completed_at else 0,
+					"challenge_visibility": "official" if challenge.is_official else "community",
+					"rank": 1,
+					"as_of": enrollment.completed_at or timezone.now(),
+				},
+			)
+
+
+def challenge_sections_for_user(user: User) -> dict:
+	ensure_official_training_challenges()
+	now = timezone.localdate()
+	enrollments = {
+		row.challenge_id: row
+		for row in UserChallengeEnrollment.objects.filter(user=user).select_related("progress")
+	}
+	challenges = list(TrainingChallenge.objects.filter(status=TrainingChallenge.STATUS_ACTIVE).select_related("group", "created_by"))
+
+	def serialize(challenge: TrainingChallenge) -> dict:
+		enrollment = enrollments.get(challenge.id)
+		progress = getattr(enrollment, "progress", None) if enrollment else None
+		days_left = (challenge.end_date - now).days if challenge.end_date else challenge.duration_days
+		return {
+			"id": challenge.id,
+			"name": challenge.name,
+			"description": challenge.description,
+			"requirement": challenge.requirement,
+			"progress": {
+				"sessionsCompleted": progress.sessions_completed if progress else 0,
+				"requiredSessions": challenge.required_sessions,
+				"percent": progress.progress_percent if progress else 0,
+			},
+			"participants": challenge.participant_count,
+			"daysLeft": max(0, days_left),
+			"badgeRewardPreview": challenge.badge_icon,
+			"xpReward": challenge.reward_xp,
+			"joined": enrollment is not None and enrollment.status != UserChallengeEnrollment.STATUS_LEFT,
+			"completed": enrollment is not None and enrollment.status == UserChallengeEnrollment.STATUS_COMPLETED,
+			"visibility": challenge.visibility,
+			"isOfficial": challenge.is_official,
+			"groupId": challenge.group_id,
+			"groupName": challenge.group.name if challenge.group_id else None,
+		}
+
+	active = [serialize(challenge) for challenge in challenges if challenge.id in enrollments and enrollments[challenge.id].status == UserChallengeEnrollment.STATUS_ACTIVE]
+	completed = [serialize(challenge) for challenge in challenges if challenge.id in enrollments and enrollments[challenge.id].status == UserChallengeEnrollment.STATUS_COMPLETED]
+	trending = [serialize(challenge) for challenge in sorted(challenges, key=lambda item: item.trending_score, reverse=True)[:10]]
+	official = [serialize(challenge) for challenge in challenges if challenge.is_official]
+	community = [serialize(challenge) for challenge in challenges if not challenge.is_official and challenge.visibility in {TrainingChallenge.VISIBILITY_COMMUNITY, TrainingChallenge.VISIBILITY_GROUP}]
+	return {
+		"active": active,
+		"trending": trending,
+		"official": official,
+		"community": community,
+		"completed": completed,
+	}

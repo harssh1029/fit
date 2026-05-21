@@ -645,7 +645,7 @@ const consistencyStyles = StyleSheet.create({
   },
   axisTextCurrent: {
     color: "#F8FAFC",
-    fontWeight: "800",
+    fontWeight: "700",
   },
   axisTextCurrentLight: {
     color: "#0F172A",

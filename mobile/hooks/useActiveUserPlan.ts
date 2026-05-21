@@ -17,10 +17,20 @@ export type ActiveScheduledWorkout = {
 		id: number | string;
 		title: string;
 		duration: string;
+		duration_minutes?: number;
 		day_type: string;
 		intensity?: string;
 		rpe_target?: string;
+		primary_focus?: string;
 		coach_note?: string;
+		exercises?: Array<{
+			label: string;
+			primary?: string;
+			exercise?: {
+				primary_muscles?: string[];
+				secondary_muscles?: string[];
+			} | null;
+		}>;
 	};
 };
 

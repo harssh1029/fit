@@ -60,6 +60,7 @@ class DashboardSummaryViewTests(APITestCase):
 		self.assertIn("fitness_age", metrics)
 		self.assertIn("race_readiness", metrics)
 		self.assertIn("percentile_rank", metrics)
+		self.assertIn("training_profile", metrics)
 
 		fitness_age = metrics["fitness_age"]
 		race = metrics["race_readiness"]
@@ -74,3 +75,13 @@ class DashboardSummaryViewTests(APITestCase):
 		self.assertTrue(percentile.get("available"))
 		self.assertIsNotNone(percentile.get("percentile"))
 
+		training_profile = metrics["training_profile"]
+		self.assertTrue(training_profile.get("available"))
+		self.assertIn("level", training_profile)
+		self.assertIn("body_focus", training_profile)
+		self.assertIn("category_levels", training_profile)
+		self.assertIn("comparison_metrics", training_profile)
+		self.assertGreaterEqual(
+			len(training_profile["comparison_metrics"].get("metrics", [])),
+			1,
+		)

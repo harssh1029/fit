@@ -17,10 +17,6 @@ import {
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
 import {
-  PlayfairDisplay_600SemiBold,
-  PlayfairDisplay_700Bold,
-} from "@expo-google-fonts/playfair-display";
-import {
   ActivityIndicator,
   FlatList,
   Platform,
@@ -85,13 +81,16 @@ import { useUserProfileBasic } from "./hooks/useUserProfileBasic";
 import { useDashboardSummary } from "./hooks/useDashboardSummary";
 import { useWorkoutHistory } from "./hooks/useWorkoutHistory";
 import ChallengesScreen from "./screens/challenges/ChallengesScreen";
-import HomeScreen from "./screens/home/HomeScreen";
+import HomeFeedScreen from "./screens/home/HomeFeedScreen";
+import InsightsScreen from "./screens/home/HomeScreen";
 import ExercisesFeatureScreen from "./screens/exercises/ExerciseListScreen";
 import PlansFeatureScreen, {
   PlansCategoryScreen,
 } from "./screens/plans/PlansScreen";
 import PlanDetailScreenV2 from "./screens/plans/PlanDetailScreenV2";
-import CommunityScreen from "./screens/community/CommunityScreen";
+import FriendsCommunityScreen from "./screens/community/CommunityScreen";
+import CommunityParticipationScreen from "./screens/community/CommunityParticipationScreen";
+import RecordScreen from "./screens/record/RecordScreen";
 import ConsistencyScreen from "./screens/consistency/ConsistencyScreen";
 import LoginScreen from "./screens/auth/LoginScreen";
 import RegisterScreen from "./screens/auth/RegisterScreen";
@@ -117,6 +116,7 @@ import {
   NavigationContainer,
   DarkTheme as NavigationDarkTheme,
   DefaultTheme as NavigationLightTheme,
+  TabActions,
   useNavigation,
 } from "@react-navigation/native";
 import BodyMuscleFront, {
@@ -125,6 +125,10 @@ import BodyMuscleFront, {
 } from "./BodyMuscleFront";
 import BodyMuscleBack from "./BodyMuscleBack";
 import { FancyWorkoutTypeIcon } from "./TrainingDayIcons";
+import {
+  FitnessIcon3D,
+  type FitnessIcon3DName,
+} from "./components/FitnessIcon3D";
 
 // Re-export FancyWorkoutTypeIcon for modal components
 export { FancyWorkoutTypeIcon } from "./TrainingDayIcons";
@@ -142,13 +146,18 @@ import { Ionicons } from "@expo/vector-icons";
 
 (Text as any).defaultProps = {
   ...((Text as any).defaultProps || {}),
-  style: [{ fontFamily: fontFamily.ui }, (Text as any).defaultProps?.style],
+  maxFontSizeMultiplier: 1.18,
+  style: [
+    { fontFamily: fontFamily.ui, includeFontPadding: false },
+    (Text as any).defaultProps?.style,
+  ],
 };
 
 (TextInput as any).defaultProps = {
   ...((TextInput as any).defaultProps || {}),
+  maxFontSizeMultiplier: 1.12,
   style: [
-    { fontFamily: fontFamily.ui },
+    { fontFamily: fontFamily.ui, includeFontPadding: false },
     (TextInput as any).defaultProps?.style,
   ],
   placeholderTextColor: (TextInput as any).defaultProps?.placeholderTextColor,
@@ -1765,10 +1774,35 @@ export type AuthStackParamList = {
 
 type MainTabParamList = {
   Home: undefined;
+  Record:
+    | {
+        planContext?: {
+          scheduledWorkoutId: number;
+          userPlanId: number;
+          planId: string;
+          planName: string;
+          planDayId: number | string;
+          title: string;
+          dayType: string;
+          intensity?: string;
+          durationMinutes?: number;
+          focusLabel?: string;
+          weekNumber: number;
+          dayIndex: number;
+          exercises?: Array<{
+            name: string;
+            volume?: string;
+            muscles?: string[];
+          }>;
+        };
+      }
+    | undefined;
   Plans: undefined;
   Exercises: undefined;
   Challenges: undefined;
-  Community: undefined;
+  Community: { groupId?: string; invite?: string } | undefined;
+  Insights: undefined;
+  Friends: undefined;
   Consistency: undefined;
   Account: undefined;
 };
@@ -1794,6 +1828,7 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const MainTabs = createBottomTabNavigator<MainTabParamList>();
 const PlansStack = createNativeStackNavigator<PlansStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const InsightsStack = createNativeStackNavigator<HomeStackParamList>();
 
 const App: React.FC = () => {
   const [fontsLoaded] = useFonts({
@@ -1801,15 +1836,13 @@ const App: React.FC = () => {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    PlayfairDisplay_600SemiBold,
-    PlayfairDisplay_700Bold,
   });
   const [state, setState] = useState<AuthState>({
     loading: true,
     accessToken: null,
     refreshToken: null,
   });
-  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  const [themeMode] = useState<ThemeMode>("dark");
   const [exercisePrs, setExercisePrs] = useState<ExercisePrRecord[]>([]);
 
   useEffect(() => {
@@ -1996,9 +2029,7 @@ const App: React.FC = () => {
   const themeContext = useMemo<ThemeContextValue>(
     () => ({
       mode: themeMode,
-      toggle: () => {
-        setThemeMode((prev) => (prev === "dark" ? "light" : "dark"));
-      },
+      toggle: () => {},
     }),
     [themeMode],
   );
@@ -2121,7 +2152,17 @@ const App: React.FC = () => {
     <ThemeContext.Provider value={themeContext}>
       <AuthContext.Provider value={authContext}>
         <ExercisePrContext.Provider value={exercisePrContext}>
-          <NavigationContainer theme={navigationTheme}>
+          <NavigationContainer
+            theme={navigationTheme}
+            linking={{
+              prefixes: ["fit://", "https://fit.local"],
+              config: {
+                screens: {
+                  Community: "groups/:groupId",
+                },
+              },
+            }}
+          >
             <SafeAreaView
               style={[styles.root, themeMode === "light" && styles.rootLight]}
             >
@@ -2190,20 +2231,31 @@ const HomeStackNavigator: React.FC = () => (
       contentStyle: styles.root,
     }}
   >
-    <HomeStack.Screen name="HomeMain" component={HomeScreen} />
-    <HomeStack.Screen
+    <HomeStack.Screen name="HomeMain" component={HomeFeedScreen} />
+  </HomeStack.Navigator>
+);
+
+const InsightsStackNavigator: React.FC = () => (
+  <InsightsStack.Navigator
+    screenOptions={{
+      headerShown: false,
+      contentStyle: styles.root,
+    }}
+  >
+    <InsightsStack.Screen name="HomeMain" component={InsightsScreen} />
+    <InsightsStack.Screen
       name="FitnessAgeDetail"
       component={FitnessAgeDetailScreen}
     />
-    <HomeStack.Screen
+    <InsightsStack.Screen
       name="RaceReadinessDetail"
       component={RaceReadinessDetailScreen}
     />
-    <HomeStack.Screen
+    <InsightsStack.Screen
       name="PercentileDetail"
       component={PercentileDetailScreen}
     />
-  </HomeStack.Navigator>
+  </InsightsStack.Navigator>
 );
 
 type TabBarIconProps = {
@@ -2217,32 +2269,44 @@ type TabBarIconProps = {
 };
 
 const getTabConfig = (routeName: string) => {
-  let iconName: keyof typeof Ionicons.glyphMap;
+  let iconName: FitnessIcon3DName;
   let label: string;
 
   switch (routeName) {
     case "Home":
-      iconName = "home-outline";
+      iconName = "home";
       label = "Home";
       break;
+    case "Record":
+      iconName = "record";
+      label = "Record";
+      break;
     case "Plans":
-      iconName = "calendar-outline";
+      iconName = "plans";
       label = "Plans";
       break;
     case "Exercises":
-      iconName = "barbell-outline";
+      iconName = "exercises";
       label = "Exercises";
       break;
     case "Challenges":
-      iconName = "trophy-outline";
+      iconName = "challenges";
       label = "Challenges";
       break;
     case "Community":
-      iconName = "people-outline";
+      iconName = "community";
       label = "Community";
       break;
+    case "Insights":
+      iconName = "insights";
+      label = "Insights";
+      break;
+    case "Friends":
+      iconName = "friends";
+      label = "Friends";
+      break;
     default:
-      iconName = "ellipse";
+      iconName = "target";
       label = routeName;
   }
 
@@ -2260,6 +2324,7 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
 }) => {
   const selectionProgress = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const { iconName, label } = getTabConfig(routeName);
+  const isRecordTab = routeName === "Record";
 
   useEffect(() => {
     Animated.spring(selectionProgress, {
@@ -2270,9 +2335,6 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
     }).start();
   }, [focused, selectionProgress]);
 
-  const activeIconColor = isLight ? "#FFFFFF" : "#05070D";
-  const inactiveIconColor = isLight ? "#64748B" : "#94A3B8";
-  const iconColor = focused ? activeIconColor : inactiveIconColor;
   const iconAnimatedStyle = {
     transform: [
       {
@@ -2310,7 +2372,15 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
       activeOpacity={0.88}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={[styles.tabBarItem, focused && styles.tabBarItemActive]}
+      style={[
+        styles.tabBarItem,
+        focused && styles.tabBarItemActive,
+        isRecordTab && {
+          width: 78,
+          height: 74,
+          marginTop: -30,
+        },
+      ]}
     >
       <Animated.View
         style={[
@@ -2320,13 +2390,34 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
             (isLight
               ? styles.tabBarIconContainerActiveLight
               : styles.tabBarIconContainerActive),
+          isRecordTab && {
+            width: 66,
+            height: 66,
+            borderRadius: 33,
+            backgroundColor: "#111827",
+            borderColor: "#EEF2FF",
+            borderWidth: 9,
+            shadowColor: "#6366F1",
+            shadowOpacity: 0.28,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 10 },
+            elevation: 10,
+          },
           iconAnimatedStyle,
         ]}
       >
-        <Ionicons name={iconName} size={21} color={iconColor} />
-        {focused && (
+        <FitnessIcon3D
+          name={isRecordTab ? "record" : iconName}
+          size={isRecordTab ? 44 : 30}
+          active={focused || isRecordTab}
+          muted={!focused && !isRecordTab}
+        />
+        {!isRecordTab && (
           <Text
-            style={[styles.tabBarActiveLabel, isLight && { color: "#FFFFFF" }]}
+            style={[
+              styles.tabBarActiveLabel,
+              !focused && { color: isLight ? "#4B5563" : "#CBD5E1", fontWeight: "500" },
+            ]}
             numberOfLines={1}
           >
             {label}
@@ -2351,7 +2442,7 @@ const AppTabBar: React.FC<BottomTabBarProps & { isLight: boolean }> = ({
   navigation,
   isLight,
 }) => {
-  const visibleTabNames = ["Home", "Plans", "Exercises", "Challenges", "Community"];
+  const visibleTabNames = ["Home", "Plans", "Record", "Community", "Insights"];
   const visibleRoutes = state.routes.filter((route) =>
     visibleTabNames.includes(route.name),
   );
@@ -2370,7 +2461,7 @@ const AppTabBar: React.FC<BottomTabBarProps & { isLight: boolean }> = ({
           });
 
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name as never);
+            navigation.dispatch(TabActions.jumpTo(route.name));
           }
         };
 
@@ -2412,9 +2503,21 @@ const MainTabsNavigator: React.FC = () => {
     >
       <MainTabs.Screen name="Home" component={HomeStackNavigator} />
       <MainTabs.Screen name="Plans" component={PlansStackNavigator} />
+      <MainTabs.Screen name="Record" component={RecordScreen} />
+      <MainTabs.Screen name="Community" component={CommunityParticipationScreen} />
+      <MainTabs.Screen
+        name="Insights"
+        component={InsightsStackNavigator}
+      />
       <MainTabs.Screen name="Exercises" component={ExercisesFeatureScreen} />
       <MainTabs.Screen name="Challenges" component={ChallengesScreen} />
-      <MainTabs.Screen name="Community" component={CommunityScreen} />
+      <MainTabs.Screen
+        name="Friends"
+        component={FriendsCommunityScreen}
+        options={{
+          tabBarButton: () => null,
+        }}
+      />
       <MainTabs.Screen
         name="Consistency"
         component={ConsistencyScreen}
@@ -2422,7 +2525,6 @@ const MainTabsNavigator: React.FC = () => {
           tabBarButton: () => null,
         }}
       />
-      {/* Hidden tab used only for navigating to the Account/profile screen */}
       <MainTabs.Screen
         name="Account"
         component={AccountScreen}

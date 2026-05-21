@@ -7,8 +7,12 @@ import BACK_SVG_XML from './assets/backSvg';
 interface Props {
 	isLight: boolean;
 	onSelectionChange?: (selection: MuscleSelection) => void;
-		/** See BodyMuscleFront.resetKey */
-		resetKey?: number;
+	activeMuscles?: MuscleName[];
+	readOnly?: boolean;
+	highlightColor?: string;
+	fillProgress?: number;
+	/** See BodyMuscleFront.resetKey */
+	resetKey?: number;
 }
 
 type Hotspot = {
@@ -55,6 +59,18 @@ const colorGroupFill = (svg: string, groupId: string, fill: string): string => {
 		const recoloredInner = (inner as string).replace(/fill="[^"]*"/g, `fill="${fill}"`);
 		return `${open as string}${recoloredInner}${close as string}`;
 	});
+};
+
+const injectFillGradient = (
+	svg: string,
+	fillId: string,
+	activeColor: string,
+	baseColor: string,
+	progress: number,
+): string => {
+	const pct = Math.max(0, Math.min(1, progress)) * 100;
+	const defs = `<defs><linearGradient id="${fillId}" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="${activeColor}"/><stop offset="${pct}%" stop-color="${activeColor}"/><stop offset="${pct}%" stop-color="${baseColor}"/><stop offset="100%" stop-color="${baseColor}"/></linearGradient></defs>`;
+	return svg.replace(/(<svg[^>]*>)/, `$1${defs}`);
 };
 
 // Joint markers taken from BACK_SVG_XML
@@ -223,50 +239,69 @@ const HOTSPOTS: Hotspot[] = [
 	{ id: 'ankle-right', ...ANKLE_RIGHT, muscle: 'Calves', size: 110 },
 ];
 
-	const BodyMuscleBack: React.FC<Props> = ({ isLight, onSelectionChange, resetKey }) => {
-		const [selectedMuscles, setSelectedMuscles] = useState<MuscleName[]>([]);
-		const [hoveredMuscle, setHoveredMuscle] = useState<MuscleName | null>(null);
+const BodyMuscleBack: React.FC<Props> = ({
+	isLight,
+	onSelectionChange,
+	activeMuscles,
+	readOnly,
+	highlightColor,
+	fillProgress,
+	resetKey,
+}) => {
+	const [selectedMuscles, setSelectedMuscles] = useState<MuscleName[]>([]);
+	const [hoveredMuscle, setHoveredMuscle] = useState<MuscleName | null>(null);
+	const displayedMuscles = activeMuscles ?? selectedMuscles;
 
-		useEffect(() => {
-			setSelectedMuscles([]);
-			setHoveredMuscle(null);
-		}, [resetKey]);
+	useEffect(() => {
+		setSelectedMuscles([]);
+		setHoveredMuscle(null);
+	}, [resetKey]);
 
-				const themedSvgXml = useMemo(() => {
-					const baseColor = isLight ? '#d1d5db' : '#4B5563';
-					const highlightColor = '#FF7A3C';
+	const themedSvgXml = useMemo(() => {
+		const baseColor = isLight ? '#d1d5db' : '#4B5563';
+		const activeColor = highlightColor ?? '#7C6BFF';
+		const progress = fillProgress ?? 1;
+		const fillId = 'back-active-fill';
+		const activeFill = progress < 1 ? `url(#${fillId})` : activeColor;
 
 		let svg = stripClassAttributes(stripMarkerGroups(BACK_SVG_XML));
+		if (progress < 1) {
+			svg = injectFillGradient(svg, fillId, activeColor, baseColor, progress);
+		}
 		svg = svg.replace(/fill="mw-red"/g, 'fill="currentColor"');
 		svg = svg.replace(/fill="currentColor"/g, `fill="${baseColor}"`);
 
-		const activeMuscles = new Set<MuscleName>(selectedMuscles);
-		if (hoveredMuscle) activeMuscles.add(hoveredMuscle);
+		const visualMuscles = new Set<MuscleName>(displayedMuscles);
+		if (!readOnly && hoveredMuscle) visualMuscles.add(hoveredMuscle);
 
-		for (const muscle of activeMuscles) {
+		for (const muscle of visualMuscles) {
 			const groupIds = MUSCLE_GROUP_IDS[muscle] ?? [];
 			for (const id of groupIds) {
-				svg = colorGroupFill(svg, id, highlightColor);
+				svg = colorGroupFill(svg, id, activeFill);
 			}
 		}
 
 		return svg;
-	}, [hoveredMuscle, isLight, selectedMuscles]);
+	}, [displayedMuscles, fillProgress, highlightColor, hoveredMuscle, isLight, readOnly]);
 
-		const handlePress = (muscle: MuscleName) => {
-			// Same pattern as BodyMuscleFront: update our own state first, then
-			// notify parent outside of the internal state updater.
-			const alreadyActive = selectedMuscles.includes(muscle);
-			const next = alreadyActive
-				? selectedMuscles.filter((m) => m !== muscle)
-				: [...selectedMuscles, muscle];
+	const handlePress = (muscle: MuscleName) => {
+		if (readOnly) return;
+		// Same pattern as BodyMuscleFront: update our own state first, then
+		// notify parent outside of the internal state updater.
+		const source = activeMuscles ?? selectedMuscles;
+		const alreadyActive = source.includes(muscle);
+		const next = alreadyActive
+			? source.filter((m) => m !== muscle)
+			: [...source, muscle];
 
+		if (!activeMuscles) {
 			setSelectedMuscles(next);
+		}
 
-			if (onSelectionChange) {
-				onSelectionChange({ muscle, active: !alreadyActive, allActive: next });
-			}
-		};
+		if (onSelectionChange) {
+			onSelectionChange({ muscle, active: !alreadyActive, allActive: next });
+		}
+	};
 
 	return (
 		<View style={styles.container}>
@@ -277,7 +312,7 @@ const HOTSPOTS: Hotspot[] = [
 				viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
 				style={StyleSheet.absoluteFillObject}
 			>
-				{HOTSPOTS.map((spot) => {
+				{!readOnly && HOTSPOTS.map((spot) => {
 					const size = spot.size ?? 80;
 					const radius = size / 2;
 					return (
@@ -286,10 +321,13 @@ const HOTSPOTS: Hotspot[] = [
 							cx={spot.cx}
 							cy={spot.cy}
 							r={radius}
-									fill="transparent"
+							fill="transparent"
 							onPress={() => handlePress(spot.muscle)}
-							onPressIn={() => setHoveredMuscle(spot.muscle)}
+							onPressIn={() => {
+								if (!readOnly) setHoveredMuscle(spot.muscle);
+							}}
 							onPressOut={() =>
+								!readOnly &&
 								setHoveredMuscle((current) =>
 									current === spot.muscle ? null : current,
 								)
@@ -307,4 +345,3 @@ const styles = StyleSheet.create({
 });
 
 export default BodyMuscleBack;
-

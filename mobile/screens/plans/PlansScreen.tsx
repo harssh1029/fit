@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  ImageBackground,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -16,12 +15,15 @@ import {
   GLASS_ACCENT_GREEN,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
+import {
+  FitnessIcon3D,
+  type FitnessIcon3DName,
+} from "../../components/FitnessIcon3D";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlans } from "../../hooks/usePlans";
 import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
 import { API_BASE_URL } from "../../api/client";
 import { useAuth, useThemeMode, styles } from "../../App";
-import { getPlanImageSource } from "../../utils/planImages";
 import type {
   Plan,
   PlansCategoryProps,
@@ -38,7 +40,6 @@ type PlanCardProps = {
   goal: string;
   focus: string;
   result: string;
-  imageSource: ReturnType<typeof getPlanImageSource>;
   progress?: PlanUserProgress | null;
   status: PlanCardStatus;
   onPress?: () => void;
@@ -107,31 +108,31 @@ const PLAN_DISCOVERY_CARDS: Array<{
   key: PlanDiscoveryKey;
   title: string;
   subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: FitnessIcon3DName;
 }> = [
   {
     key: "popular",
     title: "Popular",
     subtitle: "Tried. Tested. Loved.",
-    icon: "flame-outline",
+    icon: "flame",
   },
   {
     key: "forYou",
     title: "For You",
     subtitle: "Built around your goals.",
-    icon: "sparkles-outline",
+    icon: "sparkles",
   },
   {
     key: "events",
     title: "Upcoming Events",
     subtitle: "Train with purpose.",
-    icon: "flag-outline",
+    icon: "flag",
   },
   {
     key: "browse",
     title: "Browse All",
     subtitle: "Explore every path.",
-    icon: "compass-outline",
+    icon: "compass",
   },
 ];
 
@@ -244,7 +245,6 @@ const PlanCard: React.FC<PlanCardProps> = ({
   goal,
   focus,
   result,
-  imageSource,
   progress,
   status,
   onPress,
@@ -265,7 +265,6 @@ const PlanCard: React.FC<PlanCardProps> = ({
   const completionPercent = progress?.completionPercent ?? 0;
   const totalSessions = progress?.totalSessions ?? 32;
   const completedForDots = progress?.completedSessions ?? 0;
-  const statIconColor = isLight ? "#2563EB" : "#BFDBFE";
   const buttonIconColor = !isEnrolled && isLight ? "#0F172A" : "#FFFFFF";
 
   const animatePress = (toValue: number) => {
@@ -306,19 +305,28 @@ const PlanCard: React.FC<PlanCardProps> = ({
       onPressIn={() => animatePress(1)}
       onPressOut={() => animatePress(0)}
     >
-      <ImageBackground
-        source={imageSource}
-        style={styles.planCardHeroImage}
-        imageStyle={styles.planCardFullImageStyle}
-        resizeMode="cover"
+      <View
+        style={[
+          styles.planCardHeroImage,
+          isLight && styles.planCardHeroImageLight,
+        ]}
       >
-        <View style={styles.planCardFullScrim} />
         <View style={styles.planCardHeroContent}>
           <View
-            style={[styles.planCardMetaChip, styles.planCardMetaChipOnImage]}
+            style={[
+              styles.planCardMetaChip,
+              isLight && styles.planCardMetaChipLight,
+            ]}
           >
-            <Ionicons name="flame-outline" size={15} color="#F8FAFC" />
-            <Text style={styles.planCardMetaTextOnImage}>{level}</Text>
+            <FitnessIcon3D name="flame" size={18} tile={false} />
+            <Text
+              style={[
+                styles.planCardMetaText,
+                isLight && styles.planCardMetaTextLight,
+              ]}
+            >
+              {level}
+            </Text>
           </View>
 
           <View style={styles.planCardSelectionRing}>
@@ -331,37 +339,46 @@ const PlanCard: React.FC<PlanCardProps> = ({
           </View>
 
           <View>
-            <Text style={styles.planCardTitleOnImage} numberOfLines={2}>
+            <Text
+              style={[
+                styles.planCardTitleOnImage,
+                isLight && styles.planCardTitleOnImageLight,
+              ]}
+              numberOfLines={2}
+            >
               {title}
             </Text>
 
             <Text
-              style={[styles.planCardGoalText, styles.planCardGoalTextOnImage]}
+              style={[
+                styles.planCardGoalText,
+                isLight && styles.planCardGoalTextLight,
+              ]}
               numberOfLines={1}
             >
               {goal}
             </Text>
           </View>
         </View>
-      </ImageBackground>
+      </View>
 
       <View style={[styles.planCardBody, !isLight && styles.planCardBodyDark]}>
         <View style={styles.planCardStatsRow}>
           {[
             {
-              icon: "flag-outline" as keyof typeof Ionicons.glyphMap,
+              icon: "target" as FitnessIcon3DName,
               label: "Goal",
               value: goal,
               iconStyle: styles.planCardStatIconGoal,
             },
             {
-              icon: "fitness-outline" as keyof typeof Ionicons.glyphMap,
+              icon: "gym" as FitnessIcon3DName,
               label: "Focus",
               value: focus,
               iconStyle: styles.planCardStatIconFocus,
             },
             {
-              icon: "trending-up-outline" as keyof typeof Ionicons.glyphMap,
+              icon: "progress" as FitnessIcon3DName,
               label: "Result",
               value: result,
               iconStyle: styles.planCardStatIconResult,
@@ -383,11 +400,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
                     !isLight && styles.planCardStatIconCircleDark,
                   ]}
                 >
-                  <Ionicons
-                    name={item.icon as any}
-                    size={15}
-                    color={statIconColor}
-                  />
+                  <FitnessIcon3D name={item.icon} size={18} tile={false} />
                 </View>
                 <Text
                   style={[
@@ -517,11 +530,6 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
     (profile?.profile.personal_bests as any)?.premium ||
     (profile?.profile.personal_bests as any)?.subscription === "premium",
   );
-  const activeArtworkPlan = activeUserPlan?.plan ?? activePlan;
-  const activeArtworkSource = activeArtworkPlan
-    ? getPlanImageSource(activeArtworkPlan)
-    : null;
-
   const recalibratePlan = () => {
     if (!activeUserPlan) return;
     if (!isPremiumUser) {
@@ -570,6 +578,36 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
         },
       ],
     );
+  };
+
+  const openTodayWorkoutInRecord = () => {
+    if (!activeUserPlan || !todayWorkout) return;
+    const planDay = todayWorkout.plan_day;
+    const exercises = (planDay.exercises ?? []).map((exercise) => ({
+      name: exercise.label,
+      volume: exercise.primary,
+      muscles: [
+        ...(exercise.exercise?.primary_muscles ?? []),
+        ...(exercise.exercise?.secondary_muscles ?? []),
+      ],
+    }));
+    navigation.getParent<any>()?.navigate("Record", {
+      planContext: {
+        scheduledWorkoutId: todayWorkout.id,
+        userPlanId: activeUserPlan.id,
+        planId: activeUserPlan.plan.id,
+        planName: activeUserPlan.plan.name,
+        planDayId: planDay.id,
+        title: planDay.title,
+        dayType: planDay.day_type,
+        intensity: planDay.intensity,
+        durationMinutes: planDay.duration_minutes,
+        focusLabel: planDay.primary_focus,
+        weekNumber: todayWorkout.week_number,
+        dayIndex: todayWorkout.day_index,
+        exercises,
+      },
+    });
   };
 
   if (plansLoading) {
@@ -660,13 +698,9 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           isLight && styles.plansHeaderContainerLight,
         ]}
       >
-        <ImageBackground
-          source={activeArtworkSource ?? undefined}
-          resizeMode="cover"
-          imageStyle={styles.plansActiveCardImage}
+        <View
           style={[
             styles.plansActiveCard,
-            activeArtworkSource && styles.plansActiveCardWithImage,
             isLight && styles.plansActiveCardLight,
             !activeUserPlan && !activePlan && styles.plansActiveCardEmpty,
             !activeUserPlan &&
@@ -675,24 +709,11 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               styles.plansActiveCardEmptyLight,
           ]}
         >
-          {activeArtworkSource && (
-            <>
-              <View style={styles.plansActiveImageScrim} />
-              <View
-                style={[
-                  styles.plansActiveImageWash,
-                  isLight && styles.plansActiveImageWashLight,
-                ]}
-              />
-            </>
-          )}
           <View style={styles.plansActiveKickerRow}>
             <View
               style={[
                 styles.plansActiveKickerPill,
-                activeArtworkSource
-                  ? styles.plansActiveKickerPillOnImage
-                  : isLight && styles.plansActiveKickerPillLight,
+                isLight && styles.plansActiveKickerPillLight,
               ]}
             >
               <Ionicons
@@ -703,9 +724,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 }
                 size={15}
                 color={
-                  activeArtworkSource
-                    ? "#F8FAFC"
-                    : isLight
+                  isLight
                       ? "#64748B"
                       : "#A7B0C3"
                 }
@@ -713,9 +732,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <Text
                 style={[
                   styles.plansActiveKickerText,
-                  activeArtworkSource
-                    ? styles.plansActiveKickerTextOnImage
-                    : isLight
+                  isLight
                     ? styles.plansActiveKickerTextLight
                     : styles.plansActiveKickerTextDark,
                 ]}
@@ -729,9 +746,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <Text
                 style={[
                   styles.plansActiveTitle,
-                  activeArtworkSource
-                    ? styles.plansActiveTitleOnImage
-                    : isLight
+                  isLight
                     ? styles.plansActiveTitleLight
                     : styles.plansActiveTitleDark,
                 ]}
@@ -746,9 +761,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           <Text
             style={[
               styles.plansActiveSubtitle,
-              activeArtworkSource
-                ? styles.plansActiveSubtitleOnImage
-                : !isLight && styles.plansActiveSubtitleDark,
+              !isLight && styles.plansActiveSubtitleDark,
             ]}
             numberOfLines={3}
           >
@@ -765,9 +778,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text
                   style={[
                     styles.plansActiveProgressText,
-                    activeArtworkSource
-                      ? styles.plansActiveProgressTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveProgressTextLight
                       : styles.plansActiveProgressTextDark,
                   ]}
@@ -777,9 +788,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text
                   style={[
                     styles.plansActiveProgressText,
-                    activeArtworkSource
-                      ? styles.plansActiveProgressTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveProgressTextLight
                       : styles.plansActiveProgressTextDark,
                   ]}
@@ -791,14 +800,12 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <ProgressDots
                 total={activeUserPlan.total_sessions}
                 completed={activeUserPlan.completed_sessions}
-                isLight={activeArtworkSource ? false : isLight}
+                isLight={isLight}
               />
               <Text
                 style={[
                   styles.plansActiveDateText,
-                  activeArtworkSource
-                    ? styles.plansActiveDateTextOnImage
-                    : isLight
+                  isLight
                     ? styles.plansActiveDateTextLight
                     : styles.plansActiveDateTextDark,
                   { marginTop: 10 },
@@ -816,9 +823,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   key={item.id}
                   style={[
                     styles.plansActiveDateText,
-                    activeArtworkSource
-                      ? styles.plansActiveDateTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveDateTextLight
                       : styles.plansActiveDateTextDark,
                     { marginTop: 4 },
@@ -831,9 +836,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <View
                   style={[
                     styles.plansNextRow,
-                    activeArtworkSource
-                      ? styles.plansNextRowOnImage
-                      : isLight
+                    isLight
                       ? styles.plansNextRowLight
                       : styles.plansNextRowDark,
                     { marginTop: 12 },
@@ -843,9 +846,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                     <Text
                       style={[
                         styles.plansNextValue,
-                        activeArtworkSource
-                          ? styles.plansNextValueOnImage
-                          : isLight
+                        isLight
                           ? styles.plansNextValueLight
                           : styles.plansNextValueDark,
                       ]}
@@ -855,9 +856,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                     <Text
                       style={[
                         styles.plansNextLabel,
-                        activeArtworkSource
-                          ? styles.plansNextLabelOnImage
-                          : isLight
+                        isLight
                           ? styles.plansNextLabelLight
                           : styles.plansNextLabelDark,
                       ]}
@@ -884,9 +883,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text
                   style={[
                     styles.plansActiveProgressText,
-                    activeArtworkSource
-                      ? styles.plansActiveProgressTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveProgressTextLight
                       : styles.plansActiveProgressTextDark,
                   ]}
@@ -898,9 +895,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text
                   style={[
                     styles.plansActiveProgressText,
-                    activeArtworkSource
-                      ? styles.plansActiveProgressTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveProgressTextLight
                       : styles.plansActiveProgressTextDark,
                   ]}
@@ -911,15 +906,13 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               <ProgressDots
                 total={activeProgress.totalSessions}
                 completed={activeProgress.completedSessions}
-                isLight={activeArtworkSource ? false : isLight}
+                isLight={isLight}
               />
               <View style={styles.plansActiveDateRow}>
                 <Text
                   style={[
                     styles.plansActiveDateText,
-                    activeArtworkSource
-                      ? styles.plansActiveDateTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveDateTextLight
                       : styles.plansActiveDateTextDark,
                   ]}
@@ -929,9 +922,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 <Text
                   style={[
                     styles.plansActiveDateText,
-                    activeArtworkSource
-                      ? styles.plansActiveDateTextOnImage
-                      : isLight
+                    isLight
                       ? styles.plansActiveDateTextLight
                       : styles.plansActiveDateTextDark,
                   ]}
@@ -943,11 +934,27 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           ) : null}
 
           <View style={styles.plansActiveButtonsRow}>
+            {activeUserPlan && todayWorkout ? (
+              <TouchableOpacity
+                style={[
+                  styles.plansPrimaryButton,
+                  isLight && styles.plansPrimaryButtonLight,
+                  { marginRight: 10 },
+                ]}
+                activeOpacity={0.9}
+                onPress={openTodayWorkoutInRecord}
+              >
+                <Text style={styles.plansPrimaryButtonLabel}>
+                  Record today
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             {activeUserPlan || activePlan ? (
               <TouchableOpacity
                 style={[
                   styles.plansPrimaryButton,
                   isLight && styles.plansPrimaryButtonLight,
+                  activeUserPlan && todayWorkout && { flex: 1 },
                 ]}
                 activeOpacity={0.9}
                 onPress={() =>
@@ -973,7 +980,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               </TouchableOpacity>
             )}
           </View>
-        </ImageBackground>
+        </View>
       </View>
 
       <View
@@ -1013,11 +1020,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
               >
                 <View style={styles.plansDiscoveryContent}>
                   <View style={styles.plansDiscoveryIcon}>
-                    <Ionicons
-                      name={card.icon as any}
-                      size={18}
-                      color="#FFFFFF"
-                    />
+                    <FitnessIcon3D name={card.icon} size={32} active />
                   </View>
                   <View>
                     <Text style={styles.plansDiscoveryCardTitle}>
@@ -1244,7 +1247,6 @@ export const PlansCategoryScreen: React.FC<PlansCategoryProps> = ({
             goal={getDisplayGoal(plan)}
             focus={getDisplayFocus(plan)}
             result={getDisplayResult(plan)}
-            imageSource={getPlanImageSource(plan)}
             progress={plan.userProgress}
             status={activePlanId === plan.id ? "enrolled" : "preview"}
             onPress={() =>

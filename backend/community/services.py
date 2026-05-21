@@ -8,9 +8,9 @@ from django.utils import timezone
 
 from challenges.models import UserChallengeCompletion
 from insights.models import UserMetricsSnapshot
-from workouts.models import WorkoutSession
+from workouts.models import UserScoreSummary, WorkoutSession
 
-from .models import CommunityActivity, Friendship, UserPublicCard
+from .models import CommunityActivity, Friendship, UserFollow, UserPublicCard
 
 
 User = get_user_model()
@@ -77,6 +77,13 @@ def ensure_public_card(user: User) -> UserPublicCard:
 		completed_at__gte=week_start,
 	).count()
 	challenges_completed = UserChallengeCompletion.objects.filter(user=user).count()
+	followers_count = UserFollow.objects.filter(following=user, status=UserFollow.STATUS_ACTIVE).count()
+	following_count = UserFollow.objects.filter(follower=user, status=UserFollow.STATUS_ACTIVE).count()
+	post_count = CommunityActivity.objects.filter(user=user, activity_type=CommunityActivity.ACTIVITY_WORKOUT).count()
+	try:
+		score_summary: Optional[UserScoreSummary] = user.score_summary
+	except ObjectDoesNotExist:
+		score_summary = None
 
 	current_streak = snapshot.current_streak_days if snapshot else 0
 	total_30d = snapshot.total_minutes_30d if snapshot else 0
@@ -116,6 +123,12 @@ def ensure_public_card(user: User) -> UserPublicCard:
 			'streak_days': current_streak,
 			'recent_sessions_this_week': recent_sessions_this_week,
 			'fitness_age_years': fitness_age,
+			'followers_count': followers_count,
+			'following_count': following_count,
+			'post_count': post_count,
+			'performance_score': score_summary.performance_score if score_summary else overall_score,
+			'weekly_xp': score_summary.weekly_xp if score_summary else 0,
+			'tier': score_summary.tier if score_summary else 'Rookie',
 			'metadata': {
 				'email': user.email,
 				'last_snapshot_at': snapshot.computed_at.isoformat() if snapshot else None,
@@ -162,15 +175,78 @@ def remove_friendship(user: User, other_user: User) -> None:
 def sync_recent_activities(user: User) -> None:
 	"""Materialize recent activity from existing workout/challenge data."""
 
-	for session in WorkoutSession.objects.filter(user=user, status='completed').order_by('-completed_at')[:20]:
+	week_start = timezone.now() - timedelta(days=7)
+
+	for session in WorkoutSession.objects.filter(
+		user=user,
+		status='completed',
+		completed_at__gte=week_start,
+	).order_by('-completed_at', '-id'):
 		occurred_at = session.completed_at or session.updated_at or session.created_at
-		title = session.plan.name if session.plan else 'Completed workout'
-		description = (
-			f'{session.duration_minutes} min session'
-			if session.duration_minutes
-			else 'Workout completed'
-		)
+		session_metadata = session.metadata or {}
+		custom_title = session_metadata.get('title') if isinstance(session_metadata, dict) else None
+		title = session.title or (session.plan.name if session.plan else str(custom_title or 'Completed workout'))
+		description_parts = []
+		if session.duration_minutes:
+			description_parts.append(f'{session.duration_minutes} min session')
+		if isinstance(session_metadata, dict):
+			body_groups = session_metadata.get('body_groups') or []
+			focus_label = session_metadata.get('focus_label')
+			if isinstance(focus_label, str) and focus_label:
+				description_parts.append(focus_label)
+			if isinstance(body_groups, list) and body_groups:
+				description_parts.append(
+					' + '.join(str(group).title() for group in body_groups[:3])
+				)
+			if session_metadata.get('cardio'):
+				description_parts.append('Cardio')
+			intensity = session_metadata.get('intensity')
+			if isinstance(intensity, str) and intensity:
+				description_parts.append(intensity)
+		description = ' / '.join(description_parts) or 'Workout completed'
 		source_id = f'workout:{session.id}'
+		activity_metadata = {'source_id': source_id}
+		if isinstance(session_metadata, dict):
+			activity_metadata.update(
+				{
+					'title': title,
+					'body_groups': session.body_groups or session_metadata.get('body_groups') or [],
+					'muscles': session.muscles or session_metadata.get('muscles') or [],
+					'body_map_side': session_metadata.get('body_map_side') or 'front',
+					'cardio': bool(session_metadata.get('cardio', False)),
+					'exercise_count': session_metadata.get('exercise_count'),
+					'exercises': session_metadata.get('exercises') or [],
+					'mode': session.workout_type or session_metadata.get('mode'),
+					'modes': session.modes or session_metadata.get('modes') or [],
+					'focus_label': session.focus_label or session_metadata.get('focus_label') or '',
+					'intensity': session.intensity or session_metadata.get('intensity') or '',
+					'feeling': session_metadata.get('feeling') or '',
+					'notes': session.notes or session_metadata.get('notes') or '',
+					'caption': session.caption or session_metadata.get('caption') or '',
+					'image_url': session.image_url or session_metadata.get('image_url') or '',
+					'pr': session.pr_note or session_metadata.get('pr') or '',
+				}
+			)
+		try:
+			score_record = session.score_record
+		except ObjectDoesNotExist:
+			score_record = None
+		if score_record is not None:
+			activity_metadata.update(
+				{
+					'activity_xp': score_record.activity_xp,
+					'leaderboard_xp': score_record.leaderboard_xp,
+					'challenge_points': score_record.challenge_points,
+					'frontend_summary': {
+						'title': title,
+						'duration_minutes': session.duration_minutes,
+						'intensity': session.intensity,
+						'focus': session.focus_label or session.workout_type.title(),
+						'xp': score_record.activity_xp,
+						'challenge_badge': 'Challenge' if score_record.challenge_points else None,
+					},
+				}
+			)
 		activity = CommunityActivity.objects.filter(
 			user=user,
 			activity_type=CommunityActivity.ACTIVITY_WORKOUT,
@@ -183,17 +259,21 @@ def sync_recent_activities(user: User) -> None:
 				title=title,
 				description=description,
 				score=session.duration_minutes,
-				metadata={'source_id': source_id},
+				metadata=activity_metadata,
 				occurred_at=occurred_at,
 			)
 		else:
 			activity.title = title
 			activity.description = description
 			activity.score = session.duration_minutes
+			activity.metadata = activity_metadata
 			activity.occurred_at = occurred_at
-			activity.save(update_fields=['title', 'description', 'score', 'occurred_at'])
+			activity.save(update_fields=['title', 'description', 'score', 'metadata', 'occurred_at'])
 
-	for completion in UserChallengeCompletion.objects.filter(user=user).select_related('challenge').order_by('-completed_at')[:20]:
+	for completion in UserChallengeCompletion.objects.filter(
+		user=user,
+		completed_at__gte=week_start,
+	).select_related('challenge').order_by('-completed_at', '-id'):
 		challenge_name = completion.challenge.card.get('name') or completion.challenge.id
 		source_id = f'challenge:{completion.challenge_id}'
 		activity = CommunityActivity.objects.filter(
@@ -218,4 +298,10 @@ def sync_recent_activities(user: User) -> None:
 
 
 def community_scope_user_ids(user: User) -> list[int]:
-	return [user.id, *accepted_friend_user_ids(user)]
+	following = list(
+		UserFollow.objects.filter(
+			follower=user,
+			status=UserFollow.STATUS_ACTIVE,
+		).values_list('following_id', flat=True)
+	)
+	return list(dict.fromkeys([user.id, *accepted_friend_user_ids(user), *following]))

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -14,6 +15,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 import * as Haptics from "expo-haptics";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Path,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 
 import {
   GLASS_ACCENT_GREEN,
@@ -24,7 +33,7 @@ import {
   GLASS_TEXT_MUTED,
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
-import { AppTabs, PremiumCard, SectionTitle } from "../../components/PremiumUI";
+import { AppTabs, PremiumCard } from "../../components/PremiumUI";
 import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
 import { API_BASE_URL } from "../../api/client";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
@@ -58,7 +67,6 @@ import {
   MUSCLE_TO_BODY_BATTLE_GROUP,
   MetricGauge,
   PercentileCurve,
-  StreakDotsRow,
 } from "../../App";
 
 type AnimatedMetricProgressRowProps = {
@@ -112,9 +120,6 @@ const AnimatedMetricProgressRow: React.FC<AnimatedMetricProgressRowProps> = ({
     };
   }, [clamped, barAnimated, valueAnimated]);
 
-  const normalized = clamped / 100;
-  const fillerFlex = Math.max(0, 1 - normalized);
-
   return (
     <View style={styles.metricProgressRow}>
       <Text
@@ -128,30 +133,449 @@ const AnimatedMetricProgressRow: React.FC<AnimatedMetricProgressRowProps> = ({
       <View
         style={[
           styles.metricProgressBarTrack,
-          { flexDirection: "row", alignItems: "stretch" },
+          { position: "relative" },
         ]}
       >
         <Animated.View
           style={[
             styles.metricProgressBarFill,
             {
-              flex: barAnimated,
+              width: barAnimated.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["0%", "100%"],
+              }),
             },
           ]}
         />
-        {fillerFlex > 0 && <View style={{ flex: fillerFlex }} />}
+        <Text
+          style={[
+            styles.metricProgressValue,
+            isLight && styles.metricProgressValueLight,
+            {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              width: "100%",
+              textAlign: "center",
+            },
+          ]}
+        >
+          {`${displayValue}%`}
+        </Text>
       </View>
-      <Text
-        style={[
-          styles.metricProgressValue,
-          isLight && styles.metricProgressValueLight,
-        ]}
-      >
-        {`${displayValue}%`}
-      </Text>
     </View>
   );
 };
+
+type InsightMetric = {
+  key: string;
+  label: string;
+  xp: number;
+  target_xp: number;
+  percent: number;
+  rank?: string;
+  tier?: string;
+  sessions?: number;
+  icon?: string;
+  accent: string;
+};
+
+type InsightComparisonPoint = {
+  label: string;
+  you: number;
+  average: number;
+  ideal: number;
+};
+
+type InsightComparisonMetric = {
+  key: string;
+  label: string;
+  unit: string;
+  description?: string;
+  current: number;
+  average: number;
+  ideal: number;
+  trend: InsightComparisonPoint[];
+};
+
+const clampPercent = (value: number | null | undefined) =>
+  Math.max(0, Math.min(100, Number.isFinite(Number(value)) ? Number(value) : 0));
+
+const formatCompactXp = (value: number | null | undefined) =>
+  `${Math.round(Number(value) || 0).toLocaleString()} XP`;
+
+const formatComparisonValue = (
+  value: number | null | undefined,
+  unit: string,
+) => {
+  const formatted = Math.round(Number(value) || 0).toLocaleString();
+  if (unit === "%") return `${formatted}%`;
+  if (unit === "XP") return `${formatted} XP`;
+  if (unit === "days") return `${formatted}d`;
+  return `${formatted} ${unit}`.trim();
+};
+
+const buildSmoothChartPath = (
+  points: Array<{ x: number; y: number }>,
+  closed = false,
+  bottom = 0,
+) => {
+  if (!points.length) return "";
+  if (points.length === 1) {
+    const path = `M ${points[0].x} ${points[0].y}`;
+    return closed ? `${path} L ${points[0].x} ${bottom} Z` : path;
+  }
+  const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const midX = (previous.x + current.x) / 2;
+    commands.push(
+      `C ${midX.toFixed(1)} ${previous.y.toFixed(1)} ${midX.toFixed(1)} ${current.y.toFixed(1)} ${current.x.toFixed(1)} ${current.y.toFixed(1)}`,
+    );
+  }
+  if (closed) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    commands.push(
+      `L ${last.x.toFixed(1)} ${bottom.toFixed(1)} L ${first.x.toFixed(1)} ${bottom.toFixed(1)} Z`,
+    );
+  }
+  return commands.join(" ");
+};
+
+const InsightOrbitChart: React.FC<{ metrics: InsightMetric[] }> = ({
+  metrics,
+}) => {
+  const rings = metrics.slice(0, 4);
+  return (
+    <View style={insightStyles.orbitChart}>
+      <Svg width={148} height={148} viewBox="0 0 168 168">
+        {rings.map((item, index) => {
+          const radius = 68 - index * 15;
+          const circumference = 2 * Math.PI * radius;
+          const progress = clampPercent(item.percent) / 100;
+          return (
+            <React.Fragment key={item.key}>
+              <Circle cx={84} cy={84} r={radius} stroke="rgba(148,163,184,0.14)" strokeWidth={10} fill="transparent" />
+              <Circle
+                cx={84}
+                cy={84}
+                r={radius}
+                stroke={item.accent}
+                strokeWidth={10}
+                fill="transparent"
+                strokeLinecap="round"
+                strokeDasharray={`${circumference} ${circumference}`}
+                strokeDashoffset={circumference * (1 - progress)}
+                rotation="-90"
+                origin="84,84"
+              />
+              <Circle cx={84} cy={84 - radius} r={index === 0 ? 8 : 7} fill={item.accent} opacity={0.92} />
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+    </View>
+  );
+};
+
+const InsightSparkline: React.FC = () => (
+  <View style={insightStyles.sparklineFrame}>
+    <Svg width="100%" height="100%" viewBox="0 0 210 76">
+      <Path
+        d="M4 58 L20 12 L34 22 L48 18 L63 65 L79 26 L94 38 L112 30 L130 52 L146 62 L162 49 L178 66 L194 36 L206 20"
+        fill="none"
+        stroke="#2E63F7"
+        strokeWidth={2.2}
+      />
+      <Path
+        d="M4 58 L20 12 L34 22 L48 18 L63 65 L79 26 L94 38 L112 30 L130 52 L146 62 L162 49 L178 66 L194 36 L206 20 L206 76 L4 76 Z"
+        fill="#2E63F7"
+        opacity={0.12}
+      />
+      <Circle cx={206} cy={20} r={4.5} fill="#2454F4" />
+    </Svg>
+  </View>
+);
+
+const InsightComparisonGraph: React.FC<{
+  metrics: InsightComparisonMetric[];
+  activeKey: string;
+  onChange: (key: string) => void;
+}> = ({ metrics, activeKey, onChange }) => {
+  const metric = metrics.find((item) => item.key === activeKey) ?? metrics[0];
+  if (!metric) return null;
+
+  const points = metric.trend?.length
+    ? metric.trend
+    : [{ label: "Now", you: metric.current, average: metric.average, ideal: metric.ideal }];
+  const maxValue = Math.max(
+    metric.ideal,
+    metric.current,
+    metric.average,
+    ...points.flatMap((point) => [point.you, point.average, point.ideal]),
+    metric.unit === "%" ? 125 : 1,
+  );
+  const width = 330;
+  const height = 226;
+  const left = 38;
+  const right = width - 14;
+  const top = 46;
+  const bottom = height - 34;
+  const xStep = points.length > 1 ? (right - left) / (points.length - 1) : 0;
+  const toY = (value: number) =>
+    bottom - (Math.max(0, value) / maxValue) * (bottom - top);
+  const chartPoints = points.map((point, index) => ({
+    x: left + index * xStep,
+    y: toY(point.you),
+    ...point,
+  }));
+  const averagePoints = points.map((point, index) => ({
+    x: left + index * xStep,
+    y: toY(point.average),
+  }));
+  const idealY = toY(metric.ideal);
+  const linePath = buildSmoothChartPath(chartPoints);
+  const areaPath = buildSmoothChartPath(chartPoints, true, bottom);
+  const averagePath = buildSmoothChartPath(averagePoints);
+  const activeIndex = Math.max(0, chartPoints.length - 2);
+  const activePoint = chartPoints[activeIndex] ?? chartPoints[chartPoints.length - 1];
+  const axisValues =
+    metric.unit === "%" ? [125, 100, 75, 50, 25, 0].filter((item) => item <= maxValue) : [maxValue, maxValue * 0.75, maxValue * 0.5, maxValue * 0.25, 0];
+  const labelPoints = [
+    chartPoints[0],
+    chartPoints[Math.floor((chartPoints.length - 1) / 2)],
+    chartPoints[chartPoints.length - 1],
+  ].filter(Boolean);
+
+  return (
+    <View style={insightStyles.comparisonPanel}>
+      <View style={insightStyles.comparisonGraphCard}>
+        <View style={insightStyles.comparisonHeader}>
+          <View style={insightStyles.comparisonTitleBlock}>
+            <Text style={insightStyles.comparisonTitle}>{metric.label} Progress</Text>
+            <Text style={insightStyles.comparisonMeta}>
+              You {formatComparisonValue(metric.current, metric.unit)} · Avg {formatComparisonValue(metric.average, metric.unit)}
+            </Text>
+          </View>
+          <View style={insightStyles.comparisonRangePill}>
+            <Text style={insightStyles.comparisonRangeText}>Weekly</Text>
+            <Ionicons name="chevron-down" size={13} color="#38A8FF" />
+          </View>
+        </View>
+
+        <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+          <Defs>
+            <LinearGradient id="insightComparisonFill" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#38A8FF" stopOpacity="0.62" />
+              <Stop offset="0.62" stopColor="#38A8FF" stopOpacity="0.22" />
+              <Stop offset="1" stopColor="#38A8FF" stopOpacity="0.02" />
+            </LinearGradient>
+          </Defs>
+          {axisValues.map((value) => {
+            const y = toY(value);
+            return (
+              <React.Fragment key={`axis-${value}`}>
+                <Path d={`M ${left} ${y} L ${right} ${y}`} stroke="rgba(148,163,184,0.16)" strokeWidth={1} />
+                <SvgText
+                  x={left - 10}
+                  y={y + 4}
+                  fill="#94A3B8"
+                  fontSize="10"
+                  textAnchor="end"
+                >
+                  {formatComparisonValue(value, metric.unit)}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
+          <Path d={areaPath} fill="url(#insightComparisonFill)" />
+          <Path d={`M ${left} ${idealY} L ${right} ${idealY}`} fill="none" stroke="#20DDBB" strokeWidth={1.8} strokeDasharray="6 7" strokeLinecap="round" opacity={0.72} />
+          <Path d={linePath} fill="none" stroke="#1D9BF0" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={averagePath} fill="none" stroke="#F2C16F" strokeWidth={2.4} strokeDasharray="6 6" strokeLinecap="round" opacity={0.98} />
+          {activePoint ? (
+            <Path d={`M ${activePoint.x} ${top - 4} L ${activePoint.x} ${bottom}`} stroke="#1D9BF0" strokeWidth={1.8} opacity={0.9} />
+          ) : null}
+          {chartPoints.map((point, index) => (
+            <Circle
+              key={`${point.label}-${index}`}
+              cx={point.x}
+              cy={point.y}
+              r={index === activeIndex ? 4.8 : 2.8}
+              fill={index === activeIndex ? "#EAF6FF" : "#1D9BF0"}
+              stroke="#1D9BF0"
+              strokeWidth={index === activeIndex ? 2 : 0}
+            />
+          ))}
+          {labelPoints.map((point, index) => (
+            <SvgText
+              key={`${point.label}-${index}`}
+              x={point.x}
+              y={height - 8}
+              fill="#94A3B8"
+              fontSize="10"
+              textAnchor={index === 0 ? "start" : index === labelPoints.length - 1 ? "end" : "middle"}
+            >
+              {point.label}
+            </SvgText>
+          ))}
+        </Svg>
+        <View style={insightStyles.comparisonLegend}>
+          <View style={insightStyles.legendItem}>
+            <View style={[insightStyles.legendDot, { backgroundColor: "#2454F4" }]} />
+            <Text style={insightStyles.legendText}>You</Text>
+          </View>
+          <View style={insightStyles.legendItem}>
+            <View style={[insightStyles.legendDot, { backgroundColor: "#F2C16F" }]} />
+            <Text style={insightStyles.legendText}>Average</Text>
+          </View>
+          <View style={insightStyles.legendItem}>
+            <View style={[insightStyles.legendDot, { backgroundColor: "#20DDBB" }]} />
+            <Text style={insightStyles.legendText}>Ideal</Text>
+          </View>
+        </View>
+      </View>
+      <Text style={insightStyles.comparisonDescription} numberOfLines={2}>
+        {metric.description || "Your current training output against average users and a healthy ideal."}
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={insightStyles.comparisonChips}
+      >
+        {metrics.map((item) => {
+          const isActive = item.key === metric.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              activeOpacity={0.84}
+              onPress={() => onChange(item.key)}
+              style={[
+                insightStyles.comparisonChip,
+                isActive && insightStyles.comparisonChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  insightStyles.comparisonChipText,
+                  isActive && insightStyles.comparisonChipTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
+
+const InsightProgressBar: React.FC<{ percent: number; height?: number }> = ({
+  percent,
+  height = 28,
+}) => (
+  <View style={[insightStyles.questTrack, { height }]}>
+    <View style={[insightStyles.questFillTertiary, { width: `${Math.max(8, Math.min(100, percent))}%` as any }]} />
+    <View style={[insightStyles.questFillSecondary, { width: `${Math.max(8, Math.min(100, percent * 0.82))}%` as any }]} />
+    <View style={[insightStyles.questFillPrimary, { width: `${Math.max(8, Math.min(100, percent * 0.55))}%` as any }]} />
+  </View>
+);
+
+const InsightOverviewCard: React.FC<{
+  bodyMetrics: InsightMetric[];
+  levelMetric: { level: number; xp: number; target: number };
+}> = ({ bodyMetrics, levelMetric }) => (
+  <View style={insightStyles.referenceCard}>
+    <View style={insightStyles.overviewGrid}>
+      <View style={insightStyles.overviewLeft}>
+        <InsightOrbitChart metrics={bodyMetrics} />
+        <InsightSparkline />
+      </View>
+      <View style={insightStyles.overviewList}>
+        {bodyMetrics.slice(0, 4).map((item) => (
+          <View key={item.key} style={insightStyles.metricListRow}>
+            <View style={[insightStyles.metricIcon, { backgroundColor: item.accent }]}>
+              <Ionicons name={(item.icon || "fitness-outline") as any} size={16} color="#FFFFFF" />
+            </View>
+            <View style={insightStyles.metricListCopy}>
+              <Text style={insightStyles.metricListTitle}>{item.label}</Text>
+              <Text style={insightStyles.metricListMeta}>
+                {Math.round(item.xp)} / {Math.round(item.target_xp)} XP
+              </Text>
+            </View>
+          </View>
+        ))}
+        <View style={[insightStyles.metricListRow, insightStyles.levelMiniRow]}>
+          <View style={[insightStyles.metricIcon, insightStyles.levelMiniIcon]}>
+            <Ionicons name="podium-outline" size={16} color="#CBD5E1" />
+          </View>
+          <View style={insightStyles.metricListCopy}>
+            <Text style={insightStyles.metricListTitle}>Lvl {levelMetric.level}</Text>
+            <Text style={insightStyles.metricListMeta}>
+              {Math.round(levelMetric.xp)} / {Math.round(levelMetric.target)} XP
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+);
+
+const InsightLevelCard: React.FC<{
+  level: { level: number; title: string; career_xp: number; next_level_xp: number; progress_percent: number };
+  categories: InsightMetric[];
+}> = ({ level, categories }) => (
+  <View style={insightStyles.referenceCard}>
+    <Text style={insightStyles.cardEyebrow}>Quests Level</Text>
+    <View style={insightStyles.levelHeadingRow}>
+      <Text style={insightStyles.levelHeading}>Lvl {level.level}</Text>
+      <Text style={insightStyles.levelXp}>{formatCompactXp(level.next_level_xp)}</Text>
+    </View>
+    <InsightProgressBar percent={clampPercent(level.progress_percent)} />
+    <View style={insightStyles.verticalMetricsRow}>
+      {categories.slice(0, 5).map((item) => {
+        const percent = clampPercent(item.percent);
+        const bubbleBottom = Math.max(0, Math.min(86, (percent / 100) * 136 - 25));
+        const label = item.key === "conditioning" ? "Cond." : item.label;
+        return (
+          <View key={item.key} style={insightStyles.verticalMetricItem}>
+            <View style={insightStyles.verticalTrack}>
+              <View style={[insightStyles.verticalFill, { height: `${Math.max(18, percent)}%` as any, backgroundColor: item.accent }]} />
+              <View
+                style={[
+                  insightStyles.verticalBubble,
+                  {
+                    backgroundColor: item.accent,
+                    bottom: bubbleBottom,
+                  },
+                ]}
+              >
+                <Text
+                  style={insightStyles.verticalBubbleText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.76}
+                >
+                  {Math.round(item.xp)} XP
+                </Text>
+              </View>
+            </View>
+            <Text
+              style={insightStyles.verticalLabel}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  </View>
+);
 
 const CUSTOM_WORKOUT_GROUPS = [
   { key: "chest", label: "Chest" },
@@ -401,6 +825,8 @@ const HomeScreen: React.FC = () => {
   const [fitnessTestCalculationStep, setFitnessTestCalculationStep] =
     useState(0);
   const [fitnessTestError, setFitnessTestError] = useState<string | null>(null);
+  const [activeInsightComparisonKey, setActiveInsightComparisonKey] =
+    useState("consistency");
 
   const [homeActiveTab, setHomeActiveTab] = useState<"workouts" | "nutrition">(
     "workouts",
@@ -1075,6 +1501,91 @@ const HomeScreen: React.FC = () => {
 
   const bodyMapRows: BodyMapRow[] =
     hasCompletedFitnessTest ? realBodyMapRows : recruitBodyMapRows;
+
+  const trainingProfile = metrics?.training_profile;
+  const insightLevel = trainingProfile?.level ?? {
+    level: 1,
+    title: "Rookie",
+    career_xp: 0,
+    current_level_xp: 0,
+    next_level_xp: 1000,
+    progress_percent: 0,
+  };
+  const insightBodyMetrics: InsightMetric[] =
+    trainingProfile?.body_focus?.length
+      ? trainingProfile.body_focus.map((item: any) => ({
+          key: item.key,
+          label: item.label,
+          xp: Number(item.xp) || 0,
+          target_xp: Number(item.target_xp) || 100,
+          percent: Number(item.percent) || 0,
+          rank: item.rank,
+          sessions: Number(item.sessions) || 0,
+          icon: item.icon,
+          accent: item.accent || "#2454F4",
+        }))
+      : bodyMapRows.slice(0, 5).map((row, index) => ({
+          key: row.key,
+          label: row.label,
+          xp: row.sessions,
+          target_xp: 15,
+          percent: Math.min(100, (row.sessions / 15) * 100),
+          rank: row.rank,
+          sessions: row.sessions,
+          icon: "fitness-outline",
+          accent: ["#2454F4", "#22C9D8", "#7867F2", "#20DDBB", "#86A5F4"][index] ?? "#2454F4",
+        }));
+  const insightCategoryMetrics: InsightMetric[] =
+    trainingProfile?.category_levels?.length
+      ? trainingProfile.category_levels.map((item: any) => ({
+          key: item.key,
+          label: item.label,
+          xp: Number(item.xp) || 0,
+          target_xp: Number(item.target_xp) || 500,
+          percent: Number(item.percent) || 0,
+          tier: item.tier,
+          icon: item.icon,
+          accent: item.accent || "#2454F4",
+        }))
+      : insightBodyMetrics;
+  const insightComparisonMetrics: InsightComparisonMetric[] =
+    trainingProfile?.comparison_metrics?.metrics?.length
+      ? trainingProfile.comparison_metrics.metrics.map((item: any) => ({
+          key: String(item.key || "metric"),
+          label: String(item.label || "Metric"),
+          unit: String(item.unit || ""),
+          description: item.description,
+          current: Number(item.current) || 0,
+          average: Number(item.average) || 0,
+          ideal: Number(item.ideal) || 0,
+          trend: Array.isArray(item.trend)
+            ? item.trend.map((point: any) => ({
+                label: String(point.label || ""),
+                you: Number(point.you) || 0,
+                average: Number(point.average) || 0,
+                ideal: Number(point.ideal) || 0,
+              }))
+            : [],
+        }))
+      : [
+          {
+            key: "consistency",
+            label: "Consistency",
+            unit: "%",
+            description: "Your training rhythm against average users and a healthy ideal.",
+            current: Math.round(trainingProfile?.performance_score ?? 0),
+            average: 40,
+            ideal: 75,
+            trend: [
+              { label: "W-5", you: 0, average: 40, ideal: 75 },
+              { label: "W-4", you: 0, average: 40, ideal: 75 },
+              { label: "W-3", you: 0, average: 40, ideal: 75 },
+              { label: "W-2", you: 0, average: 40, ideal: 75 },
+              { label: "W-1", you: 0, average: 40, ideal: 75 },
+              { label: "Now", you: Math.round(trainingProfile?.performance_score ?? 0), average: 40, ideal: 75 },
+            ],
+          },
+        ];
 
   const bodyBalanceFillProgress = useRef(new Animated.Value(0)).current;
 
@@ -2513,6 +3024,57 @@ const HomeScreen: React.FC = () => {
     );
   };
 
+  const renderPremiumInsightsSection = () => (
+    <View style={insightStyles.section}>
+      <View style={insightStyles.sectionHeader}>
+        <View>
+          <Text style={insightStyles.sectionTitle}>Insights</Text>
+          <Text style={insightStyles.sectionSubtitle}>Performance profile from your training data</Text>
+        </View>
+      </View>
+
+      <InsightOverviewCard
+        bodyMetrics={insightBodyMetrics}
+        levelMetric={{
+          level: insightLevel.level,
+          xp: insightLevel.career_xp,
+          target: insightLevel.next_level_xp,
+        }}
+      />
+
+      <InsightComparisonGraph
+        metrics={insightComparisonMetrics}
+        activeKey={activeInsightComparisonKey}
+        onChange={setActiveInsightComparisonKey}
+      />
+
+      <InsightLevelCard level={insightLevel} categories={insightCategoryMetrics} />
+
+      <View style={insightStyles.summaryStrip}>
+        <View style={insightStyles.summaryItem}>
+          <Text style={insightStyles.summaryValue}>
+            {Math.round(trainingProfile?.performance_score ?? 0)}
+          </Text>
+          <Text style={insightStyles.summaryLabel}>Performance</Text>
+        </View>
+        <View style={insightStyles.summaryDivider} />
+        <View style={insightStyles.summaryItem}>
+          <Text style={insightStyles.summaryValue}>
+            {Math.round(trainingProfile?.training_balance_score ?? bodyBalanceScore ?? 0)}
+          </Text>
+          <Text style={insightStyles.summaryLabel}>Balance</Text>
+        </View>
+        <View style={insightStyles.summaryDivider} />
+        <View style={insightStyles.summaryItem}>
+          <Text style={insightStyles.summaryValue}>
+            {Math.round(trainingProfile?.weekly_xp ?? 0)}
+          </Text>
+          <Text style={insightStyles.summaryLabel}>Weekly XP</Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <>
       <ScrollView
@@ -2526,6 +3088,9 @@ const HomeScreen: React.FC = () => {
           greetingText="Good morning,"
           onThemeToggle={toggle}
         />
+
+        {false && (
+          <>
 
         {/* Active workouts / nutrition hero card */}
         <PremiumCard
@@ -3593,39 +4158,10 @@ const HomeScreen: React.FC = () => {
           </View>
         </Modal>
 
-        {/* Today metrics section */}
-        <SectionTitle
-          title="Today metrics"
-          caption="Performance"
-          isLight={isLight}
-          right={
-            <TouchableOpacity
-              onPress={openFitnessTest}
-              activeOpacity={0.8}
-              disabled={!isFitnessTestHydrated}
-              style={[
-                styles.homeHeaderRefreshButton,
-                styles.homeHeaderTestButton,
-                isLight && styles.homeHeaderTestButtonLight,
-                !isFitnessTestHydrated && { opacity: 0.5 },
-              ]}
-            >
-              <Ionicons
-                name="pulse-outline"
-                size={16}
-                color={isLight ? "#0070cc" : "#FFFFFF"}
-              />
-              <Text
-                style={[
-                  styles.homeHeaderTestButtonText,
-                  isLight && styles.homeHeaderTestButtonTextLight,
-                ]}
-              >
-                {hasCompletedFitnessTest ? "Retake test" : "Take the test"}
-              </Text>
-            </TouchableOpacity>
-          }
-        />
+          </>
+        )}
+
+        {renderPremiumInsightsSection()}
 
         <View style={styles.metricsSection}>
           <TouchableOpacity
@@ -3658,8 +4194,8 @@ const HomeScreen: React.FC = () => {
               leftLabel="Younger"
               rightLabel="Older"
               centerText={
-                typeof fitness?.fitness_age_years === "number"
-                  ? String(fitness.fitness_age_years)
+	                typeof fitness?.fitness_age_years === "number"
+	                  ? String(fitness?.fitness_age_years)
                   : metricsLoading && !isFitnessTestLocked
                     ? "..."
                     : "--"
@@ -3767,14 +4303,14 @@ const HomeScreen: React.FC = () => {
                 {raceConsistencyPercent != null && (
                   <AnimatedMetricProgressRow
                     label="Consistency"
-                    percent={raceConsistencyPercent}
+	                    percent={raceConsistencyPercent ?? 0}
                     isLight={isLight}
                   />
                 )}
                 {raceBenchmarksPercent != null && (
                   <AnimatedMetricProgressRow
                     label="Benchmarks"
-                    percent={raceBenchmarksPercent}
+	                    percent={raceBenchmarksPercent ?? 0}
                     isLight={isLight}
                   />
                 )}
@@ -3842,158 +4378,6 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        <View style={styles.metricsRow}>
-          <View
-            style={[
-              styles.metricCardSmall,
-              isLight && styles.metricCardSmallLight,
-            ]}
-          >
-            <View style={styles.metricCardHeaderRow}>
-              <Text
-                style={[
-                  styles.metricCardTitle,
-                  isLight && styles.metricCardTitleLight,
-                ]}
-              >
-                Streak
-              </Text>
-              <Ionicons
-                name="flame-outline"
-                size={18}
-                color={isLight ? "#F97316" : "#FDBA74"}
-              />
-            </View>
-            <View style={styles.metricStreakPrimaryRow}>
-              <Text
-                style={[
-                  styles.metricSecondaryValue,
-                  isLight && styles.metricSecondaryValueLight,
-                ]}
-              >
-                {streakCurrentLabel}
-              </Text>
-              {streakMultiplierLabel && (
-                <Text
-                  style={[
-                    styles.metricStreakMultiplierText,
-                    isLight && styles.metricStreakMultiplierTextLight,
-                  ]}
-                >
-                  {streakMultiplierLabel}
-                </Text>
-              )}
-            </View>
-            <StreakDotsRow current={streakCurrentDays} isLight={isLight} />
-            <View style={styles.metricStreakMetaRow}>
-              {streakBestLabel && (
-                <Text
-                  style={[
-                    styles.metricCaption,
-                    isLight && styles.metricCaptionLight,
-                  ]}
-                >
-                  {streakBestLabel}
-                </Text>
-              )}
-            </View>
-            <Text
-              style={[
-                styles.metricCaption,
-                isLight && styles.metricCaptionLight,
-              ]}
-            >
-              Don't break the chain
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.metricCardSmall,
-              styles.metricCardSmallRight,
-              isLight && styles.metricCardSmallLight,
-            ]}
-          >
-            <View style={styles.metricCardHeaderRow}>
-              <Text
-                style={[
-                  styles.metricCardTitle,
-                  isLight && styles.metricCardTitleLight,
-                ]}
-              >
-                Time invested
-              </Text>
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={isLight ? "#6B7280" : "#9CA3AF"}
-              />
-            </View>
-            <View style={styles.metricTimePrimaryRow}>
-              <Text
-                style={[
-                  styles.metricTimePrimaryHours,
-                  isLight && styles.metricTimePrimaryHoursLight,
-                ]}
-              >
-                {totalTimeAllHours != null ? totalTimeAllHours : "--"}
-              </Text>
-              <Text
-                style={[
-                  styles.metricTimePrimaryUnit,
-                  isLight && styles.metricTimePrimaryUnitLight,
-                ]}
-              >
-                h
-              </Text>
-              <Text
-                style={[
-                  styles.metricTimePrimaryMinutes,
-                  isLight && styles.metricTimePrimaryMinutesLight,
-                ]}
-              >
-                {totalTimeAllMinutes != null ? totalTimeAllMinutes : "--"}
-              </Text>
-              <Text
-                style={[
-                  styles.metricTimePrimaryUnit,
-                  isLight && styles.metricTimePrimaryUnitLight,
-                ]}
-              >
-                m
-              </Text>
-            </View>
-            <View style={styles.metricTimeBreakdownRow}>
-              <Text
-                style={[
-                  styles.metricCaption,
-                  isLight && styles.metricCaptionLight,
-                ]}
-              >
-                30d: {totalTime30dLabel}
-              </Text>
-              <Text
-                style={[
-                  styles.metricCaption,
-                  isLight && styles.metricCaptionLight,
-                ]}
-              >
-                7d: {totalTime7dLabel}
-              </Text>
-            </View>
-            <View style={styles.metricTimeTag}>
-              <Text
-                style={[
-                  styles.metricTimeTagText,
-                  isLight && styles.metricTimeTagTextLight,
-                ]}
-              >
-                Like running Mumbai → Pune
-              </Text>
-            </View>
-          </View>
-        </View>
-
         <View
           style={[
             styles.metricCardLarge,
@@ -4026,7 +4410,7 @@ const HomeScreen: React.FC = () => {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginTop: 4,
+              marginTop: 10,
             }}
           >
             <View
@@ -4034,7 +4418,7 @@ const HomeScreen: React.FC = () => {
                 flexBasis: 96,
                 maxWidth: 96,
                 height: 142,
-                marginRight: 10,
+                marginRight: 18,
               }}
             >
               <BodyMuscleFront
@@ -4044,7 +4428,7 @@ const HomeScreen: React.FC = () => {
                 onSelectionChange={handleBodyMapSelectionChange}
               />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               {bodyMapRows.length > 0 && (
                 <View>
                   {bodyMapRows.map((row) => {
@@ -4056,9 +4440,9 @@ const HomeScreen: React.FC = () => {
                           flexDirection: "row",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          marginVertical: 4,
-                          paddingVertical: isActive ? 3 : 0,
-                          paddingHorizontal: 7,
+                          minHeight: 30,
+                          paddingVertical: 4,
+                          paddingHorizontal: 8,
                           borderRadius: isActive ? 999 : 0,
                           backgroundColor: isActive
                             ? "rgba(148,163,184,0.18)"
@@ -4067,8 +4451,11 @@ const HomeScreen: React.FC = () => {
                       >
                         <View
                           style={{
+                            flex: 1,
+                            minWidth: 0,
                             flexDirection: "row",
                             alignItems: "center",
+                            paddingRight: 12,
                           }}
                         >
                           <View
@@ -4077,7 +4464,7 @@ const HomeScreen: React.FC = () => {
                               height: 8,
                               borderRadius: 999,
                               backgroundColor: row.color,
-                              marginRight: 8,
+                              marginRight: 10,
                             }}
                           />
                           <Text
@@ -4085,8 +4472,9 @@ const HomeScreen: React.FC = () => {
                               styles.metricCaption,
                               isLight && styles.metricCaptionLight,
                               isActive && { fontWeight: "600" },
-                              { marginTop: 0 },
+                              { marginTop: 0, flex: 1, lineHeight: 18 },
                             ]}
+                            numberOfLines={1}
                           >
                             {row.label}
                           </Text>
@@ -4098,8 +4486,12 @@ const HomeScreen: React.FC = () => {
                               color: row.color,
                               fontWeight: isActive ? "700" : "600",
                               marginTop: 0,
+                              minWidth: 64,
+                              textAlign: "right",
+                              lineHeight: 18,
                             },
                           ]}
+                          numberOfLines={1}
                         >
                           {row.rank}
                         </Text>
@@ -4176,5 +4568,381 @@ const HomeScreen: React.FC = () => {
     </>
   );
 };
+
+const insightStyles = StyleSheet.create({
+  section: {
+    paddingHorizontal: 0,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  sectionHeader: {
+    marginTop: 6,
+    marginBottom: 0,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sectionTitle: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    letterSpacing: 0,
+  },
+  sectionSubtitle: {
+    marginTop: 3,
+    color: "#94A3B8",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+  },
+  testButton: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(36,84,244,0.14)",
+  },
+  testButtonText: {
+    marginLeft: 6,
+    color: "#EAF0FF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+  },
+  referenceCard: {
+    width: "100%",
+    borderRadius: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    backgroundColor: "transparent",
+  },
+  overviewGrid: {
+    minHeight: 254,
+    flexDirection: "row",
+  },
+  overviewLeft: {
+    width: "52%",
+    justifyContent: "space-between",
+    paddingRight: 8,
+  },
+  orbitChart: {
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sparklineFrame: {
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: "rgba(15,23,42,0.56)",
+    overflow: "hidden",
+    padding: 12,
+  },
+  overviewList: {
+    flex: 1,
+    justifyContent: "center",
+    paddingLeft: 8,
+    gap: 11,
+  },
+  metricListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  metricIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#1E40AF",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  metricListCopy: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 10,
+  },
+  metricListTitle: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    letterSpacing: 0,
+  },
+  metricListMeta: {
+    marginTop: 4,
+    color: "#94A3B8",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+  },
+  levelMiniRow: {
+    marginTop: 6,
+  },
+  levelMiniIcon: {
+    backgroundColor: "rgba(226,232,240,0.10)",
+    shadowOpacity: 0,
+  },
+  comparisonPanel: {
+    width: "100%",
+    paddingHorizontal: 0,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  comparisonGraphCard: {
+    width: "100%",
+    borderRadius: 0,
+    paddingTop: 14,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    backgroundColor: "rgba(15,23,42,0.58)",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  comparisonHeader: {
+    paddingHorizontal: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  comparisonTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  comparisonEyebrow: {
+    color: "#94A3B8",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  comparisonTitle: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+    letterSpacing: 0,
+  },
+  comparisonRangePill: {
+    minHeight: 34,
+    paddingHorizontal: 13,
+    borderRadius: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(36,84,244,0.14)",
+  },
+  comparisonRangeText: {
+    color: "#1D9BF0",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  comparisonValueBlock: {
+    alignItems: "flex-end",
+  },
+  comparisonCurrent: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    letterSpacing: 0,
+  },
+  comparisonMeta: {
+    marginTop: 3,
+    color: "#94A3B8",
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+  },
+  comparisonDescription: {
+    marginTop: 6,
+    color: "#94A3B8",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  comparisonGraphFrame: {
+    marginTop: 10,
+  },
+  comparisonLegend: {
+    marginTop: -8,
+    paddingHorizontal: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  legendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  legendText: {
+    color: "#CBD5E1",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+  },
+  comparisonChips: {
+    paddingTop: 12,
+    paddingRight: 18,
+    gap: 8,
+  },
+  comparisonChip: {
+    minHeight: 30,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(148,163,184,0.10)",
+  },
+  comparisonChipActive: {
+    backgroundColor: "rgba(36,84,244,0.24)",
+  },
+  comparisonChipText: {
+    color: "#94A3B8",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  comparisonChipTextActive: {
+    color: "#F8FAFC",
+  },
+  cardEyebrow: {
+    color: "#CBD5E1",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+  },
+  levelHeadingRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  levelHeading: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 30,
+    letterSpacing: 0,
+  },
+  levelXp: {
+    marginLeft: 10,
+    color: "#94A3B8",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+  },
+  questTrack: {
+    marginTop: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.16)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  questFillTertiary: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: "#20DDBB",
+  },
+  questFillSecondary: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: "#22C9D8",
+  },
+  questFillPrimary: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: "#2454F4",
+  },
+  verticalMetricsRow: {
+    marginTop: 22,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  verticalMetricItem: {
+    width: "18%",
+    alignItems: "center",
+  },
+  verticalTrack: {
+    width: "100%",
+    height: 136,
+    borderRadius: 28,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    overflow: "hidden",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    position: "relative",
+  },
+  verticalFill: {
+    width: "100%",
+    borderRadius: 28,
+    position: "absolute",
+    bottom: 0,
+  },
+  verticalBubble: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    shadowOpacity: 0,
+  },
+  verticalBubbleText: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: "center",
+    includeFontPadding: false,
+    paddingHorizontal: 2,
+    width: "100%",
+  },
+  verticalLabel: {
+    marginTop: 9,
+    color: "#E2E8F0",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: "center",
+    includeFontPadding: false,
+    width: "116%",
+  },
+  summaryStrip: {
+    minHeight: 62,
+    borderRadius: 0,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(15,23,42,0.48)",
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  summaryValue: {
+    color: "#F8FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+  },
+  summaryLabel: {
+    marginTop: 3,
+    color: "#94A3B8",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: "rgba(148,163,184,0.18)",
+  },
+});
 
 export default HomeScreen;

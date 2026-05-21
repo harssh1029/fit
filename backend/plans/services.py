@@ -173,7 +173,8 @@ def generateSchedule(
     return scheduled
 
 
-def _sync_user_plan_progress(user_plan: UserPlan) -> UserPlan:
+def _sync_user_plan_progress(user_plan: UserPlan, *, create_feed_activity: bool = True) -> UserPlan:
+    was_completed = user_plan.status == "completed"
     qs = user_plan.scheduled_workouts.all()
     completed = qs.filter(status="completed").count()
     missed = qs.filter(status="missed").count()
@@ -187,6 +188,11 @@ def _sync_user_plan_progress(user_plan: UserPlan) -> UserPlan:
     user_plan.sessions_completed = completed
     user_plan.total_sessions = total
     user_plan.completion_percent = completion.quantize(Decimal("0.01"))
+    if total and completed >= total:
+        user_plan.status = "completed"
+        user_plan.is_active = False
+        if user_plan.completed_at is None:
+            user_plan.completed_at = timezone.now()
     user_plan.save(
         update_fields=[
             "completed_sessions",
@@ -194,9 +200,21 @@ def _sync_user_plan_progress(user_plan: UserPlan) -> UserPlan:
             "sessions_completed",
             "total_sessions",
             "completion_percent",
+            "status",
+            "is_active",
+            "completed_at",
             "updated_at",
         ]
     )
+    earned_badges = []
+    if user_plan.status == "completed" and not was_completed:
+        try:
+            from achievements.services import evaluate_plan_completion
+
+            earned_badges = evaluate_plan_completion(user_plan, create_feed_activity=create_feed_activity)
+        except Exception:
+            pass
+    user_plan._earned_badges = earned_badges
     return user_plan
 
 
@@ -264,7 +282,14 @@ def startUserPlan(
         profile.active_plan = version.plan
         profile.save(update_fields=["active_plan"])
 
-    return _sync_user_plan_progress(user_plan)
+    synced = _sync_user_plan_progress(user_plan)
+    try:
+        from achievements.services import evaluate_plan_completion
+
+        evaluate_plan_completion(synced)
+    except Exception:
+        pass
+    return synced
 
 
 @transaction.atomic

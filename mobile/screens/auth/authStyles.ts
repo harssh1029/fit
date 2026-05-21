@@ -63,7 +63,7 @@ export const authStyles = StyleSheet.create({
     marginLeft: 7,
     color: "#F5F7FA",
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   authBrandTextLight: {
     color: "#111827",
@@ -358,7 +358,7 @@ export const authStyles = StyleSheet.create({
   scrollPickerValue: {
     color: "#F5F7FA",
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   scrollPickerValueLight: {
     color: "#111827",
@@ -396,7 +396,7 @@ export const authStyles = StyleSheet.create({
   scrollPickerChipText: {
     color: "#C8D2E3",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   scrollPickerChipTextLight: {
     color: "#475569",
@@ -409,7 +409,7 @@ export const authStyles = StyleSheet.create({
     marginBottom: 8,
     color: "#D9E4F2",
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   authSectionLabelLight: {
     color: "#111827",
@@ -452,7 +452,7 @@ export const authStyles = StyleSheet.create({
   levelTitle: {
     color: "#F5F7FA",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   levelTitleLight: {
     color: "#111827",
@@ -510,7 +510,7 @@ export const authStyles = StyleSheet.create({
     flex: 1,
     color: "#D9E4F2",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   goalListTextLight: {
     color: "#111827",
