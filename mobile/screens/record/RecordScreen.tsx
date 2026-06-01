@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   Image,
   Modal,
   ScrollView,
@@ -22,13 +20,18 @@ import Svg, { Circle } from "react-native-svg";
 
 import BodyMuscleBack from "../../BodyMuscleBack";
 import BodyMuscleFront, { MuscleName, MuscleSelection } from "../../BodyMuscleFront";
-import { API_BASE_URL } from "../../api/client";
-import { useAuth } from "../../App";
+import { fetchRequiredAuth, invalidateWorkoutData } from "../../api/client";
+import { useAuth, useThemeMode } from "../../App";
 import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
+import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
+import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import { fontFamily } from "../../styles/typography";
 import {
   DARK_BG,
   DARK_CARD,
+  LIGHT_BG,
+  LIGHT_CARD,
+  LIGHT_TEXT_MUTED,
   PS_BLUE,
   WORKOUT_ACCENT,
   WORKOUT_ACCENT_BLUE,
@@ -100,6 +103,11 @@ type WorkoutDraft = {
   durationSeconds: number;
   createdAt: number;
   payload: WorkoutPayload;
+};
+type WorkoutLogResponse = {
+  activity_xp?: number;
+  leaderboard_xp?: number;
+  challenge_points?: number;
 };
 
 const WORKOUT_TYPES: Array<{
@@ -243,7 +251,18 @@ const RecordScreen: React.FC = () => {
   const route = useRoute<RecordRoute>();
   const { width: viewportWidth } = useWindowDimensions();
   const { accessToken, refreshAccessToken, signOut } = useAuth();
-  const { activeUserPlan } = useActiveUserPlan();
+  const auth = useMemo(
+    () => ({ accessToken, refreshAccessToken, signOut }),
+    [accessToken, refreshAccessToken, signOut],
+  );
+  const { mode } = useThemeMode();
+  const isLight = mode === "light";
+  const rs = useMemo(() => createRecordStyles(isLight), [isLight]);
+  const { activeUserPlan, reload: reloadActiveUserPlan } = useActiveUserPlan();
+  const { items: workoutHistory, reload: reloadWorkoutHistory } =
+    useAllWorkoutHistory(200);
+  const { summary: dashboardSummary, reload: reloadDashboardSummary } =
+    useDashboardSummary();
 
   const [phase, setPhase] = useState<SessionPhase>("setup");
   const [mapSide, setMapSide] = useState<MapSide>("front");
@@ -279,10 +298,12 @@ const RecordScreen: React.FC = () => {
     title: string;
     durationMinutes: number;
     muscles: MuscleName[];
+    activityXp: number;
+    leaderboardXp: number;
+    challengePoints: number;
   } | null>(null);
   const [fillProgress, setFillProgress] = useState(1);
 
-  const pulse = useRef(new Animated.Value(0)).current;
   const imagePreviewWidth = Math.max(260, Math.min(520, viewportWidth - 48));
 
   const bodyGroups = useMemo(() => {
@@ -338,6 +359,16 @@ const RecordScreen: React.FC = () => {
   }, [activePlanContext, focusLabel, selectedPreset, selectedWorkoutTypes, workoutMode]);
 
   const durationMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+  const workoutsThisWeek = useMemo(() => {
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - 6);
+    const thresholdIso = threshold.toISOString().slice(0, 10);
+    return workoutHistory.filter(
+      (item) => item.status === "completed" && item.date >= thresholdIso,
+    ).length;
+  }, [workoutHistory]);
+  const currentStreak =
+    dashboardSummary?.metrics.streak.current_streak_days ?? 0;
   const canStart = Boolean(activePlanContext) || selectedMuscles.length > 0 || includeCardio || selectedWorkoutTypes.some((type) => type !== "strength");
   const todayPlanWorkout = useMemo(() => {
     if (activePlanContext) {
@@ -420,18 +451,7 @@ const RecordScreen: React.FC = () => {
     let active = true;
     const loadDrafts = async () => {
       try {
-        let tokenToUse = accessToken;
-        let response = await fetch(`${API_BASE_URL}/workouts/drafts/`, {
-          headers: { Authorization: `Bearer ${tokenToUse}` },
-        });
-        if (response.status === 401) {
-          const refreshed = await refreshAccessToken();
-          if (!refreshed) return;
-          tokenToUse = refreshed;
-          response = await fetch(`${API_BASE_URL}/workouts/drafts/`, {
-            headers: { Authorization: `Bearer ${tokenToUse}` },
-          });
-        }
+        const response = await fetchRequiredAuth("/workouts/drafts/", auth);
         if (!response.ok) return;
         const json = (await response.json()) as Array<{
           id: number;
@@ -458,62 +478,20 @@ const RecordScreen: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [accessToken, refreshAccessToken]);
+  }, [accessToken, auth]);
 
   useEffect(() => {
-    const shouldPulse = phase === "recording" && !paused;
-    if (!shouldPulse) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
+    if (phase !== "recording" || paused) {
       setFillProgress(1);
       return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1050,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1050,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    if (phase !== "recording") {
-      setFillProgress(1);
-      return () => {
-        loop.stop();
-      };
     }
     const fillInterval = setInterval(() => {
       setFillProgress((current) => (current >= 1 ? 0.12 : Math.min(1, current + 0.08)));
     }, 110);
     return () => {
-      loop.stop();
       clearInterval(fillInterval);
     };
-  }, [paused, phase, pulse]);
-
-  const pulseStyle = {
-    opacity: pulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.18, 0.58],
-    }),
-    transform: [
-      {
-        scale: pulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.94, 1.08],
-        }),
-      },
-    ],
-  };
+  }, [paused, phase]);
 
   const handleMuscleSelection = (selection: MuscleSelection) => {
     setError(null);
@@ -705,11 +683,10 @@ const RecordScreen: React.FC = () => {
   const persistDraft = async (draft: WorkoutDraft) => {
     if (!accessToken) return;
     const isServerDraft = /^\d+$/.test(draft.id);
-    const request = (token: string) =>
-      fetch(`${API_BASE_URL}/workouts/drafts/${isServerDraft ? `${draft.id}/` : ""}`, {
+    const request = () =>
+      fetchRequiredAuth(`/workouts/drafts/${isServerDraft ? `${draft.id}/` : ""}`, auth, {
         method: isServerDraft ? "PATCH" : "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -719,14 +696,7 @@ const RecordScreen: React.FC = () => {
         }),
       });
     try {
-      let tokenToUse = accessToken;
-      let response = await request(tokenToUse);
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) return;
-        tokenToUse = refreshed;
-        response = await request(tokenToUse);
-      }
+      const response = await request();
       if (!response.ok || isServerDraft) return;
       const saved = (await response.json()) as { id: number };
       setCurrentDraftId(String(saved.id));
@@ -741,9 +711,8 @@ const RecordScreen: React.FC = () => {
   const deleteDraftFromApi = async (draftId: string) => {
     if (!accessToken || !/^\d+$/.test(draftId)) return;
     try {
-      await fetch(`${API_BASE_URL}/workouts/drafts/${draftId}/`, {
+      await fetchRequiredAuth(`/workouts/drafts/${draftId}/`, auth, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch {
       // Local removal is enough for the current UI.
@@ -833,7 +802,7 @@ const RecordScreen: React.FC = () => {
     setImageUrl("");
   };
 
-  const uploadWorkoutImage = async (uri: string, token: string) => {
+  const uploadWorkoutImage = async (uri: string) => {
     const name = uri.split("/").pop() || `workout-${Date.now()}.jpg`;
     const extension = name.split(".").pop()?.toLowerCase();
     const type =
@@ -846,16 +815,16 @@ const RecordScreen: React.FC = () => {
             : "image/jpeg";
     const formData = new FormData();
     formData.append("image", { uri, name, type } as any);
-    return fetch(`${API_BASE_URL}/workouts/images/`, {
+    return fetchRequiredAuth("/workouts/images/", auth, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
       body: formData,
     });
   };
 
-  const postPayload = async (payload: WorkoutPayload, onPosted: () => void) => {
+  const postPayload = async (
+    payload: WorkoutPayload,
+    onPosted: (result: WorkoutLogResponse) => void,
+  ) => {
     if (!accessToken) {
       setError("Sign in again to save this workout.");
       return;
@@ -864,11 +833,10 @@ const RecordScreen: React.FC = () => {
     setSaving(true);
     setError(null);
 
-    const runRequest = async (token: string, requestPayload: WorkoutPayload) =>
-      fetch(`${API_BASE_URL}/workouts/log/`, {
+    const runRequest = async (requestPayload: WorkoutPayload) =>
+      fetchRequiredAuth("/workouts/log/", auth, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -890,7 +858,6 @@ const RecordScreen: React.FC = () => {
       });
 
     try {
-      let tokenToUse = accessToken;
       let payloadToPost = payload;
       const imageCandidates = payload.image_urls.length ? payload.image_urls : payload.image_url ? [payload.image_url] : [];
       const localImages = imageCandidates.filter((item) => item && !/^https?:\/\//i.test(item));
@@ -903,17 +870,7 @@ const RecordScreen: React.FC = () => {
             uploadedUrls.push(imageCandidate);
             continue;
           }
-          let uploadResponse = await uploadWorkoutImage(imageCandidate, tokenToUse);
-          if (uploadResponse.status === 401) {
-            const refreshed = await refreshAccessToken();
-            if (!refreshed) {
-              await signOut();
-              setError("Session expired. Please sign in again.");
-              return;
-            }
-            tokenToUse = refreshed;
-            uploadResponse = await uploadWorkoutImage(imageCandidate, tokenToUse);
-          }
+          const uploadResponse = await uploadWorkoutImage(imageCandidate);
           if (!uploadResponse.ok) {
             const data = await uploadResponse.json().catch(() => null);
             throw new Error(
@@ -934,17 +891,7 @@ const RecordScreen: React.FC = () => {
         }
       }
 
-      let response = await runRequest(tokenToUse, payloadToPost);
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          setError("Session expired. Please sign in again.");
-          return;
-        }
-        tokenToUse = refreshed;
-        response = await runRequest(tokenToUse, payloadToPost);
-      }
+      const response = await runRequest(payloadToPost);
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -955,7 +902,14 @@ const RecordScreen: React.FC = () => {
         );
       }
 
-      onPosted();
+      const result = (await response.json()) as WorkoutLogResponse;
+      onPosted(result);
+      invalidateWorkoutData();
+      void Promise.all([
+        reloadActiveUserPlan(),
+        reloadWorkoutHistory(),
+        reloadDashboardSummary(),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save workout.");
     } finally {
@@ -966,7 +920,7 @@ const RecordScreen: React.FC = () => {
 
   const saveSession = async () => {
     const draft = upsertDraft();
-    await postPayload(draft.payload, () => {
+    await postPayload(draft.payload, (result) => {
       setDrafts((items) => items.filter((item) => item.id !== draft.id));
       void deleteDraftFromApi(draft.id);
       setCurrentDraftId(null);
@@ -974,13 +928,16 @@ const RecordScreen: React.FC = () => {
         title: draft.title,
         durationMinutes: draft.payload.duration_minutes,
         muscles: selectedMuscles,
+        activityXp: result.activity_xp ?? 0,
+        leaderboardXp: result.leaderboard_xp ?? 0,
+        challengePoints: result.challenge_points ?? 0,
       });
       setPhase("complete");
     });
   };
 
   const postDraft = async (draft: WorkoutDraft) => {
-    await postPayload(draft.payload, () => {
+    await postPayload(draft.payload, (result) => {
       setDrafts((items) => items.filter((item) => item.id !== draft.id));
       void deleteDraftFromApi(draft.id);
       if (currentDraftId === draft.id) setCurrentDraftId(null);
@@ -989,20 +946,20 @@ const RecordScreen: React.FC = () => {
         title: draft.title,
         durationMinutes: draft.payload.duration_minutes,
         muscles: draft.payload.muscles,
+        activityXp: result.activity_xp ?? 0,
+        leaderboardXp: result.leaderboard_xp ?? 0,
+        challengePoints: result.challenge_points ?? 0,
       });
       setPhase("complete");
     });
   };
 
   const renderMap = (height: number, readOnly = false) => (
-    <View style={[recordStyles.mapFrame, { height }]}>
-      {phase === "recording" && !paused ? (
-        <Animated.View style={[recordStyles.mapGlow, pulseStyle]} />
-      ) : null}
-      <View style={recordStyles.mapFigure}>
+    <View style={[rs.mapFrame, { height }]}>
+      <View style={rs.mapFigure}>
         {mapSide === "front" ? (
           <BodyMuscleFront
-            isLight={false}
+            isLight={isLight}
             activeMuscles={selectedMuscles}
             onSelectionChange={handleMuscleSelection}
             readOnly={readOnly}
@@ -1011,7 +968,7 @@ const RecordScreen: React.FC = () => {
           />
         ) : (
           <BodyMuscleBack
-            isLight={false}
+            isLight={isLight}
             activeMuscles={selectedMuscles}
             onSelectionChange={handleMuscleSelection}
             readOnly={readOnly}
@@ -1024,13 +981,10 @@ const RecordScreen: React.FC = () => {
   );
 
   const renderDualMap = (height: number, readOnly = false) => (
-    <View style={[recordStyles.dualMapFrame, { height }]}>
-      {phase === "recording" && !paused ? (
-        <Animated.View style={[recordStyles.mapGlow, pulseStyle]} />
-      ) : null}
-      <View style={recordStyles.dualMapFigure}>
+    <View style={[rs.dualMapFrame, { height }]}>
+      <View style={rs.dualMapFigure}>
         <BodyMuscleFront
-          isLight={false}
+          isLight={isLight}
           activeMuscles={selectedMuscles}
           onSelectionChange={handleMuscleSelection}
           readOnly={readOnly}
@@ -1038,9 +992,9 @@ const RecordScreen: React.FC = () => {
           fillProgress={phase === "recording" && !paused ? fillProgress : 1}
         />
       </View>
-      <View style={recordStyles.dualMapFigure}>
+      <View style={rs.dualMapFigure}>
         <BodyMuscleBack
-          isLight={false}
+          isLight={isLight}
           activeMuscles={selectedMuscles}
           onSelectionChange={handleMuscleSelection}
           readOnly={readOnly}
@@ -1052,7 +1006,7 @@ const RecordScreen: React.FC = () => {
   );
 
   const renderTimerDial = () => (
-    <View style={recordStyles.timerDial}>
+    <View style={rs.timerDial}>
       <Svg width="100%" height="100%" viewBox="0 0 240 240" style={StyleSheet.absoluteFillObject}>
         <Circle
           cx="120"
@@ -1078,16 +1032,16 @@ const RecordScreen: React.FC = () => {
           origin="120, 120"
         />
       </Svg>
-      <View style={recordStyles.timerDialContent}>
-        <View style={recordStyles.activePillCentered}>
-          <View style={recordStyles.statusDot} />
-          <Text style={recordStyles.statusPillText}>ACTIVE</Text>
+      <View style={rs.timerDialContent}>
+        <View style={rs.activePillCentered}>
+          <View style={rs.statusDot} />
+          <Text style={rs.statusPillText}>ACTIVE</Text>
         </View>
-        <Text style={recordStyles.timerLabel}>Active Time</Text>
-        <Text style={recordStyles.timerValue} adjustsFontSizeToFit numberOfLines={1}>
+        <Text style={rs.timerLabel}>Active Time</Text>
+        <Text style={rs.timerValue} adjustsFontSizeToFit numberOfLines={1}>
           {formatElapsed(elapsedSeconds)}
         </Text>
-        <View style={recordStyles.waveButton}>
+        <View style={rs.waveButton}>
           <Ionicons name="pulse-outline" size={23} color="#8EA2FF" />
         </View>
       </View>
@@ -1096,19 +1050,19 @@ const RecordScreen: React.FC = () => {
 
   return (
     <ScrollView
-      style={recordStyles.screen}
-      contentContainerStyle={recordStyles.content}
+      style={rs.screen}
+      contentContainerStyle={rs.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={recordStyles.headerRow}>
-        <TouchableOpacity style={recordStyles.iconButton} activeOpacity={0.84} onPress={() => navigation.navigate("Home")}>
-          <Ionicons name="close" size={23} color="#F8FAFC" />
+      <View style={rs.headerRow}>
+        <TouchableOpacity style={rs.iconButton} activeOpacity={0.84} onPress={() => navigation.navigate("Home")}>
+          <Ionicons name="close" size={23} color={isLight ? "#334155" : "#F8FAFC"} />
         </TouchableOpacity>
-        <View style={recordStyles.headerTextBlock}>
-          <Text style={recordStyles.headerTitle}>
+        <View style={rs.headerTextBlock}>
+          <Text style={rs.headerTitle}>
             {phase === "setup" ? "Today's Session" : phase === "recording" ? "Session Active" : "Workout Completed"}
           </Text>
-          <Text style={recordStyles.headerSubtitle}>
+          <Text style={rs.headerSubtitle}>
             {phase === "setup"
               ? "What are you training today?"
               : phase === "recording"
@@ -1116,28 +1070,28 @@ const RecordScreen: React.FC = () => {
                 : "Turn the work into an activity."}
           </Text>
         </View>
-        <TouchableOpacity style={[recordStyles.iconButton, recordStyles.draftsButton]} activeOpacity={0.84} onPress={openDrafts}>
-          <Ionicons name="document-text-outline" size={17} color="#CBD5E1" />
-          <Text style={recordStyles.draftsText}>Drafts</Text>
+        <TouchableOpacity style={[rs.iconButton, rs.draftsButton]} activeOpacity={0.84} onPress={openDrafts}>
+          <Ionicons name="document-text-outline" size={17} color={isLight ? "#475569" : "#CBD5E1"} />
+          <Text style={rs.draftsText}>Drafts</Text>
           {drafts.length ? (
-            <View style={recordStyles.draftsCount}>
-              <Text style={recordStyles.draftsCountText}>{drafts.length}</Text>
+            <View style={rs.draftsCount}>
+              <Text style={rs.draftsCountText}>{drafts.length}</Text>
             </View>
           ) : null}
         </TouchableOpacity>
       </View>
 
       {todayPlanWorkout ? (
-        <View style={recordStyles.todayPlanCard}>
-          <View style={recordStyles.todayPlanIcon}>
-            <Ionicons name="calendar-outline" size={20} color="#93C5FD" />
+        <View style={rs.todayPlanCard}>
+          <View style={rs.todayPlanIcon}>
+            <Ionicons name="calendar-outline" size={20} color={isLight ? "#0068BD" : "#93C5FD"} />
           </View>
-          <View style={recordStyles.todayPlanCopy}>
-            <Text style={recordStyles.todayPlanLabel}>Today's plan workout</Text>
-            <Text style={recordStyles.todayPlanTitle} numberOfLines={1}>
+          <View style={rs.todayPlanCopy}>
+            <Text style={rs.todayPlanLabel}>Today's plan workout</Text>
+            <Text style={rs.todayPlanTitle} numberOfLines={1}>
               {todayPlanWorkout.plan_day.title}
             </Text>
-            <Text style={recordStyles.todayPlanMeta} numberOfLines={1}>
+            <Text style={rs.todayPlanMeta} numberOfLines={1}>
               {todayPlanWorkout.plan_day.duration || `${todayPlanWorkout.plan_day.day_type} session`}
             </Text>
           </View>
@@ -1145,53 +1099,53 @@ const RecordScreen: React.FC = () => {
       ) : null}
 
       {phase === "setup" ? (
-        <View style={recordStyles.stagePanel}>
-          <View style={recordStyles.heroPanel}>
-            <View style={recordStyles.mapHeaderRow}>
+        <View style={rs.stagePanel}>
+          <View style={rs.heroPanel}>
+            <View style={rs.mapHeaderRow}>
               <View>
-                <Text style={recordStyles.eyebrow}>Training map</Text>
-                <Text style={recordStyles.panelTitle}>Select body focus</Text>
+                <Text style={rs.eyebrow}>Training map</Text>
+                <Text style={rs.panelTitle}>Select body focus</Text>
               </View>
               <TouchableOpacity activeOpacity={0.8} onPress={clearSelection}>
-                <Text style={recordStyles.clearText}>Clear</Text>
+                <Text style={rs.clearText}>Clear</Text>
               </TouchableOpacity>
             </View>
             {renderDualMap(300)}
-            <Text style={recordStyles.mapHint}>Tap muscles to select</Text>
-            <View style={recordStyles.selectedRail}>
+            <Text style={rs.mapHint}>Tap muscles to select</Text>
+            <View style={rs.selectedRail}>
               {selectedMuscles.length ? (
                 selectedMuscles.map((muscle) => (
                   <TouchableOpacity
                     key={muscle}
-                    style={recordStyles.musclePill}
+                    style={rs.musclePill}
                     activeOpacity={0.78}
                     onPress={() => removeMuscle(muscle)}
                   >
-                    <View style={recordStyles.muscleDot} />
-                    <Text style={recordStyles.musclePillText} numberOfLines={1}>{muscle}</Text>
+                    <View style={rs.muscleDot} />
+                    <Text style={rs.musclePillText} numberOfLines={1}>{muscle}</Text>
                     <Ionicons name="close" size={14} color="#8EA0B8" />
                   </TouchableOpacity>
                 ))
               ) : (
-                <Text style={recordStyles.emptySelection}>Tap a muscle or choose a preset.</Text>
+                <Text style={rs.emptySelection}>Tap a muscle or choose a preset.</Text>
               )}
             </View>
           </View>
 
-          <View style={recordStyles.section}>
-            <Text style={recordStyles.sectionTitle}>Quick presets</Text>
-            <View style={recordStyles.presetGrid}>
+          <View style={rs.section}>
+            <Text style={rs.sectionTitle}>Quick presets</Text>
+            <View style={rs.presetGrid}>
               {PRESETS.map((preset) => {
                 const selected = selectedPreset === preset.key;
                 return (
                   <TouchableOpacity
                     key={preset.key}
-                    style={[recordStyles.presetChip, selected && recordStyles.presetChipActive]}
+                    style={[rs.presetChip, selected && rs.presetChipActive]}
                     activeOpacity={0.86}
                     onPress={() => applyPreset(preset)}
                   >
                     <Ionicons name={preset.icon} size={17} color={selected ? "#FFFFFF" : "#8EA2FF"} />
-                    <Text style={[recordStyles.presetText, selected && recordStyles.presetTextActive]}>
+                    <Text style={[rs.presetText, selected && rs.presetTextActive]}>
                       {preset.label}
                     </Text>
                   </TouchableOpacity>
@@ -1200,20 +1154,20 @@ const RecordScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={recordStyles.section}>
-            <Text style={recordStyles.sectionTitle}>Workout type</Text>
-            <View style={recordStyles.typeGrid}>
+          <View style={rs.section}>
+            <Text style={rs.sectionTitle}>Workout type</Text>
+            <View style={rs.typeGrid}>
               {WORKOUT_TYPES.map((item) => {
                 const selected = selectedWorkoutTypes.includes(item.key);
                 return (
                   <TouchableOpacity
                     key={item.key}
-                    style={[recordStyles.typeCard, selected && recordStyles.typeCardActive]}
+                    style={[rs.typeCard, selected && rs.typeCardActive]}
                     activeOpacity={0.86}
                     onPress={() => toggleWorkoutType(item.key)}
                   >
                     <Ionicons name={item.icon} size={19} color={selected ? "#FFFFFF" : "#9FB0C8"} />
-                    <Text style={[recordStyles.typeText, selected && recordStyles.typeTextActive]}>
+                    <Text style={[rs.typeText, selected && rs.typeTextActive]}>
                       {item.label}
                     </Text>
                   </TouchableOpacity>
@@ -1222,110 +1176,112 @@ const RecordScreen: React.FC = () => {
             </View>
           </View>
 
-          {error ? <Text style={recordStyles.errorText}>{error}</Text> : null}
+          {error ? <Text style={rs.errorText}>{error}</Text> : null}
 
-          <TouchableOpacity style={recordStyles.primaryButton} activeOpacity={0.9} onPress={startRecording}>
+          <TouchableOpacity style={rs.primaryButton} activeOpacity={0.9} onPress={startRecording}>
             <Ionicons name="play" size={18} color="#FFFFFF" />
-            <Text style={recordStyles.primaryButtonText}>Start Session</Text>
+            <Text style={rs.primaryButtonText}>Start Session</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       {phase === "recording" ? (
-        <View style={recordStyles.stagePanel}>
-          <View style={recordStyles.activeHero}>
-            <View style={recordStyles.activeTopRow}>
-              <TouchableOpacity style={recordStyles.smallIconButton} activeOpacity={0.82}>
-                <Ionicons name="expand-outline" size={19} color="#CBD5E1" />
+        <View style={rs.stagePanel}>
+          <View style={rs.activeHero}>
+            <View style={rs.activeTopRow}>
+              <TouchableOpacity style={rs.smallIconButton} activeOpacity={0.82}>
+                <Ionicons name="expand-outline" size={19} color={isLight ? "#475569" : "#CBD5E1"} />
               </TouchableOpacity>
               {paused ? (
-                <View style={[recordStyles.statusPill, recordStyles.statusPillPaused]}>
-                  <View style={[recordStyles.statusDot, recordStyles.statusDotPaused]} />
-                  <Text style={recordStyles.statusPillText}>PAUSED</Text>
+                <View style={[rs.statusPill, rs.statusPillPaused]}>
+                  <View style={[rs.statusDot, rs.statusDotPaused]} />
+                  <Text style={rs.statusPillText}>PAUSED</Text>
                 </View>
               ) : null}
-              <TouchableOpacity style={recordStyles.smallIconButton} activeOpacity={0.82}>
-                <Ionicons name="settings-outline" size={19} color="#CBD5E1" />
+              <TouchableOpacity style={rs.smallIconButton} activeOpacity={0.82}>
+                <Ionicons name="settings-outline" size={19} color={isLight ? "#475569" : "#CBD5E1"} />
               </TouchableOpacity>
             </View>
             {renderTimerDial()}
-            <Text style={recordStyles.focusEyebrow}>Today's focus</Text>
-            <Text style={recordStyles.sessionTitle} numberOfLines={2}>{sessionTitle}</Text>
-            <Text style={recordStyles.sessionMuscles} numberOfLines={2}>{muscleText}</Text>
+            <Text style={rs.focusEyebrow}>Today's focus</Text>
+            <Text style={rs.sessionTitle} numberOfLines={2}>{sessionTitle}</Text>
+            <Text style={rs.sessionMuscles} numberOfLines={2}>{muscleText}</Text>
           </View>
 
           {renderDualMap(260, true)}
 
-          <View style={recordStyles.insightCard}>
+          <View style={rs.insightCard}>
             <Ionicons name="sparkles-outline" size={19} color="#8EA2FF" />
-            <Text style={recordStyles.insightText}>{activeInsight}</Text>
+            <Text style={rs.insightText}>{activeInsight}</Text>
           </View>
 
-          <View style={recordStyles.progressGrid}>
-            <View style={recordStyles.progressCard}>
-              <Text style={recordStyles.progressValue}>3</Text>
-              <Text style={recordStyles.progressLabel}>Day streak</Text>
+          <View style={rs.progressGrid}>
+            <View style={rs.progressCard}>
+              <Text style={rs.progressValue}>{currentStreak}</Text>
+              <Text style={rs.progressLabel}>Day streak</Text>
             </View>
-            <View style={recordStyles.progressCard}>
-              <Text style={recordStyles.progressValue}>4</Text>
-              <Text style={recordStyles.progressLabel}>This week</Text>
+            <View style={rs.progressCard}>
+              <Text style={rs.progressValue}>{workoutsThisWeek}</Text>
+              <Text style={rs.progressLabel}>This week</Text>
             </View>
-            <View style={recordStyles.progressCard}>
-              <Text style={recordStyles.progressValue}>{elapsedSeconds >= 2700 ? "45" : "20"}</Text>
-              <Text style={recordStyles.progressLabel}>Min target</Text>
+            <View style={[rs.progressCard, rs.progressCardLast]}>
+              <Text style={rs.progressValue}>
+                {activePlanContext?.durationMinutes ?? 20}
+              </Text>
+              <Text style={rs.progressLabel}>Min target</Text>
             </View>
           </View>
 
-          <View style={recordStyles.recordingActions}>
-            <TouchableOpacity style={recordStyles.secondaryAction} activeOpacity={0.86} onPress={togglePause}>
-              <Ionicons name={paused ? "play" : "pause"} size={20} color="#F8FAFC" />
-              <Text style={recordStyles.secondaryActionText}>{paused ? "Resume" : "Pause"}</Text>
+          <View style={rs.recordingActions}>
+            <TouchableOpacity style={rs.secondaryAction} activeOpacity={0.86} onPress={togglePause}>
+              <Ionicons name={paused ? "play" : "pause"} size={20} color={isLight ? "#334155" : "#F8FAFC"} />
+              <Text style={rs.secondaryActionText}>{paused ? "Resume" : "Pause"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={recordStyles.finishButton} activeOpacity={0.9} onPress={finishRecording}>
-              <View style={recordStyles.stopIcon}>
-                <View style={recordStyles.stopSquare} />
+            <TouchableOpacity style={rs.finishButton} activeOpacity={0.9} onPress={finishRecording}>
+              <View style={rs.stopIcon}>
+                <View style={rs.stopSquare} />
               </View>
-              <Text style={recordStyles.finishText}>Finish Workout</Text>
+              <Text style={rs.finishText}>Finish Workout</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={recordStyles.secondaryAction} activeOpacity={0.86} onPress={() => navigation.navigate("Exercises")}>
+            <TouchableOpacity style={rs.secondaryAction} activeOpacity={0.86} onPress={() => navigation.navigate("Exercises")}>
               <Ionicons name="add-circle-outline" size={20} color="#8EA2FF" />
-              <Text style={recordStyles.secondaryActionText}>Add Exercise</Text>
+              <Text style={rs.secondaryActionText}>Add Exercise</Text>
             </TouchableOpacity>
           </View>
-          <Text style={recordStyles.finishHint}>Swipe up to finish workout</Text>
+          <Text style={rs.finishHint}>Swipe up to finish workout</Text>
         </View>
       ) : null}
 
       {phase === "review" ? (
-        <View style={recordStyles.stagePanel}>
-          <View style={recordStyles.completionPanel}>
-            <View style={recordStyles.completionCheck}>
+        <View style={rs.stagePanel}>
+          <View style={rs.completionPanel}>
+            <View style={rs.completionCheck}>
               <Ionicons name="checkmark" size={42} color="#8EA2FF" />
             </View>
-            <Text style={recordStyles.completionTitle}>Workout Completed!</Text>
-            <Text style={recordStyles.completionSubtitle}>Great work. Review and post your activity.</Text>
-            <View style={recordStyles.completeActivityCard}>
-              <View style={recordStyles.completeActivityHeader}>
-                <View style={recordStyles.completeIconBox}>
+            <Text style={rs.completionTitle}>Workout Completed!</Text>
+            <Text style={rs.completionSubtitle}>Great work. Review and post your activity.</Text>
+            <View style={rs.completeActivityCard}>
+              <View style={rs.completeActivityHeader}>
+                <View style={rs.completeIconBox}>
                   <Ionicons name="barbell-outline" size={19} color="#AAB7CB" />
                 </View>
-                <View style={recordStyles.completeHeaderCopy}>
-                  <Text style={recordStyles.completeActivityTitle}>{sessionTitle}</Text>
-                  <Text style={recordStyles.completeActivityMeta}>{titleCase(workoutMode)} • {focusLabel}</Text>
+                <View style={rs.completeHeaderCopy}>
+                  <Text style={rs.completeActivityTitle}>{sessionTitle}</Text>
+                  <Text style={rs.completeActivityMeta}>{titleCase(workoutMode)} • {focusLabel}</Text>
                 </View>
-                <View style={recordStyles.completeDurationBlock}>
-                  <Text style={recordStyles.completeDuration}>{formatElapsed(elapsedSeconds)}</Text>
-                  <Text style={recordStyles.completeDurationLabel}>Duration</Text>
+                <View style={rs.completeDurationBlock}>
+                  <Text style={rs.completeDuration}>{formatElapsed(elapsedSeconds)}</Text>
+                  <Text style={rs.completeDurationLabel}>Duration</Text>
                 </View>
               </View>
-              <View style={recordStyles.completeVisualRow}>
-                <View style={recordStyles.completeMapWrap}>{renderDualMap(200, true)}</View>
-                <View style={recordStyles.musclesTrainedList}>
-                  <Text style={recordStyles.musclesTrainedTitle}>Muscles Trained</Text>
+              <View style={rs.completeVisualRow}>
+                <View style={rs.completeMapWrap}>{renderDualMap(200, true)}</View>
+                <View style={rs.musclesTrainedList}>
+                  <Text style={rs.musclesTrainedTitle}>Muscles Trained</Text>
                   {(selectedMuscles.length ? selectedMuscles.slice(0, 5) : [focusLabel]).map((item) => (
-                    <View key={item} style={recordStyles.musclesTrainedItem}>
-                      <View style={recordStyles.muscleDot} />
-                      <Text style={recordStyles.musclesTrainedText}>{item}</Text>
+                    <View key={item} style={rs.musclesTrainedItem}>
+                      <View style={rs.muscleDot} />
+                      <Text style={rs.musclesTrainedText}>{item}</Text>
                     </View>
                   ))}
                 </View>
@@ -1333,32 +1289,32 @@ const RecordScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={recordStyles.summaryCard}>
-            <View style={recordStyles.summaryItem}>
-              <Text style={recordStyles.summaryValue}>{durationMinutes}</Text>
-              <Text style={recordStyles.summaryLabel}>Minutes</Text>
+          <View style={rs.summaryCard}>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>{durationMinutes}</Text>
+              <Text style={rs.summaryLabel}>Minutes</Text>
             </View>
-            <View style={recordStyles.summaryItem}>
-              <Text style={recordStyles.summaryValue}>{titleCase(workoutMode)}</Text>
-              <Text style={recordStyles.summaryLabel}>Type</Text>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>{titleCase(workoutMode)}</Text>
+              <Text style={rs.summaryLabel}>Type</Text>
             </View>
-            <View style={recordStyles.summaryItem}>
-              <Text style={recordStyles.summaryValue}>{focusLabel}</Text>
-              <Text style={recordStyles.summaryLabel}>Focus</Text>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>{focusLabel}</Text>
+              <Text style={rs.summaryLabel}>Focus</Text>
             </View>
           </View>
 
-          <View style={recordStyles.questionBlock}>
-            <Text style={recordStyles.questionTitle}>How intense was this session?</Text>
-            <View style={recordStyles.optionRow}>
+          <View style={rs.questionBlock}>
+            <Text style={rs.questionTitle}>How intense was this session?</Text>
+            <View style={rs.optionRow}>
               {INTENSITY_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option}
-                  style={[recordStyles.optionChip, intensity === option && recordStyles.optionChipActive]}
+                  style={[rs.optionChip, intensity === option && rs.optionChipActive]}
                   activeOpacity={0.86}
                   onPress={() => setIntensity(option)}
                 >
-                  <Text style={[recordStyles.optionText, intensity === option && recordStyles.optionTextActive]}>
+                  <Text style={[rs.optionText, intensity === option && rs.optionTextActive]}>
                     {option}
                   </Text>
                 </TouchableOpacity>
@@ -1366,17 +1322,17 @@ const RecordScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={recordStyles.questionBlock}>
-            <Text style={recordStyles.questionTitle}>How do you feel?</Text>
-            <View style={recordStyles.optionRow}>
+          <View style={rs.questionBlock}>
+            <Text style={rs.questionTitle}>How do you feel?</Text>
+            <View style={rs.optionRow}>
               {FEELING_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option}
-                  style={[recordStyles.optionChip, feeling === option && recordStyles.optionChipActive]}
+                  style={[rs.optionChip, feeling === option && rs.optionChipActive]}
                   activeOpacity={0.86}
                   onPress={() => setFeeling(option)}
                 >
-                  <Text style={[recordStyles.optionText, feeling === option && recordStyles.optionTextActive]}>
+                  <Text style={[rs.optionText, feeling === option && rs.optionTextActive]}>
                     {option}
                   </Text>
                 </TouchableOpacity>
@@ -1384,10 +1340,10 @@ const RecordScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={recordStyles.shareBlock}>
-            <Text style={recordStyles.questionTitle}>Activity post</Text>
+          <View style={rs.shareBlock}>
+            <Text style={rs.questionTitle}>Activity post</Text>
             <TextInput
-              style={recordStyles.captionInput}
+              style={rs.captionInput}
               value={caption}
               onChangeText={setCaption}
               placeholder="Add a caption"
@@ -1395,35 +1351,35 @@ const RecordScreen: React.FC = () => {
               multiline
             />
             <TouchableOpacity
-              style={recordStyles.imageUploadButton}
+              style={rs.imageUploadButton}
               activeOpacity={0.86}
               onPress={pickWorkoutImage}
               disabled={saving || imageUploading}
             >
-              <View style={recordStyles.imageUploadIcon}>
+              <View style={rs.imageUploadIcon}>
                 {imageUploading ? (
                   <ActivityIndicator size="small" color="#8EA2FF" />
                 ) : (
                   <Ionicons name="image-outline" size={19} color="#8EA2FF" />
                 )}
               </View>
-              <View style={recordStyles.imageUploadCopy}>
-                <Text style={recordStyles.imageUploadTitle}>
+              <View style={rs.imageUploadCopy}>
+                <Text style={rs.imageUploadTitle}>
                   {selectedImageUris.length || selectedImageUri || imageUrl ? "Change images" : "Upload images"}
                 </Text>
-                <Text style={recordStyles.imageUploadSubtitle}>
+                <Text style={rs.imageUploadSubtitle}>
                   Optional photos for this workout post
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#64748B" />
             </TouchableOpacity>
             {selectedImageUris.length || selectedImageUri || imageUrl ? (
-              <View style={[recordStyles.imagePreviewWrap, { width: imagePreviewWidth }]}>
+              <View style={[rs.imagePreviewWrap, { width: imagePreviewWidth }]}>
                 {(() => {
                   const previewImages = selectedImageUris.length ? selectedImageUris : [selectedImageUri || imageUrl];
                   return previewImages.length > 1 ? (
-                    <View style={recordStyles.imageCounter}>
-                      <Text style={recordStyles.imageCounterText}>
+                    <View style={rs.imageCounter}>
+                      <Text style={rs.imageCounterText}>
                         {Math.min(selectedImageIndex + 1, previewImages.length)}/{previewImages.length}
                       </Text>
                     </View>
@@ -1448,13 +1404,13 @@ const RecordScreen: React.FC = () => {
                     <Image
                       key={uri}
                       source={{ uri }}
-                      style={[recordStyles.imagePreview, { width: imagePreviewWidth }]}
+                      style={[rs.imagePreview, { width: imagePreviewWidth }]}
                       resizeMode="cover"
                     />
                   ))}
                 </ScrollView>
                 <TouchableOpacity
-                  style={recordStyles.imageRemoveButton}
+                  style={rs.imageRemoveButton}
                   activeOpacity={0.82}
                   onPress={clearWorkoutImage}
                 >
@@ -1464,49 +1420,49 @@ const RecordScreen: React.FC = () => {
             ) : null}
           </View>
 
-          <TouchableOpacity style={recordStyles.detailsToggle} activeOpacity={0.86} onPress={() => setDetailsOpen((current) => !current)}>
-            <View style={recordStyles.detailsCopy}>
-              <Text style={recordStyles.detailsTitle}>Optional details</Text>
-              <Text style={recordStyles.detailsSubtitle}>Exercises, PRs, and notes can be added before posting.</Text>
+          <TouchableOpacity style={rs.detailsToggle} activeOpacity={0.86} onPress={() => setDetailsOpen((current) => !current)}>
+            <View style={rs.detailsCopy}>
+              <Text style={rs.detailsTitle}>Optional details</Text>
+              <Text style={rs.detailsSubtitle}>Exercises, PRs, and notes can be added before posting.</Text>
             </View>
             <Ionicons name={detailsOpen ? "chevron-up" : "chevron-down"} size={20} color="#CBD5E1" />
           </TouchableOpacity>
 
           {detailsOpen ? (
-            <View style={recordStyles.detailsPanel}>
+            <View style={rs.detailsPanel}>
               {exerciseRows.map((row) => (
-                <View key={row.id} style={recordStyles.exerciseRow}>
+                <View key={row.id} style={rs.exerciseRow}>
                   <TextInput
-                    style={recordStyles.exerciseNameInput}
+                    style={rs.exerciseNameInput}
                     value={row.name}
                     onChangeText={(value) => updateExerciseRow(row.id, "name", value)}
                     placeholder="Exercise name"
                     placeholderTextColor="#64748B"
                   />
                   <TextInput
-                    style={recordStyles.exerciseVolumeInput}
+                    style={rs.exerciseVolumeInput}
                     value={row.volume}
                     onChangeText={(value) => updateExerciseRow(row.id, "volume", value)}
                     placeholder="Weight x sets"
                     placeholderTextColor="#64748B"
                   />
                   <TouchableOpacity
-                    style={[recordStyles.prToggle, row.pr && recordStyles.prToggleActive]}
+                    style={[rs.prToggle, row.pr && rs.prToggleActive]}
                     activeOpacity={0.84}
                     onPress={() => toggleExercisePr(row.id)}
                   >
-                    <Text style={[recordStyles.prToggleText, row.pr && recordStyles.prToggleTextActive]}>
+                    <Text style={[rs.prToggleText, row.pr && rs.prToggleTextActive]}>
                       PR
                     </Text>
                   </TouchableOpacity>
                 </View>
               ))}
-              <TouchableOpacity style={recordStyles.addExerciseRowButton} activeOpacity={0.86} onPress={addExerciseRow}>
+              <TouchableOpacity style={rs.addExerciseRowButton} activeOpacity={0.86} onPress={addExerciseRow}>
                 <Ionicons name="add" size={18} color="#8EA2FF" />
-                <Text style={recordStyles.addExerciseRowText}>Add more exercises</Text>
+                <Text style={rs.addExerciseRowText}>Add more exercises</Text>
               </TouchableOpacity>
               <TextInput
-                style={recordStyles.notesInput}
+                style={rs.notesInput}
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Add notes"
@@ -1516,24 +1472,24 @@ const RecordScreen: React.FC = () => {
             </View>
           ) : null}
 
-          <View style={recordStyles.insightCard}>
+          <View style={rs.insightCard}>
             <Ionicons name="bulb-outline" size={19} color="#FBBF24" />
-            <Text style={recordStyles.insightText}>{completionInsight}</Text>
+            <Text style={rs.insightText}>{completionInsight}</Text>
           </View>
 
-          {error ? <Text style={recordStyles.errorText}>{error}</Text> : null}
+          {error ? <Text style={rs.errorText}>{error}</Text> : null}
 
-          <View style={recordStyles.completionActions}>
+          <View style={rs.completionActions}>
             <TouchableOpacity
-              style={recordStyles.discardButton}
+              style={rs.discardButton}
               activeOpacity={0.86}
               onPress={discardCurrentWorkout}
               disabled={saving}
             >
-              <Text style={recordStyles.discardButtonText}>Discard</Text>
+              <Text style={rs.discardButtonText}>Discard</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[recordStyles.postButton, saving && { opacity: 0.65 }]}
+              style={[rs.postButton, saving && { opacity: 0.65 }]}
               activeOpacity={0.9}
               onPress={saveSession}
               disabled={saving}
@@ -1543,7 +1499,7 @@ const RecordScreen: React.FC = () => {
               ) : (
                 <>
                   <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
-                  <Text style={recordStyles.primaryButtonText}>Post Activity</Text>
+                  <Text style={rs.primaryButtonText}>Post Activity</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1552,80 +1508,94 @@ const RecordScreen: React.FC = () => {
       ) : null}
 
       {phase === "complete" && completedCard ? (
-        <View style={recordStyles.postedCard}>
+        <View style={rs.postedCard}>
           <Ionicons name="checkmark-circle" size={42} color="#34D399" />
-          <Text style={recordStyles.postedTitle}>Activity posted</Text>
-          <Text style={recordStyles.postedBody}>
+          <Text style={rs.postedTitle}>Activity posted</Text>
+          <Text style={rs.postedBody}>
             {completedCard.title} • {completedCard.durationMinutes} min
           </Text>
-          <View style={recordStyles.finalActions}>
-            <TouchableOpacity style={recordStyles.secondaryWideButton} activeOpacity={0.86} onPress={resetSession}>
-              <Text style={recordStyles.secondaryWideButtonText}>Record again</Text>
+          <View style={rs.summaryCard}>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>+{completedCard.activityXp}</Text>
+              <Text style={rs.summaryLabel}>XP earned</Text>
+            </View>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>{completedCard.leaderboardXp}</Text>
+              <Text style={rs.summaryLabel}>Board XP</Text>
+            </View>
+            <View style={rs.summaryItem}>
+              <Text style={rs.summaryValue}>{completedCard.challengePoints}</Text>
+              <Text style={rs.summaryLabel}>Challenge pts</Text>
+            </View>
+          </View>
+          <View style={rs.finalActions}>
+            <TouchableOpacity style={rs.secondaryWideButton} activeOpacity={0.86} onPress={resetSession}>
+              <Text style={rs.secondaryWideButtonText}>Record again</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={recordStyles.primarySmallButton} activeOpacity={0.88} onPress={() => navigation.navigate("Home")}>
-              <Text style={recordStyles.primarySmallButtonText}>View feed</Text>
+            <TouchableOpacity style={rs.primarySmallButton} activeOpacity={0.88} onPress={() => navigation.navigate("Home")}>
+              <Text style={rs.primarySmallButtonText}>View feed</Text>
             </TouchableOpacity>
           </View>
         </View>
       ) : null}
 
       <Modal visible={draftsVisible} transparent animationType="fade" onRequestClose={() => setDraftsVisible(false)}>
-        <View style={recordStyles.draftsModalRoot}>
+        <View style={rs.draftsModalRoot}>
           <TouchableOpacity
-            style={recordStyles.draftsBackdrop}
+            style={rs.draftsBackdrop}
             activeOpacity={1}
             onPress={() => setDraftsVisible(false)}
           />
-          <View style={recordStyles.draftsSheet}>
-            <View style={recordStyles.draftsHeader}>
+          <View style={rs.draftsSheet}>
+            <View style={rs.draftsHeader}>
               <View>
-                <Text style={recordStyles.draftsTitle}>Drafts</Text>
-                <Text style={recordStyles.draftsSubtitle}>Workouts logged but not posted</Text>
+                <Text style={rs.draftsTitle}>Drafts</Text>
+                <Text style={rs.draftsSubtitle}>Workouts logged but not posted</Text>
               </View>
-              <TouchableOpacity style={recordStyles.smallIconButton} activeOpacity={0.82} onPress={() => setDraftsVisible(false)}>
+              <TouchableOpacity style={rs.smallIconButton} activeOpacity={0.82} onPress={() => setDraftsVisible(false)}>
                 <Ionicons name="close" size={19} color="#CBD5E1" />
               </TouchableOpacity>
             </View>
             {drafts.length ? (
               drafts.map((draft) => (
-                <View key={draft.id} style={recordStyles.draftItem}>
-                  <View style={recordStyles.draftIcon}>
+                <View key={draft.id} style={rs.draftItem}>
+                  <View style={rs.draftIcon}>
                     <Ionicons name="barbell-outline" size={18} color="#8EA2FF" />
                   </View>
-                  <View style={recordStyles.draftCopy}>
-                    <Text style={recordStyles.draftTitle} numberOfLines={1}>{draft.title}</Text>
-                    <Text style={recordStyles.draftMeta}>
+                  <View style={rs.draftCopy}>
+                    <Text style={rs.draftTitle} numberOfLines={1}>{draft.title}</Text>
+                    <Text style={rs.draftMeta}>
                       {formatElapsed(draft.durationSeconds)} • {draft.payload.focus_label}
                     </Text>
                     {draft.payload.caption ? (
-                      <Text style={recordStyles.draftCaption} numberOfLines={1}>{draft.payload.caption}</Text>
+                      <Text style={rs.draftCaption} numberOfLines={1}>{draft.payload.caption}</Text>
                     ) : null}
                   </View>
-                  <View style={recordStyles.draftActions}>
+                  <View style={rs.draftActions}>
                     <TouchableOpacity
-                      style={recordStyles.draftEditButton}
+                      style={rs.draftEditButton}
                       activeOpacity={0.86}
                       onPress={() => editDraft(draft)}
                       disabled={saving}
                     >
-                      <Text style={recordStyles.draftEditText}>Edit</Text>
+                      <Text style={rs.draftEditText}>Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={recordStyles.draftPostButton}
+                      style={rs.draftPostButton}
                       activeOpacity={0.86}
                       onPress={() => postDraft(draft)}
                       disabled={saving}
                     >
-                      <Text style={recordStyles.draftPostText}>Post</Text>
+                      <Text style={rs.draftPostText}>Post</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ))
             ) : (
-              <View style={recordStyles.emptyDrafts}>
+              <View style={rs.emptyDrafts}>
                 <Ionicons name="document-text-outline" size={24} color="#64748B" />
-                <Text style={recordStyles.emptyDraftsTitle}>No drafts yet</Text>
-                <Text style={recordStyles.emptyDraftsBody}>Finished workouts you have not posted will appear here.</Text>
+                <Text style={rs.emptyDraftsTitle}>No drafts yet</Text>
+                <Text style={rs.emptyDraftsBody}>Finished workouts you have not posted will appear here.</Text>
               </View>
             )}
           </View>
@@ -1790,15 +1760,6 @@ const recordStyles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 4,
     paddingVertical: 8,
-  },
-  mapGlow: {
-    position: "absolute",
-    left: 24,
-    right: 24,
-    top: 46,
-    bottom: 46,
-    borderRadius: 220,
-    backgroundColor: "rgba(124,107,255,0.16)",
   },
   mapHint: {
     marginTop: 8,
@@ -2095,6 +2056,9 @@ const recordStyles = StyleSheet.create({
     backgroundColor: "rgba(17,31,51,0.64)",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.12)",
+  },
+  progressCardLast: {
+    marginRight: 0,
   },
   progressValue: {
     color: "#F8FAFC",
@@ -2854,5 +2818,355 @@ const recordStyles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+const recordLightStyles = StyleSheet.create({
+  screen: {
+    backgroundColor: LIGHT_BG,
+  },
+  stagePanel: {
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  iconButton: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  draftsText: {
+    color: "#1F1F1F",
+  },
+  headerTitle: {
+    color: "#1F1F1F",
+  },
+  headerSubtitle: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  heroPanel: {
+    backgroundColor: "transparent",
+  },
+  eyebrow: {
+    color: "#0068BD",
+  },
+  panelTitle: {
+    color: "#1F1F1F",
+  },
+  clearText: {
+    color: "#0068BD",
+  },
+  sideToggle: {
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  sideToggleText: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  mapFrame: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  dualMapFrame: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  mapHint: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  selectedRail: {
+    borderColor: "#E5E7EB",
+  },
+  musclePill: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  musclePillText: {
+    color: "#0068BD",
+  },
+  emptySelection: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  sectionTitle: {
+    color: "#1F1F1F",
+  },
+  presetChip: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  presetText: {
+    color: "#1F1F1F",
+  },
+  typeCard: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  typeText: {
+    color: "#1F1F1F",
+  },
+  activeHero: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  smallIconButton: {
+    backgroundColor: "rgba(255,255,255,0.48)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  statusPillText: {
+    color: "#334155",
+  },
+  timerDial: {
+    backgroundColor: "rgba(255,255,255,0.74)",
+  },
+  timerLabel: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  timerValue: {
+    color: "#1F1F1F",
+  },
+  focusEyebrow: {
+    color: "#0068BD",
+  },
+  sessionTitle: {
+    color: "#1F1F1F",
+  },
+  sessionMuscles: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  insightCard: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  insightText: {
+    color: "#1F1F1F",
+  },
+  progressCard: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  progressValue: {
+    color: "#1F1F1F",
+  },
+  progressLabel: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  secondaryAction: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  secondaryActionText: {
+    color: "#1F1F1F",
+  },
+  finishHint: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  finishText: {
+    color: "#334155",
+  },
+  completionPanel: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  completionTitle: {
+    color: "#1F1F1F",
+  },
+  completionSubtitle: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  summaryCard: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  completeActivityCard: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  completeActivityTitle: {
+    color: "#1F1F1F",
+  },
+  completeActivityMeta: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  completeDuration: {
+    color: "#1F1F1F",
+  },
+  completeDurationLabel: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  musclesTrainedTitle: {
+    color: "#1F1F1F",
+  },
+  musclesTrainedText: {
+    color: "#1F1F1F",
+  },
+  summaryValue: {
+    color: "#1F1F1F",
+  },
+  summaryLabel: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  questionTitle: {
+    color: "#1F1F1F",
+  },
+  optionChip: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  optionText: {
+    color: "#1F1F1F",
+  },
+  shareBlock: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  captionInput: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
+    color: "#1F1F1F",
+  },
+  imageUploadButton: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  imageUploadTitle: {
+    color: "#1F1F1F",
+  },
+  imageUploadSubtitle: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  detailsToggle: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  detailsTitle: {
+    color: "#1F1F1F",
+  },
+  detailsSubtitle: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  detailsPanel: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  exerciseRow: {
+    backgroundColor: "transparent",
+  },
+  exerciseNameInput: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
+    color: "#1F1F1F",
+  },
+  exerciseVolumeInput: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
+    color: "#1F1F1F",
+  },
+  prToggle: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
+  },
+  prToggleText: {
+    color: "#1F1F1F",
+  },
+  notesInput: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
+    color: "#1F1F1F",
+  },
+  addExerciseRowButton: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  addExerciseRowText: {
+    color: "#0068BD",
+  },
+  discardButton: {
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  discardButtonText: {
+    color: "#1F1F1F",
+  },
+  draftsModalRoot: {
+    backgroundColor: "rgba(15,23,42,0.34)",
+  },
+  draftsSheet: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#E5E7EB",
+  },
+  draftsTitle: {
+    color: "#1F1F1F",
+  },
+  draftsSubtitle: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  draftItem: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  draftTitle: {
+    color: "#1F1F1F",
+  },
+  draftMeta: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  draftCaption: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  draftEditButton: {
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.34)",
+  },
+  draftEditText: {
+    color: "#1F1F1F",
+  },
+  emptyDraftsTitle: {
+    color: "#1F1F1F",
+  },
+  emptyDraftsBody: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  todayPlanCard: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  todayPlanIcon: {
+    backgroundColor: "rgba(255,255,255,0.72)",
+  },
+  todayPlanLabel: {
+    color: "#0068BD",
+  },
+  todayPlanTitle: {
+    color: "#1F1F1F",
+  },
+  todayPlanMeta: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  postedCard: {
+    backgroundColor: LIGHT_CARD,
+    borderColor: "#D5E9FF",
+  },
+  postedTitle: {
+    color: "#1F1F1F",
+  },
+  postedBody: {
+    color: LIGHT_TEXT_MUTED,
+  },
+  secondaryWideButton: {
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
+  secondaryWideButtonText: {
+    color: "#1F1F1F",
+  },
+});
+
+const createRecordStyles = (isLight: boolean) => {
+  if (!isLight) return recordStyles;
+
+  const themed: Record<string, unknown> = {};
+  Object.keys(recordStyles).forEach((key) => {
+    const baseStyle = (recordStyles as Record<string, unknown>)[key];
+    const overrideStyle = (recordLightStyles as Record<string, unknown>)[key];
+    themed[key] = overrideStyle ? [baseStyle, overrideStyle] : baseStyle;
+  });
+
+  return themed as typeof recordStyles;
+};
 
 export default RecordScreen;

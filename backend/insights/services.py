@@ -59,6 +59,74 @@ def _latest_assessment(user: User) -> Optional[FitnessAssessment]:
 	)
 
 
+def _clamp(value: float, low: float, high: float) -> float:
+	return max(low, min(high, value))
+
+
+def _age_from_profile(profile: Optional[Profile], *, fallback: int = 30) -> int:
+	if profile and profile.date_of_birth:
+		today = timezone.localdate()
+		years = today.year - profile.date_of_birth.year
+		if (today.month, today.day) < (profile.date_of_birth.month, profile.date_of_birth.day):
+			years -= 1
+		return max(13, years)
+	return fallback
+
+
+def _recent_activity_signal(user: User) -> Dict:
+	as_of = timezone.now()
+	since = as_of - timedelta(days=30)
+	sessions = WorkoutSession.objects.filter(
+		user=user,
+		status='completed',
+		completed_at__isnull=False,
+		completed_at__gte=since,
+	)
+	workouts_30d = sessions.count()
+	minutes_30d = int(sessions.aggregate(total=Sum('duration_minutes'))['total'] or 0)
+	tz = _get_user_timezone(user)
+	active_days_30d = len(
+		{
+			session.completed_at.astimezone(tz).date()
+			for session in sessions.only('completed_at')
+		}
+	)
+	if workouts_30d == 0:
+		activity_score = 50.0
+	else:
+		raw_score = (
+			_scale_to_percent(active_days_30d, 0, 16) * 0.45
+			+ _scale_to_percent(minutes_30d, 0, 900) * 0.35
+			+ _scale_to_percent(workouts_30d, 0, 20) * 0.20
+		)
+		activity_score = 50.0 + (raw_score - 50.0) * 0.60
+	return {
+		'active_days_30d': active_days_30d,
+		'minutes_30d': minutes_30d,
+		'workouts_30d': workouts_30d,
+		'activity_score': round(_clamp(activity_score, 1.0, 99.0), 1),
+	}
+
+
+def _profile_baseline_percentile(profile: Optional[Profile]) -> float:
+	if profile and profile.height_cm and profile.weight_kg and profile.height_cm > 0:
+		height_m = float(profile.height_cm) / 100.0
+		bmi = float(profile.weight_kg) / (height_m * height_m)
+		bmi_penalty = min(28.0, abs(bmi - 22.5) * 3.5)
+		baseline = 62.0 - bmi_penalty
+		if profile.waist_cm and profile.height_cm:
+			waist_ratio = float(profile.waist_cm) / float(profile.height_cm)
+			if waist_ratio > 0.55:
+				baseline -= min(12.0, (waist_ratio - 0.55) * 120.0)
+		return _clamp(baseline, 25.0, 75.0)
+	return 50.0
+
+
+def _fitness_age_from_percentile(age: int, percentile: float) -> int:
+	fitness_age = int(round(float(age) - (percentile - 50.0) / 2.0))
+	return max(16, min(int(age) + 20, fitness_age))
+
+
 def _plan_for_user(user: User) -> Tuple[Optional[Plan], Optional[UserPlan]]:
 	user_plan = (
 		UserPlan.objects.filter(user=user, is_active=True)
@@ -69,17 +137,45 @@ def _plan_for_user(user: User) -> Tuple[Optional[Plan], Optional[UserPlan]]:
 
 
 def calculate_fitness_and_percentile(user: User) -> Tuple[Dict, Optional[int], Dict, Optional[float]]:
-	"""Compute Fitness Age and Percentile Rank from the latest FitnessAssessment.
+	"""Compute Fitness Age and Percentile Rank.
 
-	Returns (fitness_age_detail, fitness_age_years, percentile_detail, percentile_overall).
-	If no assessment exists, numeric values are None and details indicate unavailable.
+	A submitted assessment is the primary signal. Without one, the dashboard
+	returns a low-confidence profile/activity estimate so registration has a
+	rough starting point that can move as the user logs workouts.
 	"""
 	assessment = _latest_assessment(user)
+	profile = Profile.objects.filter(user=user).first()
+	activity = _recent_activity_signal(user)
 	if not assessment:
-		no_data = {"available": False, "reason": "no_assessment"}
-		return no_data, None, no_data, None
+		age = _age_from_profile(profile)
+		profile_pct = _profile_baseline_percentile(profile)
+		activity_adjustment = (float(activity['activity_score']) - 50.0) * 0.35
+		percentile_overall = round(_clamp(profile_pct + activity_adjustment, 1.0, 99.0), 1)
+		fitness_age = _fitness_age_from_percentile(age, percentile_overall)
+		confidence = 'medium' if profile and profile.height_cm and profile.weight_kg else 'low'
+		fitness_detail = {
+			"available": True,
+			"source": "profile_activity_estimate",
+			"confidence": confidence,
+			"chronological_age": age,
+			"fitness_age": fitness_age,
+			"profile_baseline_percentile": round(profile_pct, 1),
+			"activity_adjustment": round(activity_adjustment, 1),
+			"activity": activity,
+		}
+		percentile_detail = {
+			"available": True,
+			"source": "profile_activity_estimate",
+			"confidence": confidence,
+			"overall_percentile": percentile_overall,
+			"label": f"Fitter than {int(percentile_overall)}% of peers",
+			"profile_baseline_percentile": round(profile_pct, 1),
+			"activity_adjustment": round(activity_adjustment, 1),
+			"activity": activity,
+		}
+		return fitness_detail, fitness_age, percentile_detail, percentile_overall
 
-	# Sub-scores (0–100) using simple but clear linear mappings.
+	# Sub-scores (0-100) using simple but clear linear mappings.
 	strength_pct = _scale_to_percent(
 		assessment.max_pushups,
 		low=5,
@@ -105,19 +201,32 @@ def calculate_fitness_and_percentile(user: User) -> Tuple[Dict, Optional[int], D
 		+ running_pct * 0.30
 		+ flex_pct * 0.15
 	)
-	percentile_overall = round(overall_pct, 1)
+	activity_adjustment = (float(activity['activity_score']) - 50.0) * 0.18
+	percentile_overall = round(
+		_clamp(overall_pct + activity_adjustment, 1.0, 99.0),
+		1,
+	)
 
 	age = float(assessment.age_years or 30)
-	# Map percentile relative to chronological age. 50% → same as age,
-	# >50% → younger fitness age, <50% → older. Clamped to sensible bounds.
-	fitness_age = int(round(age - (percentile_overall - 50.0) / 2.0))
-	fitness_age = max(16, fitness_age)
-	fitness_age = min(int(age) + 20, fitness_age)
+	fitness_age = _fitness_age_from_percentile(int(age), percentile_overall)
+	is_registration_onboarding = assessment.source == "registration_onboarding"
+	assessment_source = (
+		"registration_onboarding_estimate"
+		if is_registration_onboarding
+		else "assessment_activity_adjusted"
+	)
+	confidence = "medium" if is_registration_onboarding else "high"
 
 	fitness_detail = {
 		"available": True,
+		"source": assessment_source,
+		"confidence": confidence,
+		"estimated": is_registration_onboarding,
 		"chronological_age": assessment.age_years,
 		"fitness_age": fitness_age,
+		"assessment_percentile": round(overall_pct, 1),
+		"activity_adjustment": round(activity_adjustment, 1),
+		"activity": activity,
 		"inputs": {
 			"resting_heart_rate": assessment.resting_heart_rate,
 			"max_pushups": assessment.max_pushups,
@@ -135,8 +244,14 @@ def calculate_fitness_and_percentile(user: User) -> Tuple[Dict, Optional[int], D
 
 	percentile_detail = {
 		"available": True,
+		"source": assessment_source,
+		"confidence": confidence,
+		"estimated": is_registration_onboarding,
 		"overall_percentile": percentile_overall,
 		"label": f"Fitter than {int(percentile_overall)}% of peers",
+		"assessment_percentile": round(overall_pct, 1),
+		"activity_adjustment": round(activity_adjustment, 1),
+		"activity": activity,
 		"subscores": fitness_detail["subscores"],
 	}
 
@@ -320,11 +435,97 @@ CANONICAL_GROUPS = [
 	"legs",
 ]
 
+ONBOARDING_GOAL_GROUPS = {
+	"cardio": ["legs", "core"],
+	"weight_loss": ["legs", "core", "glutes"],
+	"strength": ["chest", "back", "legs", "core"],
+	"stress": ["core", "shoulders"],
+	"stay_fit": ["chest", "back", "core", "legs"],
+	"mobility": ["shoulders", "glutes", "core"],
+}
+
+ONBOARDING_RANKS = ["Recruit", "Soldier", "Warrior", "Beast"]
+
+
+def _onboarding_focus_groups(profile: Profile) -> List[str]:
+	goals = getattr(profile, "fitness_goals", None)
+	if not isinstance(goals, list):
+		return []
+	focus: List[str] = []
+	for goal in goals:
+		for group in ONBOARDING_GOAL_GROUPS.get(str(goal), []):
+			if group not in focus:
+				focus.append(group)
+	return focus
+
+
+def _onboarding_rank_index(profile: Profile) -> int:
+	answers = getattr(profile, "onboarding_answers", None)
+	answers = answers if isinstance(answers, dict) else {}
+	level = getattr(profile, "fitness_level", "") or ""
+	score = {"beginner": 0, "consistent": 1, "advanced": 2}.get(level, 0)
+	if int(answers.get("workoutsPerWeek") or 0) >= 4:
+		score += 1
+	if int(answers.get("maxPushups") or 0) >= 30:
+		score += 1
+	if int(answers.get("runMinutes") or 0) >= 30:
+		score += 1
+	if float(answers.get("sleepHours") or 0) >= 7:
+		score += 0.5
+	if int(answers.get("restingHeartRate") or 999) <= 62:
+		score += 0.5
+	if score >= 4:
+		return 3
+	if score >= 3:
+		return 2
+	if score >= 1.5:
+		return 1
+	return 0
+
+
+def _estimated_body_battle_map_from_onboarding(
+	profile: Profile,
+	*,
+	as_of: datetime,
+) -> Tuple[Dict, float]:
+	focus_groups = _onboarding_focus_groups(profile)
+	if not focus_groups:
+		focus_groups = ["core", "legs", "chest"]
+	base_index = _onboarding_rank_index(profile)
+	group_payload: Dict[str, Dict] = {}
+
+	for group in CANONICAL_GROUPS:
+		rank_index = base_index if group in focus_groups else max(0, base_index - 1)
+		group_payload[group] = {
+			"sessions": 0,
+			"rank": ONBOARDING_RANKS[rank_index],
+			"last": None,
+			"status": "estimated",
+			"estimated": True,
+			"rank_estimated": True,
+		}
+
+	weak_spots = [group for group in CANONICAL_GROUPS if group not in focus_groups][:3]
+	balance_score = _clamp(58.0 + (base_index * 9.0) + min(len(focus_groups), 4) * 1.5, 45.0, 88.0)
+	detail = {
+		"available": True,
+		"source": "registration_onboarding_estimate",
+		"confidence": "medium",
+		"estimated": True,
+		"groups": group_payload,
+		"weak_spots": weak_spots,
+		"strong_spots": focus_groups[:3],
+		"balance_score": round(balance_score, 1),
+		"updated_at": as_of.astimezone(timezone.utc).isoformat(),
+	}
+	return detail, balance_score
+
 
 def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -> Tuple[Dict, Optional[float]]:
 	"""Compute Body Battle Map stats per canonical group and balance score."""
 	as_of = as_of or timezone.now()
 	tz = _get_user_timezone(user)
+	profile = Profile.objects.filter(user=user).first()
 
 	sessions = (
 		WorkoutSession.objects.filter(
@@ -339,6 +540,8 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 	)
 
 	if not sessions.exists():
+		if profile and getattr(profile, "onboarding_completed_at", None):
+			return _estimated_body_battle_map_from_onboarding(profile, as_of=as_of)
 		return {"available": False, "reason": "no_completed_sessions"}, None
 
 	stats: Dict[str, Dict] = {

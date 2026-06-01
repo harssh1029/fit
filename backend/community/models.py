@@ -13,6 +13,7 @@ class UserPublicCard(models.Model):
 	display_name = models.CharField(max_length=255, blank=True)
 	username = models.CharField(max_length=150, blank=True)
 	avatar_initials = models.CharField(max_length=4, blank=True)
+	avatar_url = models.URLField(blank=True)
 	overall_score = models.PositiveSmallIntegerField(default=0)
 	consistency_score = models.PositiveSmallIntegerField(default=0)
 	challenges_completed = models.PositiveIntegerField(default=0)
@@ -229,6 +230,31 @@ class ActivityShare(models.Model):
 		return f'{self.user_id} shared {self.activity_id}'
 
 
+class ActivitySave(models.Model):
+	activity = models.ForeignKey(
+		CommunityActivity,
+		related_name='saves',
+		on_delete=models.CASCADE,
+	)
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		related_name='saved_activities',
+		on_delete=models.CASCADE,
+	)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-created_at', '-id']
+		unique_together = ('activity', 'user')
+		indexes = [
+			models.Index(fields=['user', '-created_at', '-id']),
+			models.Index(fields=['activity', 'created_at']),
+		]
+
+	def __str__(self) -> str:  # pragma: no cover - admin convenience
+		return f'{self.user_id} saved {self.activity_id}'
+
+
 class CommunityGroup(models.Model):
 	PRIVACY_PUBLIC = 'public'
 	PRIVACY_PRIVATE = 'private'
@@ -386,6 +412,7 @@ class GroupChallengeProgress(models.Model):
 	active_days = models.PositiveIntegerField(default=0)
 	recorded_workouts = models.PositiveIntegerField(default=0)
 	manual_logs = models.PositiveIntegerField(default=0)
+	qualifying_workout_ids = models.JSONField(default=list, blank=True)
 	completed_at = models.DateTimeField(null=True, blank=True)
 	updated_at = models.DateTimeField(auto_now=True)
 

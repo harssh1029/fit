@@ -92,8 +92,8 @@ def getPlanDetails(planId: str, userId=None) -> Plan:
     return (
         Plan.objects.filter(id=planId, is_active=True)
         .prefetch_related(
-            "versions__weeks__days__exercises__exercise",
-            "weeks__days__exercises__exercise",
+            "versions__weeks__days__exercises",
+            "weeks__days__exercises",
         )
         .get()
     )
@@ -102,17 +102,44 @@ def getPlanDetails(planId: str, userId=None) -> Plan:
 def getPlanVersion(planId: str, sessionsPerWeek: int) -> PlanVersion:
     return (
         PlanVersion.objects.select_related("plan")
-        .prefetch_related("weeks__days__exercises__exercise")
+        .prefetch_related("weeks__days")
         .get(plan_id=planId, sessions_per_week=sessionsPerWeek)
     )
 
 
 def _next_training_date(current: date, valid_weekdays: Iterable[int]) -> date:
     valid = set(valid_weekdays)
+    if not valid:
+        raise ValueError("Select at least one valid training day.")
     cursor = current
     while cursor.weekday() not in valid:
         cursor += timedelta(days=1)
     return cursor
+
+
+def normalize_training_days_pattern(
+    training_days_pattern: Iterable[str] | None,
+    sessions_per_week: int,
+    *,
+    fallback: Iterable[str] | None = None,
+) -> list[str]:
+    raw_pattern = list(training_days_pattern or []) or list(fallback or [])
+    if not raw_pattern:
+        raw_pattern = TRAINING_DAY_PATTERNS.get(sessions_per_week, [])
+
+    normalized = []
+    for item in raw_pattern:
+        code = str(item).strip().upper()
+        if code not in WEEKDAY_INDEX:
+            raise ValueError(f"Unsupported training day: {item}.")
+        if code not in normalized:
+            normalized.append(code)
+
+    if len(normalized) != sessions_per_week:
+        raise ValueError(
+            f"Select exactly {sessions_per_week} distinct training days."
+        )
+    return normalized
 
 
 def generateSchedule(
@@ -127,13 +154,12 @@ def generateSchedule(
     )
     start = parse_start_date(startDate)
 
-    pattern = list(training_days_pattern or []) or list(
-        getattr(version, "training_days_pattern", []) or []
+    pattern = normalize_training_days_pattern(
+        training_days_pattern,
+        version.sessions_per_week,
+        fallback=getattr(version, "training_days_pattern", []) or [],
     )
-    if not pattern:
-        pattern = TRAINING_DAY_PATTERNS.get(version.sessions_per_week, ["MON", "WED", "FRI"])
-
-    weekdays = [WEEKDAY_INDEX[item] for item in pattern if item in WEEKDAY_INDEX]
+    weekdays = [WEEKDAY_INDEX[item] for item in pattern]
     cursor = _next_training_date(start, weekdays)
     scheduled = []
 
@@ -233,13 +259,11 @@ def startUserPlan(
     # Prefer an explicit per-user training pattern when provided; otherwise fall
     # back to the version's configured pattern and finally to a canonical
     # TRAINING_DAY_PATTERNS entry for this sessions/week.
-    effective_pattern = list(training_days_pattern or []) or list(
-        getattr(version, "training_days_pattern", []) or []
+    effective_pattern = normalize_training_days_pattern(
+        training_days_pattern,
+        version.sessions_per_week,
+        fallback=getattr(version, "training_days_pattern", []) or [],
     )
-    if not effective_pattern:
-        effective_pattern = TRAINING_DAY_PATTERNS.get(
-            version.sessions_per_week, ["MON", "WED", "FRI"]
-        )
 
     schedule = generateSchedule(version.id, startDate, training_days_pattern=effective_pattern)
     if not schedule:
@@ -309,10 +333,12 @@ def checkMissedWorkouts(userPlanId: int) -> UserPlan:
     user_plan = UserPlan.objects.select_for_update().get(id=userPlanId)
     today = timezone.localdate()
     now = timezone.now()
-    user_plan.scheduled_workouts.filter(
+    updated = user_plan.scheduled_workouts.filter(
         status="scheduled",
         scheduled_date__lt=today,
     ).update(status="missed", missed_at=now)
+    if not updated:
+        return user_plan
     return _sync_user_plan_progress(user_plan)
 
 
@@ -335,13 +361,12 @@ def recalibrateUserPlan(userPlanId: int) -> UserPlan:
     if not movable:
         return _sync_user_plan_progress(user_plan)
 
-    pattern = list(getattr(user_plan, "training_days_pattern", []) or []) or list(
-        getattr(version, "training_days_pattern", []) or []
+    pattern = normalize_training_days_pattern(
+        getattr(user_plan, "training_days_pattern", []) or [],
+        version.sessions_per_week,
+        fallback=getattr(version, "training_days_pattern", []) or [],
     )
-    if not pattern:
-        pattern = TRAINING_DAY_PATTERNS.get(version.sessions_per_week, ["MON", "WED", "FRI"])
-
-    weekdays = [WEEKDAY_INDEX[item] for item in pattern if item in WEEKDAY_INDEX]
+    weekdays = [WEEKDAY_INDEX[item] for item in pattern]
     cursor = timezone.localdate()
     for workout in movable:
         cursor = _next_training_date(cursor, weekdays)

@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
 	ActivityComment,
 	ActivityLike,
+	ActivitySave,
 	ActivityShare,
 	CommunityActivity,
 	CommunityGroup,
@@ -25,10 +26,16 @@ class UserPublicCardAdmin(admin.ModelAdmin):
 		'display_name',
 		'username',
 		'overall_score',
+		'performance_score',
+		'weekly_xp',
+		'tier',
 		'consistency_score',
 		'challenges_completed',
 		'body_balance_percent',
 		'streak_days',
+		'followers_count',
+		'following_count',
+		'post_count',
 		'updated_at',
 	)
 	search_fields = ('user__username', 'user__email', 'display_name', 'username')
@@ -46,10 +53,19 @@ class FriendshipAdmin(admin.ModelAdmin):
 
 @admin.register(CommunityActivity)
 class CommunityActivityAdmin(admin.ModelAdmin):
-	list_display = ('user', 'activity_type', 'title', 'score', 'occurred_at')
+	list_display = ('user', 'activity_type', 'title', 'score', 'likes_count', 'comments_count', 'shares_count', 'occurred_at')
 	search_fields = ('user__username', 'user__email', 'title', 'description', 'metadata')
 	list_filter = ('activity_type', 'occurred_at')
 	readonly_fields = ('created_at',)
+
+	def likes_count(self, obj):
+		return obj.likes.count()
+
+	def comments_count(self, obj):
+		return obj.comments.count()
+
+	def shares_count(self, obj):
+		return obj.shares.count()
 
 
 @admin.register(ActivityComment)
@@ -70,6 +86,14 @@ class ActivityLikeAdmin(admin.ModelAdmin):
 
 @admin.register(ActivityShare)
 class ActivityShareAdmin(admin.ModelAdmin):
+	list_display = ('user', 'activity', 'created_at')
+	search_fields = ('user__username', 'user__email', 'activity__title')
+	list_filter = ('created_at',)
+	readonly_fields = ('created_at',)
+
+
+@admin.register(ActivitySave)
+class ActivitySaveAdmin(admin.ModelAdmin):
 	list_display = ('user', 'activity', 'created_at')
 	search_fields = ('user__username', 'user__email', 'activity__title')
 	list_filter = ('created_at',)
@@ -146,7 +170,7 @@ class GroupChallengeAdmin(admin.ModelAdmin):
 
 @admin.register(GroupChallengeProgress)
 class GroupChallengeProgressAdmin(admin.ModelAdmin):
-	list_display = ('user', 'challenge', 'points', 'active_days', 'recorded_workouts', 'completed_at', 'updated_at')
+	list_display = ('user', 'challenge', 'points', 'active_days', 'recorded_workouts', 'manual_logs', 'completed_at', 'updated_at')
 	search_fields = ('user__username', 'user__email', 'challenge__title', 'challenge__group__name')
 	list_filter = ('completed_at', 'updated_at')
 	autocomplete_fields = ('challenge', 'user')

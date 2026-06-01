@@ -24,6 +24,7 @@ class UserPublicCardSerializer(serializers.ModelSerializer):
 	id = serializers.IntegerField(source='user_id', read_only=True)
 	name = serializers.CharField(source='display_name', read_only=True)
 	avatarInitials = serializers.CharField(source='avatar_initials', read_only=True)
+	avatarUrl = serializers.CharField(source='avatar_url', read_only=True)
 	overallScore = serializers.IntegerField(source='overall_score', read_only=True)
 	consistencyScore = serializers.IntegerField(source='consistency_score', read_only=True)
 	challengesCompleted = serializers.IntegerField(source='challenges_completed', read_only=True)
@@ -37,6 +38,9 @@ class UserPublicCardSerializer(serializers.ModelSerializer):
 	postCount = serializers.IntegerField(source='post_count', read_only=True)
 	performanceScore = serializers.FloatField(source='performance_score', read_only=True)
 	weeklyXp = serializers.IntegerField(source='weekly_xp', read_only=True)
+	careerXp = serializers.SerializerMethodField()
+	currentLevel = serializers.SerializerMethodField()
+	currentTitle = serializers.SerializerMethodField()
 
 	class Meta:
 		model = UserPublicCard
@@ -45,6 +49,7 @@ class UserPublicCardSerializer(serializers.ModelSerializer):
 			'name',
 			'username',
 			'avatarInitials',
+			'avatarUrl',
 			'overallScore',
 			'consistencyScore',
 			'challengesCompleted',
@@ -58,20 +63,42 @@ class UserPublicCardSerializer(serializers.ModelSerializer):
 			'postCount',
 			'performanceScore',
 			'weeklyXp',
+			'careerXp',
+			'currentLevel',
+			'currentTitle',
 			'tier',
 			'updated_at',
 		]
+
+	def _level(self, obj: UserPublicCard):
+		try:
+			return obj.user.achievement_level
+		except ObjectDoesNotExist:
+			return None
+
+	def get_careerXp(self, obj: UserPublicCard) -> int:
+		level = self._level(obj)
+		return int(getattr(level, 'career_xp', 0) or 0)
+
+	def get_currentLevel(self, obj: UserPublicCard) -> int:
+		level = self._level(obj)
+		return int(getattr(level, 'current_level', 1) or 1)
+
+	def get_currentTitle(self, obj: UserPublicCard) -> str:
+		level = self._level(obj)
+		return str(getattr(level, 'current_title', '') or obj.tier or 'Rookie')
 
 
 class UserSuggestionSerializer(serializers.ModelSerializer):
 	id = serializers.IntegerField(read_only=True)
 	name = serializers.SerializerMethodField()
 	avatarInitials = serializers.SerializerMethodField()
+	avatarUrl = serializers.SerializerMethodField()
 	friendshipStatus = serializers.SerializerMethodField()
 
 	class Meta:
 		model = User
-		fields = ['id', 'username', 'name', 'avatarInitials', 'friendshipStatus']
+		fields = ['id', 'username', 'name', 'avatarInitials', 'avatarUrl', 'friendshipStatus']
 
 	def get_name(self, obj: User) -> str:
 		try:
@@ -87,6 +114,12 @@ class UserSuggestionSerializer(serializers.ModelSerializer):
 			return f'{parts[0][0]}{parts[-1][0]}'.upper()
 		return name[:2].upper() or 'U'
 
+	def get_avatarUrl(self, obj: User) -> str:
+		try:
+			return obj.profile.avatar_url or ''
+		except ObjectDoesNotExist:
+			return ''
+
 	def get_friendshipStatus(self, obj: User) -> Optional[str]:
 		request = self.context.get('request')
 		if request is None or not request.user.is_authenticated:
@@ -98,9 +131,11 @@ class CommunityActivitySerializer(serializers.ModelSerializer):
 	userId = serializers.IntegerField(source='user_id', read_only=True)
 	userName = serializers.SerializerMethodField()
 	avatarInitials = serializers.SerializerMethodField()
+	avatarUrl = serializers.SerializerMethodField()
 	type = serializers.CharField(source='activity_type', read_only=True)
 	occurredAt = serializers.DateTimeField(source='occurred_at', read_only=True)
 	likedByMe = serializers.SerializerMethodField()
+	savedByMe = serializers.SerializerMethodField()
 	likesCount = serializers.SerializerMethodField()
 	commentsCount = serializers.SerializerMethodField()
 	shareCount = serializers.SerializerMethodField()
@@ -113,6 +148,7 @@ class CommunityActivitySerializer(serializers.ModelSerializer):
 			'userId',
 			'userName',
 			'avatarInitials',
+			'avatarUrl',
 			'type',
 			'title',
 			'description',
@@ -120,6 +156,7 @@ class CommunityActivitySerializer(serializers.ModelSerializer):
 			'metadata',
 			'occurredAt',
 			'likedByMe',
+			'savedByMe',
 			'likesCount',
 			'commentsCount',
 			'shareCount',
@@ -140,7 +177,15 @@ class CommunityActivitySerializer(serializers.ModelSerializer):
 			return f'{parts[0][0]}{parts[-1][0]}'.upper()
 		return name[:2].upper() or 'U'
 
+	def get_avatarUrl(self, obj: CommunityActivity) -> str:
+		try:
+			return obj.user.profile.avatar_url or ''
+		except ObjectDoesNotExist:
+			return ''
+
 	def get_likedByMe(self, obj: CommunityActivity) -> bool:
+		if hasattr(obj, 'liked_by_me'):
+			return bool(obj.liked_by_me)
 		request = self.context.get('request')
 		if request is None or not request.user.is_authenticated:
 			return False
@@ -148,6 +193,14 @@ class CommunityActivitySerializer(serializers.ModelSerializer):
 
 	def get_likesCount(self, obj: CommunityActivity) -> int:
 		return getattr(obj, 'likes_count', None) if hasattr(obj, 'likes_count') else obj.likes.count()
+
+	def get_savedByMe(self, obj: CommunityActivity) -> bool:
+		if hasattr(obj, 'saved_by_me'):
+			return bool(obj.saved_by_me)
+		request = self.context.get('request')
+		if request is None or not request.user.is_authenticated:
+			return False
+		return obj.saves.filter(user=request.user).exists()
 
 	def get_commentsCount(self, obj: CommunityActivity) -> int:
 		return getattr(obj, 'comments_count', None) if hasattr(obj, 'comments_count') else obj.comments.count()
@@ -164,11 +217,12 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
 	userId = serializers.IntegerField(source='user_id', read_only=True)
 	userName = serializers.SerializerMethodField()
 	avatarInitials = serializers.SerializerMethodField()
+	avatarUrl = serializers.SerializerMethodField()
 	createdAt = serializers.DateTimeField(source='created_at', read_only=True)
 
 	class Meta:
 		model = ActivityComment
-		fields = ['id', 'userId', 'userName', 'avatarInitials', 'body', 'createdAt']
+		fields = ['id', 'userId', 'userName', 'avatarInitials', 'avatarUrl', 'body', 'createdAt']
 
 	def get_userName(self, obj: ActivityComment) -> str:
 		try:
@@ -184,15 +238,22 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
 			return f'{parts[0][0]}{parts[-1][0]}'.upper()
 		return name[:2].upper() or 'U'
 
+	def get_avatarUrl(self, obj: ActivityComment) -> str:
+		try:
+			return obj.user.profile.avatar_url or ''
+		except ObjectDoesNotExist:
+			return ''
+
 
 class GroupMembershipSerializer(serializers.ModelSerializer):
 	userId = serializers.IntegerField(source='user_id', read_only=True)
 	userName = serializers.SerializerMethodField()
 	avatarInitials = serializers.SerializerMethodField()
+	avatarUrl = serializers.SerializerMethodField()
 
 	class Meta:
 		model = GroupMembership
-		fields = ['id', 'userId', 'userName', 'avatarInitials', 'role', 'status', 'created_at']
+		fields = ['id', 'userId', 'userName', 'avatarInitials', 'avatarUrl', 'role', 'status', 'created_at']
 
 	def get_userName(self, obj: GroupMembership) -> str:
 		try:
@@ -204,6 +265,12 @@ class GroupMembershipSerializer(serializers.ModelSerializer):
 	def get_avatarInitials(self, obj: GroupMembership) -> str:
 		name = self.get_userName(obj)
 		return ''.join(part[0] for part in name.split()[:2]).upper() or name[:2].upper() or 'U'
+
+	def get_avatarUrl(self, obj: GroupMembership) -> str:
+		try:
+			return obj.user.profile.avatar_url or ''
+		except ObjectDoesNotExist:
+			return ''
 
 
 class CommunityGroupSerializer(serializers.ModelSerializer):
@@ -245,7 +312,15 @@ class CommunityGroupSerializer(serializers.ModelSerializer):
 		request = self.context.get('request')
 		if request is None or not request.user.is_authenticated:
 			return None
-		return obj.memberships.filter(user=request.user, status=GroupMembership.STATUS_ACTIVE).first()
+		cache_key = f'_request_membership_{request.user.id}'
+		if hasattr(obj, cache_key):
+			return getattr(obj, cache_key)
+		membership = obj.memberships.filter(
+			user=request.user,
+			status=GroupMembership.STATUS_ACTIVE,
+		).first()
+		setattr(obj, cache_key, membership)
+		return membership
 
 	def get_myRole(self, obj: CommunityGroup):
 		membership = self._membership(obj)

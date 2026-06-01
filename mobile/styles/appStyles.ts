@@ -15,6 +15,8 @@ import {
   LIGHT_CARD_ELEVATED,
   LIGHT_TEXT_PRIMARY,
   LIGHT_TEXT_MUTED,
+  LIGHT_BORDER_SOFT,
+  LIGHT_BORDER_SUBTLE,
   SAGE_GRADIENT_START,
   SAGE_GRADIENT_END,
   GLASS_BG_DARK,
@@ -57,11 +59,11 @@ const PREMIUM_CARD_DARK = {
 } as any;
 
 const PREMIUM_CARD_LIGHT = {
-  shadowColor: "#111827",
-  shadowOpacity: 0,
-  shadowRadius: 0,
-  shadowOffset: { width: 0, height: 0 },
-  elevation: 0,
+  shadowColor: "#000000",
+  shadowOpacity: 0.045,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 2,
 } as any;
 
 const PREMIUM_PANEL_DARK = {
@@ -73,20 +75,93 @@ const PREMIUM_PANEL_DARK = {
 } as any;
 
 const PREMIUM_PANEL_LIGHT = {
-  shadowColor: "#64748B",
-  shadowOpacity: 0,
-  shadowRadius: 0,
-  shadowOffset: { width: 0, height: 0 },
-  elevation: 0,
+  shadowColor: "#000000",
+  shadowOpacity: 0.055,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 3,
 } as any;
 
 export const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: DARK_BG,
+    position: "relative",
   },
   rootLight: {
     backgroundColor: LIGHT_BG,
+  },
+  appAmbient: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
+  },
+  appAmbientBaseDark: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#09111F",
+  },
+  appAmbientBaseLight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#F6F8FB",
+  },
+  appAmbientTopDark: {
+    position: "absolute",
+    top: -110,
+    left: -80,
+    right: -80,
+    height: 300,
+    borderRadius: 54,
+    backgroundColor: "rgba(20,45,78,0.56)",
+    transform: [{ rotate: "-7deg" }],
+  },
+  appAmbientMidDark: {
+    position: "absolute",
+    top: 205,
+    left: -32,
+    right: -32,
+    height: 260,
+    borderRadius: 42,
+    backgroundColor: "rgba(255,255,255,0.035)",
+    transform: [{ rotate: "4deg" }],
+  },
+  appAmbientBottomDark: {
+    position: "absolute",
+    left: -70,
+    right: -70,
+    bottom: -130,
+    height: 330,
+    borderRadius: 60,
+    backgroundColor: "rgba(0,112,204,0.13)",
+    transform: [{ rotate: "-5deg" }],
+  },
+  appAmbientTopLight: {
+    position: "absolute",
+    top: -150,
+    left: -80,
+    right: -80,
+    height: 260,
+    borderRadius: 54,
+    backgroundColor: "rgba(220,235,244,0.38)",
+    transform: [{ rotate: "-7deg" }],
+  },
+  appAmbientMidLight: {
+    position: "absolute",
+    top: 210,
+    left: -32,
+    right: -32,
+    height: 260,
+    borderRadius: 42,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    transform: [{ rotate: "4deg" }],
+  },
+  appAmbientBottomLight: {
+    position: "absolute",
+    left: -70,
+    right: -70,
+    bottom: -130,
+    height: 330,
+    borderRadius: 60,
+    backgroundColor: "rgba(214,231,240,0.28)",
+    transform: [{ rotate: "-5deg" }],
   },
   fullscreenCenter: {
     flex: 1,
@@ -97,9 +172,9 @@ export const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: DARK_BG,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 18,
   },
   screenContainerLight: {
     backgroundColor: LIGHT_BG,
@@ -116,7 +191,7 @@ export const styles = StyleSheet.create({
     lineHeight: 36,
     fontWeight: "700",
     color: DARK_TEXT_PRIMARY,
-    marginBottom: 12,
+    marginBottom: 8,
     flexShrink: 1,
   },
   screenTitleLight: {
@@ -125,7 +200,7 @@ export const styles = StyleSheet.create({
   screenSubtitle: {
     ...TYPE_UI,
     color: DARK_TEXT_MUTED,
-    marginBottom: 20,
+    marginBottom: 14,
     fontSize: 15,
     lineHeight: 22,
     flexShrink: 1,
@@ -136,16 +211,16 @@ export const styles = StyleSheet.create({
   premiumCard: {
     position: "relative",
     overflow: "hidden",
-    borderRadius: 26,
-    padding: 24,
+    borderRadius: 24,
+    padding: 18,
     backgroundColor: DARK_CARD,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     ...PREMIUM_CARD_DARK,
   },
   premiumCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   premiumCardContent: {
@@ -186,8 +261,8 @@ export const styles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   sectionTitleRow: {
-    marginTop: 32,
-    marginBottom: 16,
+    marginTop: 24,
+    marginBottom: 12,
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
@@ -204,7 +279,7 @@ export const styles = StyleSheet.create({
   },
   metricPremiumCard: {
     borderRadius: 24,
-    padding: 20,
+    padding: 18,
   },
   appButton: {
     minHeight: 48,
@@ -217,16 +292,16 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
   },
   appButtonPrimaryLight: {
-    backgroundColor: "#0B0F19",
-    borderColor: "#0B0F19",
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
   },
   appButtonPrimaryDark: {
     backgroundColor: "#FFFFFF",
     borderColor: "#FFFFFF",
   },
   appButtonSecondaryLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.66)",
+    borderColor: LIGHT_BORDER_SOFT,
   },
   appButtonSecondaryDark: {
     backgroundColor: "rgba(255,255,255,0.04)",
@@ -264,8 +339,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
   },
   appTabsLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: LIGHT_BORDER_SUBTLE,
   },
   appTab: {
     flex: 1,
@@ -298,10 +373,10 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 68,
-    marginBottom: 18,
+    minHeight: 60,
+    marginBottom: 12,
     paddingHorizontal: 0,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   homeHeaderRowLight: {
     backgroundColor: "transparent",
@@ -334,8 +409,8 @@ export const styles = StyleSheet.create({
   compactHeaderTitle: {
     ...typography.sectionTitle,
     color: DARK_TEXT_PRIMARY,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 25,
+    lineHeight: 31,
     fontWeight: "700",
     textAlign: "left",
     flexShrink: 1,
@@ -352,15 +427,23 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
     flexShrink: 1,
   },
+  compactHeaderSubtitleLight: {
+    color: LIGHT_TEXT_MUTED,
+  },
   compactHeaderAvatar: {
     width: 54,
     height: 54,
     borderRadius: 27,
     marginLeft: 0,
   },
+  compactHeaderAvatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 27,
+  },
   headerMenuRoot: {
     flex: 1,
-    backgroundColor: "rgba(2,6,23,0.46)",
+    backgroundColor: "rgba(2,6,23,0.38)",
   },
   headerMenuBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -377,7 +460,7 @@ export const styles = StyleSheet.create({
   },
   headerMenuPanelLight: {
     backgroundColor: "#FFFFFF",
-    borderRightColor: "#E2E8F0",
+    borderRightColor: LIGHT_BORDER_SUBTLE,
   },
   headerMenuAccent: {
     minHeight: 50,
@@ -392,8 +475,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.16)",
   },
   headerMenuAccentLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(246,248,251,0.74)",
+    borderColor: LIGHT_BORDER_SUBTLE,
   },
   headerMenuAccentText: {
     marginLeft: 13,
@@ -414,7 +497,7 @@ export const styles = StyleSheet.create({
     borderBottomColor: "rgba(148,163,184,0.14)",
   },
   headerMenuItemLight: {
-    borderBottomColor: "#EEF2F7",
+    borderBottomColor: LIGHT_BORDER_SUBTLE,
   },
   headerMenuItemText: {
     marginLeft: 16,
@@ -444,8 +527,8 @@ export const styles = StyleSheet.create({
     borderRadius: 18,
   },
   homeHeaderTestButtonLight: {
-    backgroundColor: "#EAF4FF",
-    borderColor: "#C9E2FF",
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
   },
   homeHeaderTestButtonText: {
     ...typography.button,
@@ -491,9 +574,12 @@ export const styles = StyleSheet.create({
     elevation: 2,
   },
   homeAvatarLight: {
-    backgroundColor: LIGHT_CARD,
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderColor: LIGHT_BORDER_SUBTLE,
+    shadowColor: "#000000",
     shadowOpacity: 0.08,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 5 },
   },
   homeAvatarInitials: {
     ...TYPE_UI,
@@ -572,13 +658,13 @@ export const styles = StyleSheet.create({
     elevation: 7,
   },
   homeHeroCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
-    shadowColor: "#64748B",
-    shadowOpacity: 0.16,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 6,
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
+    shadowColor: "#000000",
+    shadowOpacity: 0.1,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 5,
   },
   homeHeroCardInner: {
     padding: 20,
@@ -724,8 +810,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.14)",
   },
   homeActiveListItemLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
   },
   homeActiveListThumb: {
     width: 52,
@@ -860,8 +946,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.14)",
   },
   homeActiveSeeAllRowLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
   },
   homeActiveSeeAllLabel: {
     ...typography.button,
@@ -976,8 +1062,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   homeAllActiveDietCardLight: {
-    backgroundColor: "#FFF7ED",
-    borderColor: "#FDBA74",
+    backgroundColor: "rgba(255,247,237,0.68)",
+    borderColor: "rgba(251,146,60,0.42)",
     ...PREMIUM_CARD_LIGHT,
   },
   homeAllActiveDietText: {
@@ -1010,8 +1096,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   homeAllActiveWorkoutCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   homeAllActiveWorkoutHeader: {
@@ -1055,8 +1141,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   homeAllActiveExerciseCardLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(248,251,255,0.64)",
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   homeAllActiveExerciseInfo: {
@@ -1136,8 +1222,8 @@ export const styles = StyleSheet.create({
     lineHeight: 18,
   },
   homeAllActivePrInputLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#CBD5E1",
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: "rgba(148,163,184,0.34)",
     color: "#111827",
   },
   homeAllActivePrSaveButton: {
@@ -1278,7 +1364,7 @@ export const styles = StyleSheet.create({
     borderColor: PS_BLUE,
   },
   homePrimaryCtaLabel: {
-    color: "#050814",
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
   },
@@ -1689,10 +1775,10 @@ export const styles = StyleSheet.create({
     elevation: 30,
   },
   tabBarLight: {
-    backgroundColor: "rgba(12,24,40,0.96)",
-    borderColor: "rgba(148,163,184,0.18)",
+    backgroundColor: "#FFFFFF",
+    borderColor: LIGHT_BORDER_SOFT,
     shadowColor: "#000000",
-    shadowOpacity: 0.36,
+    shadowOpacity: 0.16,
   },
   tabBarNativeItem: {
     height: 64,
@@ -1781,9 +1867,10 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
     borderRadius: 26,
+    ...PREMIUM_CARD_LIGHT,
   },
   cardTitle: {
     ...TYPE_HEADING,
@@ -1820,7 +1907,7 @@ export const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   primaryButtonLight: {
-    backgroundColor: "#0B0F19",
+    backgroundColor: PS_BLUE,
   },
   primaryButtonDisabled: {
     opacity: 0.7,
@@ -1907,8 +1994,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   profileCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
     shadowColor: "#94A3B8",
     shadowOpacity: 0.1,
     ...PREMIUM_PANEL_LIGHT,
@@ -1992,12 +2079,12 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   profilePrCardLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: LIGHT_CARD,
     borderRadius: 22,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   profilePrRow: {
@@ -2061,8 +2148,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   profilePrTriggerCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   profilePrTriggerTextCol: {
@@ -2125,8 +2212,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   statCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_CARD,
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   statLabel: {
@@ -2402,11 +2489,11 @@ export const styles = StyleSheet.create({
     color: LIGHT_TEXT_MUTED,
   },
   metricCurveContainer: {
-    marginTop: 10,
+    marginTop: 6,
   },
   metricCurveSvg: {
     width: "100%",
-    height: 60,
+    height: 46,
   },
   metricStreakDotsRow: {
     flexDirection: "row",
@@ -2766,8 +2853,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   fitnessTestModalCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderColor: LIGHT_BORDER_SUBTLE,
     shadowColor: "#0F172A",
     shadowOpacity: 0.14,
     ...PREMIUM_PANEL_LIGHT,
@@ -3291,8 +3378,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   settingsCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: LIGHT_BORDER_SUBTLE,
     ...PREMIUM_CARD_LIGHT,
   },
   settingsItemRow: {
@@ -3348,7 +3435,7 @@ export const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
   plansTopHeaderLight: {
-    backgroundColor: LIGHT_BG,
+    backgroundColor: "transparent",
   },
   plansHeaderContainer: {
     paddingHorizontal: 20,
@@ -3357,7 +3444,7 @@ export const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
   plansHeaderContainerLight: {
-    backgroundColor: LIGHT_BG,
+    backgroundColor: "transparent",
   },
   plansHeaderRow: {
     flexDirection: "row",
@@ -3393,12 +3480,15 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   plansActiveCardLight: {
-    backgroundColor: "transparent",
-    borderColor: "#E5E7EB",
+    backgroundColor: "#EEF4F8",
+    borderColor: "rgba(148,163,184,0.12)",
+    borderRadius: 28,
+    borderWidth: 1,
+    paddingHorizontal: 18,
     shadowColor: "#000000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.025,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     ...PREMIUM_PANEL_LIGHT,
   },
   plansActiveCardWithImage: {
@@ -3424,7 +3514,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   plansActiveCardEmptyLight: {
-    backgroundColor: "transparent",
+    backgroundColor: "#EEF4F8",
   },
   plansActiveKickerRow: {
     flexDirection: "row",
@@ -3442,8 +3532,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.18)",
   },
   plansActiveKickerPillLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   plansActiveKickerPillOnImage: {
     backgroundColor: "rgba(15,23,42,0.52)",
@@ -3566,8 +3656,8 @@ export const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   plansNextRowLight: {
-    backgroundColor: "#F5F7FA",
-    borderColor: "transparent",
+    backgroundColor: "#E8F0F6",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   plansNextRowDark: {
     backgroundColor: "#182238",
@@ -3617,7 +3707,7 @@ export const styles = StyleSheet.create({
     elevation: 2,
   },
   plansNextButtonLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.82)",
   },
   plansNextButtonDark: {
     backgroundColor: "#FFFFFF",
@@ -3668,8 +3758,8 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
   },
   plansSecondaryButtonLight: {
-    borderColor: "#DDE3ED",
-    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(148,163,184,0.18)",
+    backgroundColor: "#EEF4F8",
   },
   plansSecondaryButtonDark: {
     borderColor: "rgba(125,211,252,0.28)",
@@ -3692,7 +3782,7 @@ export const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
   plansDiscoverySectionLight: {
-    backgroundColor: LIGHT_BG,
+    backgroundColor: "transparent",
   },
   plansDiscoveryHeader: {
     marginBottom: 12,
@@ -3732,6 +3822,13 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.14)",
     ...PREMIUM_CARD_DARK,
   },
+  plansDiscoveryCardLight: {
+    backgroundColor: "#EEF4F8",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.1)",
+    borderRadius: 24,
+    ...PREMIUM_CARD_LIGHT,
+  },
   plansDiscoveryContent: {
     minHeight: 124,
     padding: 14,
@@ -3747,12 +3844,20 @@ export const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: "transparent",
   },
+  plansDiscoveryIconLight: {
+    backgroundColor: "rgba(229,240,248,0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(0,112,204,0.12)",
+  },
   plansDiscoveryCardTitle: {
     ...typography.cardTitle,
     color: "#FFFFFF",
     fontSize: 19,
     lineHeight: 24,
     fontWeight: "700",
+  },
+  plansDiscoveryCardTitleLight: {
+    color: LIGHT_TEXT_PRIMARY,
   },
   plansDiscoveryCardSubtitle: {
     ...TYPE_UI,
@@ -3761,6 +3866,9 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "600",
+  },
+  plansDiscoveryCardSubtitleLight: {
+    color: LIGHT_TEXT_MUTED,
   },
   plansBodyContainer: {
     paddingHorizontal: 20,
@@ -3814,8 +3922,8 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   planFilterPillLight: {
-    borderColor: "#DDE3ED",
-    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(148,163,184,0.18)",
+    backgroundColor: "rgba(255,255,255,0.64)",
   },
   planFilterPillDark: {
     borderColor: "rgba(148,163,184,0.38)",
@@ -3868,10 +3976,10 @@ export const styles = StyleSheet.create({
     elevation: 4,
   },
   planCategoryBackButtonLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7ECF3",
+    backgroundColor: "rgba(255,255,255,0.66)",
+    borderColor: "rgba(148,163,184,0.18)",
     shadowColor: "#667085",
-    shadowOpacity: 0.11,
+    shadowOpacity: 0.045,
   },
   planCategoryNavTitle: {
     ...typography.sectionTitle,
@@ -3929,43 +4037,48 @@ export const styles = StyleSheet.create({
     color: "#748197",
   },
   planCategoryFilterScroll: {
-    marginHorizontal: -20,
-    marginBottom: 20,
+    marginHorizontal: -18,
+    marginBottom: 18,
   },
   planCategoryFilterRow: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
   },
   planCategoryFilterPill: {
-    minHeight: 44,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
-    borderRadius: 22,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.32)",
     backgroundColor: "#111827",
-    marginRight: 10,
+    marginRight: 8,
   },
   planCategoryFilterPillWide: {
-    minWidth: 190,
+    minWidth: 168,
+  },
+  planCategoryFilterIconOnly: {
+    width: 44,
+    paddingHorizontal: 0,
+    marginRight: 0,
   },
   planCategoryFilterPillLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "#EEF4F8",
+    borderColor: "rgba(148,163,184,0.12)",
     shadowColor: "#94A3B8",
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.02,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 1,
   },
   planCategoryFilterLabel: {
     ...typography.subheading,
-    marginLeft: 8,
-    fontSize: 14,
-    lineHeight: 18,
+    marginLeft: 7,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
     color: "#0F172A",
   },
@@ -3973,29 +4086,31 @@ export const styles = StyleSheet.create({
     color: "#F8FAFC",
   },
   planCard: {
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    borderWidth: 0,
-    borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "#0F1A2C",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
     padding: 0,
-    marginBottom: 0,
+    marginBottom: 18,
     minHeight: 0,
     shadowColor: "#000000",
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 3,
     overflow: "hidden",
     ...PREMIUM_CARD_DARK,
   },
   planCardLight: {
-    backgroundColor: "transparent",
-    borderColor: "#E8EDF3",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    borderRadius: 24,
+    borderWidth: 1,
+    marginBottom: 18,
     shadowColor: "#94A3B8",
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.025,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
     ...PREMIUM_CARD_LIGHT,
   },
   planCardHeroImage: {
@@ -4006,8 +4121,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   planCardHeroImageLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "#E8F0F6",
+    borderColor: "rgba(148,163,184,0.08)",
   },
   planCardFullImage: {
     ...StyleSheet.absoluteFillObject,
@@ -4127,6 +4242,7 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "600",
+    color: "#A7B0C3",
   },
   planCardGoalTextLight: {
     color: "#64748B",
@@ -4161,7 +4277,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 18,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
   },
   planCardBodyDark: {
     backgroundColor: "#0F172A",
@@ -4177,7 +4293,7 @@ export const styles = StyleSheet.create({
   },
   planCardStatItemWithDivider: {
     borderLeftWidth: 1,
-    borderLeftColor: "#E3E8EF",
+    borderLeftColor: "rgba(148,163,184,0.18)",
     paddingLeft: 12,
   },
   planCardStatItemWithDividerDark: {
@@ -4281,7 +4397,7 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   planCardMetaChipLight: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(238,244,248,0.74)",
   },
   planCardMetaChipOnImage: {
     alignSelf: "flex-start",
@@ -4307,6 +4423,7 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     flexShrink: 1,
+    color: "#B8C0D4",
   },
   planCardMetaTextLight: {
     color: LIGHT_TEXT_MUTED,
@@ -4350,7 +4467,7 @@ export const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.86)",
     borderWidth: 3,
     borderColor: "#111827",
     alignItems: "center",
@@ -4383,9 +4500,9 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.22,
   },
   planCardButtonPreviewQuiet: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(238,244,248,0.76)",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "rgba(148,163,184,0.12)",
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -4394,9 +4511,9 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.22)",
   },
   planCardButtonCompleted: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(238,244,248,0.76)",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planCardButtonEnrolledLight: {
     backgroundColor: "#0B0F19",
@@ -4451,8 +4568,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   planOverviewCardLight: {
-    backgroundColor: "rgba(248,250,252,0.92)",
-    borderColor: "#CFE3F7",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.1)",
     ...PREMIUM_CARD_LIGHT,
   },
   planMetaChipsRow: {
@@ -4471,8 +4588,8 @@ export const styles = StyleSheet.create({
     marginBottom: 8,
   },
   planMetaChipLight: {
-    backgroundColor: "rgba(0,112,204,0.06)",
-    borderColor: PS_BLUE,
+    backgroundColor: "rgba(229,240,248,0.7)",
+    borderColor: "rgba(0,112,204,0.18)",
   },
   planMetaChipText: {
     fontSize: 12,
@@ -4543,8 +4660,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   planInfoCardLight: {
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: "#CFE3F7",
+    backgroundColor: "rgba(238,244,248,0.64)",
+    borderColor: "rgba(148,163,184,0.1)",
     ...PREMIUM_CARD_LIGHT,
   },
   planInfoCardHeaderRow: {
@@ -4606,11 +4723,8 @@ export const styles = StyleSheet.create({
     marginBottom: 8,
   },
   planDetailSectionSubtext: {
-    ...TYPE_UI,
+    ...typography.caption,
     marginTop: 3,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
   },
   planDetailSectionSubtextLight: {
     color: "#64748B",
@@ -4620,9 +4734,6 @@ export const styles = StyleSheet.create({
   },
   planDetailHeading: {
     ...typography.sectionTitle,
-    fontSize: 22,
-    lineHeight: 27,
-    fontWeight: "700",
     marginBottom: 4,
   },
   planDetailHeadingLight: {
@@ -4655,18 +4766,18 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.72)",
     borderWidth: 1,
-    borderColor: "#E7ECF3",
+    borderColor: "rgba(148,163,184,0.18)",
     shadowColor: "#667085",
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.045,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
   planDetailNavButtonLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planDetailNavButtonDark: {
     backgroundColor: DARK_CARD,
@@ -4703,12 +4814,8 @@ export const styles = StyleSheet.create({
   planDetailTitle: {
     flex: 1,
     minWidth: 0,
-    ...TYPE_DISPLAY_HERO,
-    fontSize: 39,
-    lineHeight: 38,
-    fontWeight: "700",
+    ...TYPE_PAGE_TITLE,
     color: "#101828",
-    textTransform: "uppercase",
   },
   planDetailTitleLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -4730,8 +4837,8 @@ export const styles = StyleSheet.create({
     borderColor: "#DDEFE0",
   },
   planDetailActivePillLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planDetailActivePillDark: {
     backgroundColor: "rgba(34,197,94,0.12)",
@@ -4752,9 +4859,8 @@ export const styles = StyleSheet.create({
     color: "#86EFAC",
   },
   planDetailSummary: {
+    ...typography.body,
     marginTop: 10,
-    fontSize: 14,
-    lineHeight: 21,
   },
   planDetailSummaryLight: {
     color: "#64748B",
@@ -4772,8 +4878,7 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
   },
   planDetailProgressText: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...typography.metadata,
   },
   planDetailProgressTextLight: {
     color: "#334155",
@@ -4791,9 +4896,8 @@ export const styles = StyleSheet.create({
     alignItems: "center",
   },
   planDetailDateText: {
+    ...typography.caption,
     marginLeft: 6,
-    fontSize: 12,
-    fontWeight: "500",
   },
   planDetailDateTextLight: {
     color: "#64748B",
@@ -4815,18 +4919,18 @@ export const styles = StyleSheet.create({
     paddingVertical: 7,
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.68)",
     borderWidth: 1,
-    borderColor: "#E7ECF3",
+    borderColor: "rgba(148,163,184,0.16)",
     shadowColor: "#667085",
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.035,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
   planDetailFactChipLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planDetailFactChipDark: {
     backgroundColor: DARK_CARD,
@@ -4849,18 +4953,17 @@ export const styles = StyleSheet.create({
   },
   planDetailGoalCard: {
     minHeight: 162,
-    borderRadius: 0,
+    borderRadius: 28,
     overflow: "hidden",
     marginTop: 4,
     justifyContent: "center",
     backgroundColor: "rgba(15,23,42,0.62)",
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
     borderColor: "rgba(148,163,184,0.16)",
   },
   planDetailGoalCardLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.64)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planDetailGoalImage: {
     borderRadius: 0,
@@ -4886,21 +4989,15 @@ export const styles = StyleSheet.create({
     color: "#64748B",
   },
   planDetailGoalTitle: {
-    ...TYPE_PAGE_TITLE,
+    ...typography.cardTitle,
     marginBottom: 6,
-    fontSize: 24,
-    lineHeight: 26,
-    fontWeight: "600",
     color: "#FFFFFF",
   },
   planDetailGoalTitleLight: {
     color: "#0F172A",
   },
   planDetailGoalText: {
-    ...typography.bodyStrong,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: "500",
+    ...typography.caption,
     color: "#FFFFFF",
   },
   planDetailGoalTextLight: {
@@ -4918,9 +5015,9 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.22)",
   },
   planDetailGoalFlagLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.76)",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planDetailInfoGrid: {
     marginTop: 10,
@@ -4934,11 +5031,10 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 12,
     paddingVertical: 13,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    borderBottomWidth: 1,
-    borderColor: "#E7ECF3",
+    borderRadius: 22,
+    backgroundColor: "rgba(238,244,248,0.56)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
     flexDirection: "column",
     alignItems: "flex-start",
     shadowColor: "#667085",
@@ -4985,10 +5081,7 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   planDetailInfoValue: {
-    ...typography.cardTitle,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: "700",
+    ...typography.metadata,
     color: "#101828",
   },
   planDetailInfoValueDark: {
@@ -5014,12 +5107,9 @@ export const styles = StyleSheet.create({
     marginBottom: 6,
   },
   planDetailExpectText: {
-    ...TYPE_UI,
+    ...typography.caption,
     flex: 1,
     marginLeft: 9,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "500",
     color: "#101828",
   },
   planDetailExpectTextDark: {
@@ -5036,15 +5126,14 @@ export const styles = StyleSheet.create({
     width: "48.5%",
     minHeight: 78,
     padding: 12,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    borderBottomWidth: 1,
+    borderRadius: 20,
+    backgroundColor: "rgba(238,244,248,0.52)",
+    borderWidth: 1,
     borderColor: "rgba(148,163,184,0.14)",
   },
   planDetailKeywordCardLight: {
-    backgroundColor: "transparent",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.52)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planDetailKeywordLabel: {
     ...LUXURY_CAPTION,
@@ -5057,11 +5146,8 @@ export const styles = StyleSheet.create({
     color: "#64748B",
   },
   planDetailKeywordValue: {
-    ...TYPE_UI,
+    ...typography.metadata,
     color: DARK_TEXT_PRIMARY,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "700",
   },
   planDetailKeywordValueLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -5119,10 +5205,8 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   planDetailInsightSubtext: {
+    ...typography.caption,
     marginTop: 9,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: "500",
   },
   planDetailInsightSubtextLight: {
     color: "#64748B",
@@ -5149,13 +5233,12 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   planDetailMetricCardLight: {
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.64)",
+    borderColor: "rgba(148,163,184,0.1)",
     ...PREMIUM_CARD_LIGHT,
   },
   planDetailMetricLabel: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...typography.caption,
   },
   planDetailMetricLabelLight: {
     color: "#64748B",
@@ -5164,10 +5247,8 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   planDetailMetricValue: {
+    ...typography.sectionTitle,
     marginTop: 14,
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: "600",
   },
   planDetailMetricValueLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -5185,9 +5266,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   planDetailGuidelinesTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 1,
+    ...typography.microLabel,
     marginBottom: 22,
   },
   planDetailGuidelinesTitleLight: {
@@ -5205,10 +5284,8 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   planDetailGuidelineValue: {
+    ...typography.subheading,
     marginTop: 4,
-    fontSize: 18,
-    lineHeight: 23,
-    fontWeight: "700",
   },
   planDetailGuidelineValueLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -5217,8 +5294,7 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   planDetailGuidelineLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...typography.metadata,
   },
   planDetailGuidelineLabelLight: {
     color: "#64748B",
@@ -5227,10 +5303,8 @@ export const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   planDetailGuidelinesBody: {
+    ...typography.caption,
     flex: 1,
-    fontSize: 13,
-    lineHeight: 22,
-    fontWeight: "500",
   },
   planDetailGuidelinesBodyLight: {
     color: "#64748B",
@@ -5246,7 +5320,7 @@ export const styles = StyleSheet.create({
     borderBottomColor: "rgba(148,163,184,0.16)",
   },
   planDetailGuidelineRowItemLight: {
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "rgba(148,163,184,0.12)",
   },
   planDetailGuidelineIcon: {
     width: 54,
@@ -5276,8 +5350,8 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(15,23,42,0.42)",
   },
   planDetailGuidelineNoteBoxLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.62)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planCurrentScheduleCard: {
     paddingVertical: 20,
@@ -5295,7 +5369,7 @@ export const styles = StyleSheet.create({
   },
   planCurrentScheduleCardLight: {
     backgroundColor: "transparent",
-    borderColor: "#E8EEF6",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planCurrentScheduleCardDark: {
     backgroundColor: "transparent",
@@ -5316,7 +5390,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "#F5F8FC",
   },
   planCurrentScheduleIconLight: {
-    backgroundColor: "#F3F7FF",
+    backgroundColor: "rgba(229,240,248,0.74)",
   },
   planCurrentScheduleIconDark: {
     backgroundColor: "rgba(46,123,230,0.12)",
@@ -5355,13 +5429,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.72)",
     borderWidth: 1,
-    borderColor: "#E5EAF1",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planCurrentScheduleButtonLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planCurrentScheduleButtonDark: {
     backgroundColor: "rgba(255,255,255,0.04)",
@@ -5382,13 +5456,10 @@ export const styles = StyleSheet.create({
     color: "#E5E7EB",
   },
   planCurrentScheduleDescription: {
-    ...TYPE_UI,
+    ...typography.caption,
     flex: 1,
     marginTop: 0,
     marginLeft: 12,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
     color: "#52637A",
   },
   planCurrentScheduleDescriptionLight: {
@@ -5443,9 +5514,9 @@ export const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.68)",
     borderWidth: 1,
-    borderColor: "#DCE5F0",
+    borderColor: "rgba(148,163,184,0.12)",
     shadowColor: "#667085",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -5497,9 +5568,9 @@ export const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.68)",
     borderWidth: 1,
-    borderColor: "#DCE5F0",
+    borderColor: "rgba(148,163,184,0.12)",
     shadowColor: "#667085",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -5540,9 +5611,9 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.86)",
     borderWidth: 1,
-    borderColor: "#D5E0EE",
+    borderColor: "rgba(148,163,184,0.16)",
     shadowColor: "#667085",
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -5556,9 +5627,9 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F2F6FD",
+    backgroundColor: "rgba(229,240,248,0.72)",
     borderWidth: 1,
-    borderColor: "#E9EFF8",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planScheduleSelectedSummaryDark: {
     backgroundColor: "rgba(46,123,230,0.1)",
@@ -5586,7 +5657,7 @@ export const styles = StyleSheet.create({
   },
   planRecalibrateCardLight: {
     backgroundColor: "transparent",
-    borderColor: "#FDE68A",
+    borderColor: "rgba(245,158,11,0.18)",
   },
   planRecalibrateIcon: {
     width: 38,
@@ -5598,7 +5669,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(245,158,11,0.12)",
   },
   planRecalibrateIconLight: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "rgba(254,243,199,0.68)",
   },
   planRecalibrateTitle: {
     fontSize: 14,
@@ -5738,8 +5809,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   planScheduleTileLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.64)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planScheduleTileSelected: {
     borderColor: "rgba(56,189,248,0.5)",
@@ -5747,7 +5818,7 @@ export const styles = StyleSheet.create({
   },
   planScheduleTileSelectedLight: {
     borderColor: "#0EA5E9",
-    backgroundColor: "#F0F9FF",
+    backgroundColor: "rgba(229,240,248,0.86)",
   },
   planScheduleTileTopRow: {
     minHeight: 32,
@@ -5804,8 +5875,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   planScheduleOptionLight: {
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.64)",
+    borderColor: "rgba(148,163,184,0.1)",
   },
   planScheduleOptionSelected: {
     borderColor: "rgba(56,189,248,0.5)",
@@ -5813,15 +5884,15 @@ export const styles = StyleSheet.create({
   },
   planScheduleOptionSelectedLight: {
     borderColor: "#0EA5E9",
-    backgroundColor: "#F0F9FF",
+    backgroundColor: "rgba(229,240,248,0.86)",
   },
   planScheduleOptionRecommended: {
     borderColor: "rgba(125,211,252,0.32)",
     backgroundColor: "rgba(15,23,42,0.68)",
   },
   planScheduleOptionRecommendedLight: {
-    borderColor: "#BFD7EE",
-    backgroundColor: "#F8FBFE",
+    borderColor: "rgba(0,112,204,0.16)",
+    backgroundColor: "rgba(229,240,248,0.82)",
   },
   planScheduleOptionIcon: {
     width: 38,
@@ -5835,8 +5906,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.16)",
   },
   planScheduleOptionIconLight: {
-    backgroundColor: "#F1F5F9",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.76)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planScheduleOptionIconText: {
     fontSize: 16,
@@ -5880,8 +5951,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   planScheduleBadgeLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planScheduleBadgePremium: {
     borderColor: "rgba(245,158,11,0.28)",
@@ -6001,7 +6072,7 @@ export const styles = StyleSheet.create({
   },
   planDetailWeekCardLight: {
     backgroundColor: "transparent",
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(148,163,184,0.12)",
     ...PREMIUM_CARD_LIGHT,
   },
   planDetailWeekHeader: {
@@ -6025,10 +6096,7 @@ export const styles = StyleSheet.create({
     borderColor: "#D7EAF8",
   },
   planDetailWeekNumberText: {
-    ...TYPE_UI,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: "900",
+    ...typography.metadata,
   },
   planDetailWeekNumberTextLight: {
     color: PS_BLUE,
@@ -6038,10 +6106,7 @@ export const styles = StyleSheet.create({
   },
   planDetailWeekTitle: {
     flex: 1,
-    ...TYPE_HEADING,
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "600",
+    ...typography.subheading,
   },
   planDetailWeekTitleLight: {
     color: LIGHT_TEXT_PRIMARY,
@@ -6050,10 +6115,7 @@ export const styles = StyleSheet.create({
     color: DARK_TEXT_PRIMARY,
   },
   planDetailWeekDescription: {
-    ...TYPE_UI,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "500",
+    ...typography.caption,
   },
   planDetailWeekDescriptionLight: {
     color: "#64748B",
@@ -6078,8 +6140,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekMetaPillLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekMetaText: {
     ...TYPE_UI,
@@ -6121,8 +6183,8 @@ export const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(148,163,184,0.12)",
+    backgroundColor: "rgba(238,244,248,0.68)",
     marginRight: 8,
   },
   planWeekTagActive: {
@@ -6219,7 +6281,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekControlButtonDisabled: {
     opacity: 0.35,
@@ -6263,10 +6325,10 @@ export const styles = StyleSheet.create({
     backgroundColor: "#A3D2E7",
   },
   planWeekBlock: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(238,244,248,0.68)",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "rgba(148,163,184,0.12)",
     padding: 16,
   },
   planWeekBlockActive: {
@@ -6274,8 +6336,8 @@ export const styles = StyleSheet.create({
     backgroundColor: "#EEF6FF",
   },
   planWeekBlockLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekBlockActiveLight: {
     backgroundColor: "#EEF6FF",
@@ -6405,9 +6467,8 @@ export const styles = StyleSheet.create({
     alignItems: "center",
   },
   planWeekViewFullButtonLight: {
-    // Light theme override: soft light pill
-    backgroundColor: "#F9FAFB",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekViewFullButtonLabel: {
     fontSize: 12,
@@ -6432,8 +6493,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   planWeekTabsLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planWeekTab: {
     flex: 1,
@@ -6489,8 +6550,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   planWeekTimelineCardLight: {
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.12)",
     ...PREMIUM_CARD_LIGHT,
   },
   planWeekTimelineRail: {
@@ -6662,7 +6723,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(148,163,184,0.12)",
   },
   planWeekTimelineButtonLight: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(238,244,248,0.72)",
   },
   planWeekTimelineButtonText: {
     marginRight: 8,
@@ -6721,8 +6782,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   exerciseCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(238,244,248,0.68)",
+    borderColor: "rgba(148,163,184,0.12)",
     ...PREMIUM_CARD_LIGHT,
   },
   exerciseCardBody: {
@@ -6823,8 +6884,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   viewWorkoutModalCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_BG,
+    borderColor: "rgba(148,163,184,0.12)",
     ...PREMIUM_PANEL_LIGHT,
   },
   viewWorkoutCloseButton: {
@@ -6843,8 +6904,8 @@ export const styles = StyleSheet.create({
     elevation: 10,
   },
   viewWorkoutCloseButtonLight: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.86)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   viewWorkoutHandle: {
     width: 40,
@@ -7209,14 +7270,14 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   exerciseDetailModalCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: LIGHT_BG,
+    borderColor: "rgba(148,163,184,0.12)",
     ...PREMIUM_PANEL_LIGHT,
   },
   exerciseDetailHero: {
     width: "100%",
     aspectRatio: 1.55,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(238,244,248,0.76)",
     overflow: "hidden",
   },
   exerciseDetailHeroArrow: {
@@ -7434,8 +7495,8 @@ export const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.7)",
   },
   exerciseDetailCloseButtonLight: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.86)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   planDetailCard: {
     marginTop: 8,
@@ -7509,8 +7570,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   exerciseSearchInputLight: {
-    borderColor: "#E2E8F0",
-    backgroundColor: LIGHT_CARD,
+    borderColor: "rgba(148,163,184,0.12)",
+    backgroundColor: "rgba(238,244,248,0.72)",
     color: LIGHT_TEXT_PRIMARY,
     ...PREMIUM_CARD_LIGHT,
   },
@@ -7532,8 +7593,8 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   exerciseFilterChipLight: {
-    backgroundColor: LIGHT_CARD,
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   exerciseFilterChipActive: {
     backgroundColor: PS_BLUE,
@@ -7578,8 +7639,8 @@ export const styles = StyleSheet.create({
     marginBottom: 8,
   },
   exerciseFilterRowLight: {
-    backgroundColor: LIGHT_CARD,
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   exerciseFilterRowActive: {
     backgroundColor: PS_BLUE,
@@ -7626,7 +7687,7 @@ export const styles = StyleSheet.create({
     ...PREMIUM_PANEL_DARK,
   },
   filterSheetContainerLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: LIGHT_BG,
     ...PREMIUM_PANEL_LIGHT,
   },
   filterSheetHandle: {
@@ -7711,8 +7772,8 @@ export const styles = StyleSheet.create({
     borderColor: GLASS_BORDER_DARK,
   },
   exerciseTabsToggleLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   exerciseTabButton: {
     flex: 1,
@@ -7812,8 +7873,8 @@ export const styles = StyleSheet.create({
     borderColor: GLASS_BORDER_DARK,
   },
   premiumSideToggleLight: {
-    backgroundColor: LIGHT_CARD,
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderColor: "rgba(148,163,184,0.12)",
   },
   premiumSideButton: {
     flex: 1,
@@ -7859,8 +7920,8 @@ export const styles = StyleSheet.create({
     ...PREMIUM_CARD_DARK,
   },
   premium3dPreviewLight: {
-    borderColor: "#E2E8F0",
-    backgroundColor: LIGHT_CARD,
+    borderColor: "rgba(148,163,184,0.12)",
+    backgroundColor: "rgba(238,244,248,0.72)",
     ...PREMIUM_CARD_LIGHT,
   },
   premium3dPreviewLarge: {

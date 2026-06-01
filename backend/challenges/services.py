@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Dict, List, Mapping, MutableMapping, Optional, Sequence, Set
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from insights.models import UserMetricsSnapshot
@@ -145,7 +145,12 @@ def load_body_battle_groups(user: User) -> Mapping[str, BodyGroupState]:
         if key not in states:
             continue
         sessions = int(info.get("sessions", 0))  # type: ignore[arg-type]
-        rank = str(info.get("rank", "Recruit"))  # type: ignore[arg-type]
+        # Registration onboarding can display an estimated starting rank, but
+        # challenge unlocks must only use ranks earned through real sessions.
+        if bool(info.get("rank_estimated")):
+            rank = "Recruit"
+        else:
+            rank = str(info.get("rank", "Recruit"))  # type: ignore[arg-type]
         states[key] = BodyGroupState(group=key, sessions=sessions, rank=rank)
     return states
 
@@ -366,71 +371,24 @@ OFFICIAL_TRAINING_CHALLENGES = [
 	},
 ]
 
-COMMUNITY_TRAINING_CHALLENGE_MOCKUPS = [
-	{
-		"name": "Leg Day League",
-		"description": "Complete 5 lower-body sessions with moderate or hard intensity.",
-		"requirement": "5 leg sessions in 14 days",
-		"duration_days": 14,
-		"required_sessions": 5,
-		"eligible_workout_types": ["strength", "conditioning"],
-		"eligible_body_parts": ["lower_body", "legs", "glutes", "quads", "hamstrings"],
-		"minimum_duration": 30,
-		"allowed_intensity": ["moderate", "hard"],
-		"badge_icon": "walk",
-		"reward_xp": 220,
-		"participant_count": 6200,
-		"trending_score": 86,
-	},
-	{
-		"name": "Push Week",
-		"description": "Build a focused push week across chest, shoulders, and triceps.",
-		"requirement": "3 push workouts in 7 days",
-		"duration_days": 7,
-		"required_sessions": 3,
-		"eligible_workout_types": ["strength", "conditioning"],
-		"eligible_body_parts": ["upper_body", "chest", "shoulders", "triceps"],
-		"minimum_duration": 25,
-		"allowed_intensity": ["moderate", "hard"],
-		"badge_icon": "barbell",
-		"reward_xp": 150,
-		"participant_count": 24000,
-		"trending_score": 93,
-	},
-	{
-		"name": "Morning Club",
-		"description": "Stack five early sessions before 9 AM.",
-		"requirement": "5 workouts before 9 AM in 10 days",
-		"duration_days": 10,
-		"required_sessions": 5,
-		"eligible_workout_types": ["strength", "cardio", "conditioning", "mobility", "sport"],
-		"minimum_duration": 10,
-		"allowed_intensity": [],
-		"badge_icon": "sunny",
-		"reward_xp": 180,
-		"participant_count": 12800,
-		"trending_score": 88,
-	},
-	{
-		"name": "Office Pull Ladder",
-		"description": "A focused pull block for back and biceps.",
-		"requirement": "4 pull-focused sessions in 10 days",
-		"duration_days": 10,
-		"required_sessions": 4,
-		"eligible_workout_types": ["strength", "conditioning"],
-		"eligible_body_parts": ["upper_body", "back", "biceps", "lats"],
-		"minimum_duration": 25,
-		"allowed_intensity": ["moderate", "hard"],
-		"badge_icon": "people",
-		"reward_xp": 160,
-		"participant_count": 34,
-		"trending_score": 62,
-	},
-]
-
-
 def ensure_official_training_challenges() -> None:
 	today = timezone.localdate()
+	existing = {
+		challenge.name: challenge
+		for challenge in TrainingChallenge.objects.filter(
+			name__in=[payload["name"] for payload in OFFICIAL_TRAINING_CHALLENGES],
+			visibility=TrainingChallenge.VISIBILITY_OFFICIAL,
+		)
+	}
+	if len(existing) == len(OFFICIAL_TRAINING_CHALLENGES) and all(
+		challenge.is_official
+		and challenge.status == TrainingChallenge.STATUS_ACTIVE
+		and challenge.start_date == today - timedelta(days=7)
+		and challenge.end_date == today + timedelta(days=payload["duration_days"])
+		for payload in OFFICIAL_TRAINING_CHALLENGES
+		if (challenge := existing.get(payload["name"])) is not None
+	):
+		return
 	for index, payload in enumerate(OFFICIAL_TRAINING_CHALLENGES, start=1):
 		TrainingChallenge.objects.update_or_create(
 			name=payload["name"],
@@ -453,36 +411,15 @@ def ensure_official_training_challenges() -> None:
 				"trending_score": 100 - index,
 			},
 		)
-	for payload in COMMUNITY_TRAINING_CHALLENGE_MOCKUPS:
-		TrainingChallenge.objects.update_or_create(
-			name=payload["name"],
-			visibility=TrainingChallenge.VISIBILITY_COMMUNITY,
-			defaults={
-				"description": payload["description"],
-				"requirement": payload["requirement"],
-				"duration_days": payload["duration_days"],
-				"eligible_workout_types": payload.get("eligible_workout_types", []),
-				"eligible_body_parts": payload.get("eligible_body_parts", []),
-				"minimum_duration": payload["minimum_duration"],
-				"required_sessions": payload["required_sessions"],
-				"allowed_intensity": payload.get("allowed_intensity", []),
-				"is_official": False,
-				"start_date": today - timedelta(days=3),
-				"end_date": today + timedelta(days=payload["duration_days"]),
-				"badge_icon": payload["badge_icon"],
-				"reward_xp": payload["reward_xp"],
-				"status": TrainingChallenge.STATUS_ACTIVE,
-				"participant_count": payload["participant_count"],
-				"trending_score": payload["trending_score"],
-			},
-		)
-
-
 def enroll_user_in_training_challenge(user: User, challenge: TrainingChallenge) -> UserChallengeEnrollment:
 	enrollment, created = UserChallengeEnrollment.objects.get_or_create(user=user, challenge=challenge)
-	if created:
-		actual_count = challenge.enrollments.exclude(status=UserChallengeEnrollment.STATUS_LEFT).count()
-		challenge.participant_count = max(challenge.participant_count, actual_count)
+	if not created and enrollment.status == UserChallengeEnrollment.STATUS_LEFT:
+		enrollment.status = UserChallengeEnrollment.STATUS_ACTIVE
+		enrollment.completed_at = None
+		enrollment.save(update_fields=["status", "completed_at"])
+	actual_count = challenge.enrollments.exclude(status=UserChallengeEnrollment.STATUS_LEFT).count()
+	if challenge.participant_count != actual_count:
+		challenge.participant_count = actual_count
 		challenge.save(update_fields=["participant_count", "updated_at"])
 	UserChallengeProgress.objects.get_or_create(enrollment=enrollment)
 	return enrollment
@@ -524,10 +461,11 @@ def _session_matches_challenge(session, challenge: TrainingChallenge) -> bool:
 	return True
 
 
-def update_training_challenge_progress_for_workout(session, score=None) -> None:
-	from achievements.services import evaluate_challenge_completion
-	from community.models import CommunityActivity
+def update_training_challenge_progress_for_workout(session, score=None) -> int:
+	from achievements.services import earned_badge_summaries, evaluate_challenge_completion
+	from community.services import materialize_challenge_activity
 
+	reward_xp = 0
 	active = UserChallengeEnrollment.objects.filter(
 		user=session.user,
 		status=UserChallengeEnrollment.STATUS_ACTIVE,
@@ -538,16 +476,44 @@ def update_training_challenge_progress_for_workout(session, score=None) -> None:
 		if not _session_matches_challenge(session, challenge):
 			continue
 		progress, _ = UserChallengeProgress.objects.get_or_create(enrollment=enrollment)
-		ids = list(progress.qualifying_workout_ids or [])
+		ids = [
+			int(item)
+			for item in (progress.qualifying_workout_ids or [])
+			if str(item).isdigit()
+		]
 		if session.id not in ids:
 			ids.append(session.id)
-		progress.qualifying_workout_ids = ids
-		progress.sessions_completed = min(len(ids), challenge.required_sessions)
-		progress.points += int(getattr(score, "challenge_points", 0) or getattr(score, "activity_xp", 0) or 0)
+		ids = list(dict.fromkeys(ids))
+		qualifying_sessions = list(
+			session.user.workout_sessions.filter(
+				id__in=ids,
+				status="completed",
+			).select_related("score_record")
+		)
+		progress.qualifying_workout_ids = [row.id for row in qualifying_sessions]
+		progress.sessions_completed = min(len(qualifying_sessions), challenge.required_sessions)
+		progress.points = sum(
+			max(
+				0,
+				int(getattr(getattr(row, "score_record", None), "challenge_points", 0) or 0)
+				or (
+					int(getattr(getattr(row, "score_record", None), "activity_xp", 0) or 0)
+					- int(
+						(
+							getattr(getattr(row, "score_record", None), "calculation_breakdown", {})
+							or {}
+						).get("training_challenge_reward_xp", 0)
+						or 0
+					)
+				),
+			)
+			for row in qualifying_sessions
+		)
 		progress.active_days = len(
 			{
 				item.completed_at.date()
-				for item in session.user.workout_sessions.filter(id__in=ids, completed_at__isnull=False)
+				for item in qualifying_sessions
+				if item.completed_at
 			}
 		)
 		progress.progress_percent = min(100, int(round((progress.sessions_completed / max(1, challenge.required_sessions)) * 100)))
@@ -556,28 +522,7 @@ def update_training_challenge_progress_for_workout(session, score=None) -> None:
 			enrollment.status = UserChallengeEnrollment.STATUS_COMPLETED
 			enrollment.completed_at = session.completed_at or timezone.now()
 			enrollment.save(update_fields=["status", "completed_at"])
-			CommunityActivity.objects.update_or_create(
-				user=session.user,
-				activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
-				metadata__source_id=f'training_challenge:{challenge.id}',
-				defaults={
-					"title": f"Completed {challenge.name}",
-					"description": "Challenge completed",
-					"metadata": {
-						"source_id": f'training_challenge:{challenge.id}',
-						"event_type": "challenge_completed",
-						"challenge_id": challenge.id,
-						"challenge_name": challenge.name,
-						"frontend_summary": {
-							"title": challenge.name,
-							"xp": challenge.reward_xp,
-							"challenge_badge": challenge.badge_icon or "Challenge",
-						},
-					},
-					"occurred_at": enrollment.completed_at,
-				},
-			)
-			evaluate_challenge_completion(
+			earned_badges = evaluate_challenge_completion(
 				session.user,
 				challenge=challenge,
 				context={
@@ -593,7 +538,28 @@ def update_training_challenge_progress_for_workout(session, score=None) -> None:
 					"rank": 1,
 					"as_of": enrollment.completed_at or timezone.now(),
 				},
+				create_feed_activity=False,
 			)
+			materialize_challenge_activity(
+				session.user,
+				source_id=f'training_challenge:{challenge.id}',
+				title=f"Completed {challenge.name}",
+				metadata={
+					"event_type": "challenge_completed",
+					"challenge_id": challenge.id,
+					"challenge_name": challenge.name,
+					"earned_badges": earned_badge_summaries(earned_badges),
+					"frontend_summary": {
+						"title": challenge.name,
+						"xp": challenge.reward_xp,
+						"challenge_badge": challenge.badge_icon or "Challenge",
+					},
+				},
+				occurred_at=enrollment.completed_at,
+			)
+			if challenge.is_official:
+				reward_xp += challenge.reward_xp
+	return reward_xp
 
 
 def challenge_sections_for_user(user: User) -> dict:
@@ -603,23 +569,45 @@ def challenge_sections_for_user(user: User) -> dict:
 		row.challenge_id: row
 		for row in UserChallengeEnrollment.objects.filter(user=user).select_related("progress")
 	}
-	challenges = list(TrainingChallenge.objects.filter(status=TrainingChallenge.STATUS_ACTIVE).select_related("group", "created_by"))
+	challenges = list(
+		TrainingChallenge.objects.filter(status=TrainingChallenge.STATUS_ACTIVE)
+		.select_related("group", "created_by")
+		.annotate(
+			completed_participant_count=Count(
+				"enrollments",
+				filter=Q(enrollments__status=UserChallengeEnrollment.STATUS_COMPLETED),
+				distinct=True,
+			)
+		)
+	)
+	serialized = {}
 
 	def serialize(challenge: TrainingChallenge) -> dict:
+		if challenge.id in serialized:
+			return serialized[challenge.id]
 		enrollment = enrollments.get(challenge.id)
 		progress = getattr(enrollment, "progress", None) if enrollment else None
 		days_left = (challenge.end_date - now).days if challenge.end_date else challenge.duration_days
-		return {
+		serialized[challenge.id] = {
 			"id": challenge.id,
 			"name": challenge.name,
 			"description": challenge.description,
 			"requirement": challenge.requirement,
+			"durationDays": challenge.duration_days,
+			"eligibleWorkoutTypes": challenge.eligible_workout_types,
+			"eligibleBodyParts": challenge.eligible_body_parts,
+			"minimumDuration": challenge.minimum_duration,
+			"requiredSessions": challenge.required_sessions,
+			"allowedIntensity": challenge.allowed_intensity,
+			"startDate": challenge.start_date.isoformat() if challenge.start_date else None,
+			"endDate": challenge.end_date.isoformat() if challenge.end_date else None,
 			"progress": {
 				"sessionsCompleted": progress.sessions_completed if progress else 0,
 				"requiredSessions": challenge.required_sessions,
 				"percent": progress.progress_percent if progress else 0,
 			},
 			"participants": challenge.participant_count,
+			"completedParticipants": challenge.completed_participant_count,
 			"daysLeft": max(0, days_left),
 			"badgeRewardPreview": challenge.badge_icon,
 			"xpReward": challenge.reward_xp,
@@ -630,6 +618,7 @@ def challenge_sections_for_user(user: User) -> dict:
 			"groupId": challenge.group_id,
 			"groupName": challenge.group.name if challenge.group_id else None,
 		}
+		return serialized[challenge.id]
 
 	active = [serialize(challenge) for challenge in challenges if challenge.id in enrollments and enrollments[challenge.id].status == UserChallengeEnrollment.STATUS_ACTIVE]
 	completed = [serialize(challenge) for challenge in challenges if challenge.id in enrollments and enrollments[challenge.id].status == UserChallengeEnrollment.STATUS_COMPLETED]

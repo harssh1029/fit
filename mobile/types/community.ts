@@ -3,6 +3,7 @@ export type CommunityFriendSummary = {
   name: string;
   username?: string;
   avatarInitials?: string;
+  avatarUrl?: string;
   overallScore?: number;
   consistencyScore: number;
   challengesCompleted: number;
@@ -11,8 +12,14 @@ export type CommunityFriendSummary = {
   streakDays?: number;
   recentSessionsThisWeek?: number;
   fitnessAgeYears?: number | null;
+  followersCount?: number;
+  followingCount?: number;
+  postCount?: number;
   performanceScore?: number;
   weeklyXp?: number;
+  careerXp?: number;
+  currentLevel?: number;
+  currentTitle?: string;
   tier?: string;
 };
 
@@ -21,6 +28,7 @@ export type CommunityUserSuggestion = {
   username: string;
   name: string;
   avatarInitials?: string;
+  avatarUrl?: string;
   friendshipStatus?: string | null;
 };
 
@@ -29,6 +37,7 @@ export type CommunityActivity = {
   userId: number;
   userName: string;
   avatarInitials?: string;
+  avatarUrl?: string;
   type: "workout" | "challenge" | "plan" | "test" | "badge" | "group";
   title: string;
   description?: string;
@@ -36,6 +45,7 @@ export type CommunityActivity = {
   metadata?: Record<string, unknown>;
   occurredAt: string;
   likedByMe?: boolean;
+  savedByMe?: boolean;
   likesCount?: number;
   commentsCount?: number;
   shareCount?: number;
@@ -56,11 +66,17 @@ export type CommunityActivity = {
   } | null;
 };
 
+export type SavedCommunityActivityPage = {
+  results: CommunityActivity[];
+  nextCursor?: number | null;
+};
+
 export type CommunityActivityComment = {
   id: number;
   userId: number;
   userName: string;
   avatarInitials?: string;
+  avatarUrl?: string;
   body: string;
   createdAt: string;
 };
@@ -131,6 +147,7 @@ export type CommunityGroupMember = {
   userId: number;
   userName: string;
   avatarInitials?: string;
+  avatarUrl?: string;
   role: "owner" | "admin" | "member";
   status: string;
   created_at: string;
@@ -221,12 +238,21 @@ export type PremiumChallengeCard = {
   name: string;
   description?: string;
   requirement: string;
+  durationDays?: number;
+  eligibleWorkoutTypes?: string[];
+  eligibleBodyParts?: string[];
+  minimumDuration?: number;
+  requiredSessions?: number;
+  allowedIntensity?: string[];
+  startDate?: string | null;
+  endDate?: string | null;
   progress: {
     sessionsCompleted: number;
     requiredSessions: number;
     percent: number;
   };
   participants: number;
+  completedParticipants?: number;
   daysLeft: number;
   badgeRewardPreview?: string;
   xpReward: number;
@@ -236,6 +262,37 @@ export type PremiumChallengeCard = {
   isOfficial: boolean;
   groupId?: number | null;
   groupName?: string | null;
+};
+
+export type TrainingChallengeCreatePayload = {
+  name: string;
+  description?: string;
+  requirement?: string;
+  duration_days?: number;
+  required_sessions?: number;
+  minimum_duration?: number;
+  reward_xp?: number;
+  eligible_workout_types?: string[];
+  eligible_body_parts?: string[];
+  allowed_intensity?: string[];
+  visibility?: "community" | "group" | "official";
+};
+
+export type TrainingChallengeParticipant = {
+  id: number;
+  userId: number;
+  userName: string;
+  avatarInitials?: string;
+  status: "active" | "completed" | "left";
+  joinedAt?: string | null;
+  completedAt?: string | null;
+  progress: {
+    sessionsCompleted: number;
+    requiredSessions: number;
+    percent: number;
+    points: number;
+    activeDays: number;
+  };
 };
 
 export type PremiumChallengeSections = {

@@ -3012,3 +3012,297 @@ fatLossShredMasterPlan = {
         ]),
     ]),
 }
+
+
+def _periodized_plan_weeks(plan_slug, phases, workout_builder):
+    return make_plan_weeks(
+        plan_slug,
+        [
+            (
+                week_number,
+                title,
+                focus,
+                coach_note,
+                recovery_priority,
+                workout_builder(week_number, title, focus),
+            )
+            for (
+                week_number,
+                title,
+                focus,
+                coach_note,
+                recovery_priority,
+            ) in phases
+        ],
+    )
+
+
+MOVEMENT_FOUNDATION_HOME_PLAN_ID = "movement_foundation_home_8wk"
+STRENGTH_PERFORMANCE_PLAN_ID = "strength_performance_8wk"
+MOBILITY_LONGEVITY_PLAN_ID = "mobility_longevity_8wk"
+
+
+_MOVEMENT_FOUNDATION_PHASES = [
+    (1, "Movement Reset", "Learn stable squat, hinge, push, pull, and trunk positions.", "Move slowly enough to feel every position. The first week builds trust, not fatigue.", "Daily walking, relaxed breathing, and consistent sleep."),
+    (2, "Control & Consistency", "Repeat the core patterns with slightly more time under tension.", "Keep the same clean shapes while adding a small amount of work.", "Easy steps, calf care, and shoulder mobility."),
+    (3, "Strength Confidence", "Build bodyweight strength and single-leg control.", "Use the hardest variation you can perform without losing alignment.", "Hip mobility and steady hydration."),
+    (4, "Volume Foundation", "Increase useful volume while keeping joints comfortable.", "This is the first volume week. Stop each set before form changes.", "Protein consistency and a low-stress recovery walk."),
+    (5, "Athletic Capacity", "Blend home strength with low-impact conditioning.", "Transitions become smoother this week. Stay composed while breathing harder.", "An easy day after the full-body circuit."),
+    (6, "Resilience Build", "Progress unilateral strength, posture, and aerobic capacity.", "Own the final repetitions. Controlled fatigue is the target.", "Sleep quality, ankle mobility, and gentle stretching."),
+    (7, "Movement Performance", "Express stronger bodyweight movement with confident pacing.", "Move like an athlete: precise, rhythmic, and never rushed.", "Reduce optional intensity if joints feel loaded."),
+    (8, "Consolidate & Continue", "Lock in technique and finish the block feeling capable.", "Finish with clean repeatable work, then use the benchmark notes for your next block.", "Walk, restore range, and arrive fresh for the next phase."),
+]
+
+
+def _movement_foundation_workouts(week_number, phase_title, phase_focus):
+    lower_volume = ["3 x 8", "3 x 10", "4 x 8", "4 x 10", "4 x 10", "4 x 12", "4 x 12", "3 x 10"][week_number - 1]
+    upper_volume = ["3 x 6", "3 x 8", "4 x 8", "4 x 10", "4 x 10", "4 x 12", "4 x 12", "3 x 8"][week_number - 1]
+    circuit_rounds = ["3 rounds", "3 rounds", "4 rounds", "4 rounds", "4 rounds", "5 rounds", "5 rounds", "3 rounds"][week_number - 1]
+    engine_minutes = ["25 min", "28 min", "30 min", "32 min", "34 min", "36 min", "35 min", "28 min"][week_number - 1]
+    intensity = "easy-moderate" if week_number in {1, 2, 8} else "moderate"
+    capacity_intensity = "moderate-hard" if week_number in {5, 6, 7} else intensity
+    strength_fatigue = 4 if week_number in {1, 2, 8} else 6
+    capacity_fatigue = 6 if week_number in {5, 6, 7} else 4
+    return [
+        (1, f"{phase_title} Lower + Push", "P1", 1, "strength", intensity, "42 min", f"{phase_focus} Start with lower-body control and an accessible pushing progression.", strength_fatigue, "Use a chair, bench, or wall to keep every repetition smooth. Progress the angle only when position stays clean.", [
+            ("Tempo Chair Squat", lower_volume, "strength"),
+            ("Incline Push Up", upper_volume, "strength"),
+            ("Supported Split Squat", "3 x 8 / side", "strength"),
+            ("Glute Bridge", "3 x 12", "strength"),
+            ("Dead Bug", "3 x 8 / side", "strength"),
+        ]),
+        (2, "Low Impact Engine + Ankles", "P2", 1, "cardio", "easy-moderate", engine_minutes, "Build an aerobic base and prepare ankles and calves for a more active week.", 3, "Keep a conversational pace. This session should increase energy, not drain it.", [
+            ("Brisk Walk Zone 2", engine_minutes, "conditioning"),
+            ("Low Impact Step Intervals", "6 x 45 sec", "conditioning"),
+            ("Standing Calf Raise", "3 x 15", "strength"),
+            ("Ankle Mobility Flow", "6 min", "recovery"),
+        ]),
+        (3, f"{phase_title} Hinge + Pull", "P1", 2, "strength", intensity, "44 min", f"{phase_focus} Build posture, posterior-chain strength, and pulling capacity.", strength_fatigue, "Set the ribs over the pelvis before every hinge and finish rows with the shoulder blade, not the neck.", [
+            ("Backpack Romanian Deadlift", lower_volume, "strength"),
+            ("Resistance Band Row", upper_volume, "strength"),
+            ("Supported Reverse Lunge", "3 x 8 / side", "strength"),
+            ("Bird Dog", "3 x 8 / side", "strength"),
+            ("Side Plank", "3 x 20 sec / side", "strength"),
+        ]),
+        (4, "Core Control + Mobility", "P2", 2, "recovery", "easy", "30 min", "Restore hips and shoulders while improving trunk control.", 2, "Move through comfortable ranges. Nothing in this session should feel forced.", [
+            ("90 90 Hip Flow", "3 x 60 sec", "recovery"),
+            ("Thoracic Rotation", "3 x 8 / side", "recovery"),
+            ("Dead Bug", "3 x 8 / side", "strength"),
+            ("Glute Bridge March", "3 x 8 / side", "strength"),
+            ("Breathing Reset", "5 min", "recovery"),
+        ]),
+        (5, f"{phase_title} Full Body Circuit", "P1", 3, "hybrid", capacity_intensity, "46 min", f"{phase_focus} Connect strength patterns into a practical home conditioning session.", capacity_fatigue, "Use steady transitions. The last round should look as organized as the first.", [
+            ("Bodyweight Squat", f"{circuit_rounds} x 12", "strength"),
+            ("Incline Push Up", f"{circuit_rounds} x 8", "strength"),
+            ("Resistance Band Row", f"{circuit_rounds} x 12", "strength"),
+            ("Alternating Step Up", f"{circuit_rounds} x 10 / side", "conditioning"),
+            ("Suitcase Carry March", f"{circuit_rounds} x 45 sec", "conditioning"),
+        ]),
+        (6, "Recovery Walk + Range", "P3", 1, "recovery", "easy", "28 min", "Lower stress, restore range, and reinforce the habit of active recovery.", 1, "Finish fresher than you started. Keep the walk easy and the stretches gentle.", [
+            ("Recovery Walk", "18 min", "recovery"),
+            ("Hip Flexor Stretch", "2 x 45 sec / side", "recovery"),
+            ("Wall Shoulder Slide", "3 x 8", "recovery"),
+            ("Breathing Reset", "5 min", "recovery"),
+        ]),
+    ]
+
+
+movementFoundationHomeMasterPlan = {
+    "id": MOVEMENT_FOUNDATION_HOME_PLAN_ID,
+    "name": "Movement Foundation Home",
+    "subtitle": "8-week no-gym strength, movement, and confidence plan",
+    "level": "beginner",
+    "duration_weeks": 8,
+    "max_sessions_per_week": 6,
+    "supported_sessions_per_week": [3, 4, 5, 6],
+    "goal": "movement_foundation_home",
+    "summary": "A premium no-gym starting plan that builds movement confidence, practical strength, posture, and aerobic fitness with low-friction home sessions.",
+    "audience": "Beginners, returning exercisers, and people who want a structured fitness start without a gym membership.",
+    "result": "Stronger daily movement, better posture, higher energy, improved conditioning, and confidence to progress into regular training.",
+    "long_description": "Movement Foundation Home is an 8-week adaptive master plan with 48 periodized home workouts. Every weekly rhythm preserves three high-return strength and capacity sessions while layering optional engine, mobility, and recovery work.",
+    "tags": ["beginner", "home_workout", "no_gym", "movement_quality", "bodyweight", "conditioning"],
+    "nutrition_description": "Support a new training habit with simple meals, stable energy, and enough recovery to stay consistent.",
+    "nutrition_protein": "Include a practical protein source at each main meal to support recovery.",
+    "nutrition_hard_day": "Add a carbohydrate-rich meal or snack around the longer circuit sessions.",
+    "nutrition_easy_day": "Keep meals regular and prioritize fruit, vegetables, and hydration.",
+    "weeks": _periodized_plan_weeks(
+        "movement-foundation-home",
+        _MOVEMENT_FOUNDATION_PHASES,
+        _movement_foundation_workouts,
+    ),
+}
+
+
+_STRENGTH_PERFORMANCE_PHASES = [
+    (1, "Technical Baseline", "Establish clean bar paths, repeatable setup, and conservative training loads.", "Treat every main lift as practice. Leave two to three clean repetitions in reserve.", "Sleep, hip mobility, and a relaxed aerobic flush."),
+    (2, "Volume Foundation", "Add useful working sets across squat, bench, deadlift, and upper-back strength.", "Keep rest periods honest and finish every set with repeatable form.", "Protein consistency and light movement between sessions."),
+    (3, "Load Accumulation", "Increase force production while preserving high-quality repetition speed.", "The weight rises this week. Stop sets when bar speed clearly slows.", "Low-back care, hydration, and a full recovery day."),
+    (4, "Volume Overload", "Build the largest sustainable strength volume of the block.", "No bonus sets. Execute the authored work and protect the next session.", "Sleep extension and easy zone-two work."),
+    (5, "Intensification", "Shift toward heavier primary lifts and lower accessory volume.", "Own the setup before touching the bar. Heavy work should still look professional.", "Fuel main lift days and restore shoulder range."),
+    (6, "Strength Peak", "Handle the heaviest controlled work of the block without grinding.", "Keep one repetition in reserve. The aim is force, not missed lifts.", "Longer rest, easy walking, and minimal extra training."),
+    (7, "Performance Realization", "Express stronger triples and capture benchmark notes for the next cycle.", "Use confident but submaximal top sets. Record load, reps, and perceived effort.", "Freshness matters more than accessory fatigue."),
+    (8, "Deload & Rebuild", "Reduce fatigue while reinforcing the technical gains from the block.", "Move crisp loads and finish wanting to do more. That restraint sets up the next cycle.", "Extra sleep, mobility, and easy aerobic recovery."),
+]
+
+
+def _strength_performance_workouts(week_number, phase_title, phase_focus):
+    main_lift = ["4 x 6 @ RPE 6", "5 x 6 @ RPE 7", "5 x 5 @ RPE 7", "5 x 5 @ RPE 8", "5 x 4 @ RPE 8", "6 x 3 @ RPE 8", "Work to 3 x 3 @ RPE 8", "3 x 5 @ RPE 6"][week_number - 1]
+    secondary_lift = ["3 x 8 @ RPE 6", "4 x 8 @ RPE 7", "4 x 6 @ RPE 7", "4 x 6 @ RPE 8", "4 x 5 @ RPE 7", "4 x 4 @ RPE 7", "3 x 5 @ RPE 7", "2 x 8 @ RPE 6"][week_number - 1]
+    accessory = ["3 x 10", "3 x 12", "4 x 10", "4 x 12", "3 x 10", "3 x 8", "2 x 10", "2 x 10"][week_number - 1]
+    power = ["5 x 3", "6 x 3", "6 x 3", "7 x 2", "6 x 2", "5 x 2", "4 x 2", "3 x 3"][week_number - 1]
+    intensity = "moderate" if week_number in {1, 2, 8} else "hard"
+    fatigue = [6, 7, 7, 8, 8, 9, 7, 4][week_number - 1]
+    return [
+        (1, f"{phase_title} Squat + Bench", "P1", 1, "strength", intensity, "68 min", f"{phase_focus} Progress squat strength while keeping bench volume technically sharp.", fatigue, "Brace before the descent, keep depth repeatable, and stop before either lift becomes a grind.", [
+            ("Back Squat", main_lift, "strength"),
+            ("Bench Press", secondary_lift, "strength"),
+            ("Bulgarian Split Squat", accessory, "strength"),
+            ("Chest Supported Row", accessory, "strength"),
+            ("Pallof Press", "3 x 10 / side", "strength"),
+        ]),
+        (2, "Zone 2 Flush + Tissue Care", "P2", 1, "recovery", "easy", "35 min", "Improve recovery between heavy sessions without adding meaningful fatigue.", 2, "Keep the pace conversational and finish with hips and shoulders moving better.", [
+            ("Easy Bike Zone 2", "25 min", "conditioning"),
+            ("90 90 Hip Flow", "3 x 60 sec", "recovery"),
+            ("Thoracic Rotation", "3 x 8 / side", "recovery"),
+            ("Breathing Reset", "4 min", "recovery"),
+        ]),
+        (3, f"{phase_title} Bench + Pull", "P1", 2, "strength", intensity, "66 min", f"{phase_focus} Progress pressing strength and build the upper back that supports every main lift.", fatigue, "Set the upper back before each bench repetition and keep rows strict enough to improve position.", [
+            ("Bench Press", main_lift, "strength"),
+            ("Weighted Pull Up", secondary_lift, "strength"),
+            ("Overhead Press", secondary_lift, "strength"),
+            ("Barbell Row", accessory, "strength"),
+            ("Face Pull", "3 x 15", "strength"),
+        ]),
+        (4, "Technique Speed + Mobility", "P2", 2, "strength", "easy-moderate", "42 min", "Practice explosive intent with low fatigue and restore lifting positions.", 3, "Every speed repetition should look identical. Reduce load if the bar slows.", [
+            ("Pause Squat", "5 x 3 @ RPE 5", "strength"),
+            ("Speed Bench Press", "6 x 3 @ RPE 5", "strength"),
+            ("Hip Flexor Stretch", "3 x 45 sec / side", "recovery"),
+            ("Wall Shoulder Slide", "3 x 10", "recovery"),
+        ]),
+        (5, f"{phase_title} Deadlift + Power", "P1", 3, "strength", intensity, "70 min", f"{phase_focus} Build posterior-chain strength and preserve athletic power.", fatigue, "Create tension before the pull. Power work stays fast; deadlifts stay controlled.", [
+            ("Deadlift", main_lift, "strength"),
+            ("Box Jump", power, "conditioning"),
+            ("Romanian Deadlift", secondary_lift, "strength"),
+            ("Farmer Carry", "4 x 30 m", "conditioning"),
+            ("Side Plank", "3 x 35 sec / side", "strength"),
+        ]),
+        (6, "Recovery Mobility Reset", "P3", 1, "recovery", "easy", "30 min", "Downshift fatigue and restore the positions needed for the next strength week.", 1, "Keep this intentionally easy. Recovery is part of the strength progression.", [
+            ("Recovery Walk", "16 min", "recovery"),
+            ("Adductor Rock Back", "3 x 8 / side", "recovery"),
+            ("Thoracic Rotation", "3 x 8 / side", "recovery"),
+            ("Breathing Reset", "5 min", "recovery"),
+        ]),
+    ]
+
+
+strengthPerformanceMasterPlan = {
+    "id": STRENGTH_PERFORMANCE_PLAN_ID,
+    "name": "Strength Performance",
+    "subtitle": "8-week coached barbell strength and athletic power block",
+    "level": "intermediate",
+    "duration_weeks": 8,
+    "max_sessions_per_week": 6,
+    "supported_sessions_per_week": [3, 4, 5, 6],
+    "goal": "strength_performance",
+    "summary": "A coached gym strength block for squat, bench, deadlift, upper-back development, power, and recovery-managed progression.",
+    "audience": "Regular gym users and intermediate lifters who want measurable strength gains without random volume or reckless max testing.",
+    "result": "Stronger main lifts, more stable technique, better power output, and a repeatable framework for the next training cycle.",
+    "long_description": "Strength Performance is an 8-week adaptive master plan with 48 periodized gym sessions. The three-day version protects the main strength progression; higher-frequency versions add speed practice, aerobic recovery, and mobility.",
+    "tags": ["strength", "gym", "barbell", "power", "progressive_overload", "performance"],
+    "nutrition_description": "Support high-quality lifting with adequate energy, regular protein intake, and carbohydrates placed around demanding sessions.",
+    "nutrition_protein": "Distribute protein across the day and include a substantial serving after training.",
+    "nutrition_hard_day": "Use a carbohydrate-rich meal before or after the primary strength sessions.",
+    "nutrition_easy_day": "Keep meals balanced and hydration steady on recovery-focused days.",
+    "weeks": _periodized_plan_weeks(
+        "strength-performance",
+        _STRENGTH_PERFORMANCE_PHASES,
+        _strength_performance_workouts,
+    ),
+}
+
+
+_MOBILITY_LONGEVITY_PHASES = [
+    (1, "Joint Baseline", "Restore comfortable range and establish low-impact strength positions.", "Stay inside pain-free ranges and move slowly enough to notice asymmetry.", "Short walks, hydration, and regular movement breaks."),
+    (2, "Range With Control", "Add controlled strength at the edges of comfortable range.", "Mobility is useful when you can control it. Keep tempo deliberate.", "Easy aerobic work and relaxed breathing."),
+    (3, "Posture & Balance", "Build single-leg confidence, trunk stability, and shoulder control.", "Use support when needed. Balance improves through clean practice, not strain.", "Calf care and upper-back mobility."),
+    (4, "Resilience Volume", "Increase repeatable joint-friendly strength volume.", "The goal is durability. Finish each set with comfortable mechanics.", "A gentle recovery day after the resilience circuit."),
+    (5, "Capacity For Life", "Blend carries, step patterns, and zone-two work into practical fitness.", "Move with steady intent. The session should feel useful, not punishing.", "Sleep consistency and easy mobility snacks."),
+    (6, "Durability Build", "Progress hips, knees, shoulders, and trunk under moderate fatigue.", "Maintain alignment as volume rises. Reduce range before compromising control.", "Longer walking, hydration, and tissue care."),
+    (7, "Confident Movement", "Express better range, balance, and low-impact work capacity.", "Let the improved control show. Keep every repetition calm and athletic.", "Keep the extra recovery session genuinely restorative."),
+    (8, "Restore & Retain", "Consolidate the block and create a sustainable maintenance rhythm.", "Finish lighter and take notes on the ranges and movements that improved most.", "Easy movement, relaxed breathing, and a fresh start for the next block."),
+]
+
+
+def _mobility_longevity_workouts(week_number, phase_title, phase_focus):
+    strength_volume = ["3 x 8", "3 x 10", "3 x 10", "4 x 10", "4 x 10", "4 x 12", "4 x 10", "3 x 8"][week_number - 1]
+    control_volume = ["2 x 8 / side", "3 x 8 / side", "3 x 10 / side", "3 x 10 / side", "3 x 12 / side", "4 x 10 / side", "3 x 12 / side", "2 x 8 / side"][week_number - 1]
+    zone_two = ["24 min", "26 min", "28 min", "30 min", "32 min", "35 min", "34 min", "26 min"][week_number - 1]
+    carry_volume = ["3 x 30 sec", "3 x 40 sec", "4 x 35 sec", "4 x 45 sec", "5 x 40 sec", "5 x 45 sec", "4 x 45 sec", "3 x 30 sec"][week_number - 1]
+    fatigue = 4 if week_number in {1, 2, 8} else 5
+    return [
+        (1, f"{phase_title} Hips + Knees", "P1", 1, "strength", "easy-moderate", "44 min", f"{phase_focus} Build lower-body range that is supported by practical strength.", fatigue, "Use a controlled three-second lowering phase and a stable foot on every lower-body repetition.", [
+            ("Tempo Box Squat", strength_volume, "strength"),
+            ("Supported Split Squat", control_volume, "strength"),
+            ("Glute Bridge", strength_volume, "strength"),
+            ("Standing Calf Raise", "3 x 15", "strength"),
+            ("Ankle Mobility Flow", "6 min", "recovery"),
+        ]),
+        (2, "Zone 2 + Spine Flow", "P2", 1, "cardio", "easy", "36 min", "Build cardiovascular health while restoring spine and hip movement.", 2, "Keep the aerobic pace conversational and breathe slowly through the mobility work.", [
+            ("Brisk Walk Zone 2", zone_two, "conditioning"),
+            ("Cat Cow Flow", "2 x 8", "recovery"),
+            ("Thoracic Rotation", "3 x 8 / side", "recovery"),
+            ("90 90 Hip Flow", "3 x 60 sec", "recovery"),
+        ]),
+        (3, f"{phase_title} Shoulders + Posture", "P1", 2, "strength", "easy-moderate", "42 min", f"{phase_focus} Improve shoulder control, pulling posture, and trunk stability.", fatigue, "Keep the neck relaxed and let the shoulder blades move smoothly around the rib cage.", [
+            ("Resistance Band Row", strength_volume, "strength"),
+            ("Wall Shoulder Slide", "3 x 10", "recovery"),
+            ("Incline Push Up", strength_volume, "strength"),
+            ("Bird Dog", control_volume, "strength"),
+            ("Side Plank", "3 x 25 sec / side", "strength"),
+        ]),
+        (4, "Mobility Flow + Breathing", "P2", 2, "recovery", "easy", "30 min", "Reduce stiffness and reinforce a repeatable recovery routine.", 1, "No forcing range. Move, pause, breathe, and leave feeling lighter.", [
+            ("Full Body Mobility Flow", "18 min", "recovery"),
+            ("Hip Flexor Stretch", "2 x 45 sec / side", "recovery"),
+            ("Wall Shoulder Slide", "3 x 8", "recovery"),
+            ("Breathing Reset", "6 min", "recovery"),
+        ]),
+        (5, f"{phase_title} Full Body Resilience", "P1", 3, "hybrid", "moderate", "48 min", f"{phase_focus} Connect strength, balance, carrying, and low-impact conditioning.", fatigue + 1, "Move steadily and keep posture tall during the carry and step work.", [
+            ("Alternating Step Up", control_volume, "strength"),
+            ("Backpack Romanian Deadlift", strength_volume, "strength"),
+            ("Suitcase Carry March", carry_volume, "conditioning"),
+            ("Resistance Band Row", strength_volume, "strength"),
+            ("Dead Bug", control_volume, "strength"),
+        ]),
+        (6, "Recovery Walk + Balance", "P3", 1, "recovery", "easy", "28 min", "Downshift stress while maintaining gentle balance practice.", 1, "Use a wall or chair for balance support and finish the session refreshed.", [
+            ("Recovery Walk", "18 min", "recovery"),
+            ("Single Leg Balance", "3 x 30 sec / side", "recovery"),
+            ("Ankle Mobility Flow", "5 min", "recovery"),
+            ("Breathing Reset", "4 min", "recovery"),
+        ]),
+    ]
+
+
+mobilityLongevityMasterPlan = {
+    "id": MOBILITY_LONGEVITY_PLAN_ID,
+    "name": "Mobility & Longevity",
+    "subtitle": "8-week joint-friendly strength, mobility, and durability plan",
+    "level": "beginner",
+    "duration_weeks": 8,
+    "max_sessions_per_week": 6,
+    "supported_sessions_per_week": [3, 4, 5, 6],
+    "goal": "mobility_longevity",
+    "summary": "A premium low-impact plan for joint-friendly strength, posture, balance, aerobic health, and resilient everyday movement.",
+    "audience": "Beginners, desk-bound users, active adults, and regular trainees who want better mobility and long-term durability.",
+    "result": "More comfortable movement, stronger joints, better balance, improved posture, and a sustainable base for lifelong training.",
+    "long_description": "Mobility & Longevity is an 8-week adaptive master plan with 48 low-impact sessions. It treats mobility as controlled strength and pairs range work with posture, balance, aerobic fitness, and active recovery.",
+    "tags": ["mobility", "longevity", "low_impact", "posture", "balance", "recovery"],
+    "nutrition_description": "Support durable training with regular meals, hydration, and enough protein to maintain strength and recovery.",
+    "nutrition_protein": "Include protein across the day to support muscle retention and joint-friendly strength work.",
+    "nutrition_hard_day": "Use a balanced meal with carbohydrates around the longer resilience sessions.",
+    "nutrition_easy_day": "Keep hydration steady and build meals around minimally processed foods.",
+    "weeks": _periodized_plan_weeks(
+        "mobility-longevity",
+        _MOBILITY_LONGEVITY_PHASES,
+        _mobility_longevity_workouts,
+    ),
+}

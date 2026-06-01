@@ -1,12 +1,12 @@
 import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { ScrollView, Text } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { useThemeMode, styles, type HomeStackParamList } from "../../../App";
 import { useUserProfileBasic } from "../../../hooks/useUserProfileBasic";
 import { useDashboardSummary } from "../../../hooks/useDashboardSummary";
 import { PercentileCurve } from "../../../App";
+import { AppHeader } from "../../../components/AppHeader";
 
 type PercentileDetailScreenProps = NativeStackScreenProps<
   HomeStackParamList,
@@ -59,38 +59,14 @@ const PercentileDetailScreen: React.FC<PercentileDetailScreenProps> = ({
       style={[styles.screenContainer, isLight && styles.screenContainerLight]}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
-      <View style={[styles.homeHeaderRow, isLight && styles.homeHeaderRowLight]}>
-        <View>
-          <Text
-            style={[
-              styles.homeGreetingLabel,
-              isLight && styles.homeGreetingLabelLight,
-            ]}
-          >
-            Fitter than
-          </Text>
-          <Text
-            style={[
-              styles.homeGreetingTitle,
-              isLight && styles.homeGreetingTitleLight,
-            ]}
-          >
-            Percentile rank
-          </Text>
-        </View>
-        <View style={styles.homeHeaderRightRow}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ padding: 8 }}
-          >
-            <Ionicons
-              name="close"
-              size={24}
-              color={isLight ? "#0F172A" : "#E5E7EB"}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <AppHeader
+        isLight={isLight}
+        title="Fitter than"
+        subtitle="Your percentile rank"
+        userName={userName}
+        avatarUrl={profile?.profile.avatar_url}
+        onBack={() => navigation.goBack()}
+      />
 
       <Text
         style={[styles.sectionHeader, isLight && styles.sectionHeaderLight]}
@@ -103,8 +79,9 @@ const PercentileDetailScreen: React.FC<PercentileDetailScreenProps> = ({
           isLight && styles.filterSheetSubtitleLight,
         ]}
       >
-        Your percentile rank compares your overall performance to other athletes
-        of similar age and gender using our internal dataset.
+        Your percentile rank compares your profile or assessment baseline with
+        recent logged activity. It is an estimate until you submit a full
+        assessment, then it continues to move with your training.
       </Text>
     </ScrollView>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import { fetchCachedJson } from "../api/client";
 import { useAuth } from "../App";
 import type { ApiPlan, PlanDetail } from "../App";
 import { mapApiPlanDetail } from "../App";
@@ -29,34 +29,14 @@ export function usePlanDetail(
 				setLoading(true);
 				setError(null);
 
-				let tokenToUse = accessToken;
-				const headers: HeadersInit = {};
-				if (tokenToUse) {
-					headers.Authorization = `Bearer ${tokenToUse}`;
-				}
-
 				const suffix = selectedSessionsPerWeek
 					? `?sessions_per_week=${selectedSessionsPerWeek}`
 					: "";
-				let response = await fetch(`${API_BASE_URL}/plans/${planId}/${suffix}`, {
-					headers,
-				});
-				if (response.status === 401 && tokenToUse) {
-					const refreshed = await refreshAccessToken();
-					if (!refreshed) {
-						await signOut();
-						return;
-					}
-					tokenToUse = refreshed;
-					response = await fetch(`${API_BASE_URL}/plans/${planId}/${suffix}`, {
-						headers: { Authorization: `Bearer ${tokenToUse}` },
-					});
-				}
-				if (!response.ok) {
-					throw new Error(`Failed to load plan (${response.status})`);
-				}
-
-				const json = (await response.json()) as ApiPlan;
+				const json = await fetchCachedJson<ApiPlan>(
+					`/plans/${planId}/${suffix}`,
+					{ accessToken, refreshAccessToken, signOut },
+					{ tags: ["plan-details"], ttlMs: 60_000 },
+				);
 				if (isMounted) {
 					setPlan(mapApiPlanDetail(json));
 				}

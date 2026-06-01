@@ -19,14 +19,32 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-tld+u(a-$e%@_ud-7gin0hh%#+6jzunott&5&d7w0-c+mb)w8p'
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-# Allow local development from browser (localhost) and devices on LAN
-ALLOWED_HOSTS = ['*']
+def _env_list(name: str, default: list[str]) -> list[str]:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    return [item.strip() for item in raw.split(',') if item.strip()]
+
+
+# SECURITY WARNING: keep the secret key used in production secret.
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-tld+u(a-$e%@_ud-7gin0hh%#+6jzunott&5&d7w0-c+mb)w8p',
+)
+
+# Local development defaults to debug. Production must set DJANGO_DEBUG=0.
+DEBUG = _env_bool('DJANGO_DEBUG', True)
+
+# Allow local development from browser and LAN; production should set
+# DJANGO_ALLOWED_HOSTS to the deployed domain list.
+ALLOWED_HOSTS = _env_list('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else [])
 
 
 # Application definition
@@ -84,12 +102,27 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DATABASE_ENGINE = os.environ.get('DJANGO_DATABASE_ENGINE', 'django.db.backends.sqlite3')
+if DATABASE_ENGINE == 'django.db.backends.sqlite3':
+    DATABASES = {
+        'default': {
+            'ENGINE': DATABASE_ENGINE,
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': DATABASE_ENGINE,
+            'NAME': os.environ.get('DJANGO_DATABASE_NAME', ''),
+            'USER': os.environ.get('DJANGO_DATABASE_USER', ''),
+            'PASSWORD': os.environ.get('DJANGO_DATABASE_PASSWORD', ''),
+            'HOST': os.environ.get('DJANGO_DATABASE_HOST', ''),
+            'PORT': os.environ.get('DJANGO_DATABASE_PORT', ''),
+            'CONN_MAX_AGE': int(os.environ.get('DJANGO_DATABASE_CONN_MAX_AGE', '60')),
+            'CONN_HEALTH_CHECKS': True,
+        }
+    }
 
 
 # Password validation
@@ -130,6 +163,13 @@ STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+SECURE_SSL_REDIRECT = _env_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
+SESSION_COOKIE_SECURE = _env_bool('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
+SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_HSTS_PRELOAD = _env_bool('DJANGO_SECURE_HSTS_PRELOAD', not DEBUG)
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -145,6 +185,14 @@ REST_FRAMEWORK = {
 	        'rest_framework_simplejwt.authentication.JWTAuthentication',
 	        'rest_framework.authentication.SessionAuthentication',
 	    ],
+	    'DEFAULT_THROTTLE_CLASSES': [
+	        'rest_framework.throttling.ScopedRateThrottle',
+	    ],
+	    'DEFAULT_THROTTLE_RATES': {
+	        'auth_login': '20/min',
+	        'auth_register': '10/min',
+	        'auth_register_validate': '30/min',
+	    },
 	    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
 	    'PAGE_SIZE': 20,
 }

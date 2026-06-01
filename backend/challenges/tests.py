@@ -1,10 +1,18 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from insights.models import UserMetricsSnapshot
+from community.models import CommunityActivity
 
-from .models import Challenge, UserChallengeCompletion
+from .models import (
+    Challenge,
+    TrainingChallenge,
+    UserChallengeCompletion,
+    UserChallengeEnrollment,
+    UserChallengeProgress,
+)
 
 
 User = get_user_model()
@@ -170,3 +178,103 @@ class ChallengeUnlockApiTests(TestCase):
         after_card = next(item for item in after.json() if item["id"] == next_challenge.id)
         self.assertEqual(after_card["card"]["status"], "unlocked")
         self.assertEqual(after_card["unlockProgress"]["challengesCompletedCount"], 1)
+
+    def test_completion_materializes_one_challenge_feed_post_with_badges(self):
+        challenge = Challenge.objects.create(**challenge_payload("T04", is_free=True))
+
+        for _ in range(2):
+            response = self.client.post(f"/api/v1/challenges/{challenge.id}/complete/")
+            self.assertEqual(response.status_code, 200)
+
+        activities = CommunityActivity.objects.filter(
+            user=self.user,
+            activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
+            metadata__source_id=f"challenge:{challenge.id}",
+        )
+        self.assertEqual(activities.count(), 1)
+        self.assertGreaterEqual(len(activities.get().metadata["earned_badges"]), 1)
+        self.assertFalse(
+            CommunityActivity.objects.filter(
+                user=self.user,
+                activity_type="badge",
+                metadata__event_type="badge_earned",
+            ).exists()
+        )
+
+        response = self.client.delete(f"/api/v1/challenges/{challenge.id}/complete/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(activities.exists())
+
+
+class TrainingChallengeApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="training_user",
+            email="training@example.com",
+            password="pass",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_create_training_challenge_persists_rules(self):
+        response = self.client.post(
+            "/api/v1/training-challenges/",
+            {
+                "name": "Office Strength Month",
+                "description": "Small team strength challenge",
+                "requirement": "Complete 5 strength sessions",
+                "duration_days": 21,
+                "required_sessions": 5,
+                "minimum_duration": 25,
+                "reward_xp": 240,
+                "eligible_workout_types": ["strength"],
+                "eligible_body_parts": ["chest", "back"],
+                "allowed_intensity": ["moderate", "hard"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        challenge = TrainingChallenge.objects.get(name="Office Strength Month")
+        self.assertEqual(challenge.required_sessions, 5)
+        self.assertEqual(challenge.minimum_duration, 25)
+        self.assertEqual(challenge.reward_xp, 0)
+        self.assertEqual(challenge.eligible_workout_types, ["strength"])
+        self.assertEqual(challenge.eligible_body_parts, ["chest", "back"])
+        self.assertEqual(challenge.start_date, timezone.localdate())
+        self.assertEqual(
+            (challenge.end_date - challenge.start_date).days,
+            challenge.duration_days - 1,
+        )
+
+    def test_training_challenge_participants_endpoint_returns_progress(self):
+        challenge = TrainingChallenge.objects.create(
+            name="Core Sprint",
+            description="Core training",
+            requirement="3 sessions",
+            required_sessions=3,
+            reward_xp=120,
+            created_by=self.user,
+        )
+        enrollment = UserChallengeEnrollment.objects.create(
+            user=self.user,
+            challenge=challenge,
+            status=UserChallengeEnrollment.STATUS_COMPLETED,
+        )
+        UserChallengeProgress.objects.create(
+            enrollment=enrollment,
+            sessions_completed=3,
+            progress_percent=100,
+            points=180,
+            active_days=3,
+        )
+
+        response = self.client.get(
+            f"/api/v1/training-challenges/{challenge.id}/participants/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["participants"]), 1)
+        self.assertEqual(len(body["completed"]), 1)
+        self.assertEqual(body["participants"][0]["progress"]["points"], 180)

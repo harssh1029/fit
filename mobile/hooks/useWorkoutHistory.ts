@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import { fetchCachedJson } from "../api/client";
 import { useAuth } from "../App";
 import type { WorkoutHistoryEntry } from "../App";
 
@@ -17,7 +17,7 @@ export function useWorkoutHistory(limit: number = 60) {
 		};
 	}, []);
 
-	const load = async () => {
+	const load = useCallback(async (force = true) => {
 		if (!isMountedRef.current) return;
 		if (!accessToken) {
 			setItems([]);
@@ -28,34 +28,14 @@ export function useWorkoutHistory(limit: number = 60) {
 		try {
 			setLoading(true);
 			setError(null);
-			let tokenToUse = accessToken;
-			let response = await fetch(
-				`${API_BASE_URL}/workouts/history/?limit=${limit}`,
-				{
-					headers: { Authorization: `Bearer ${tokenToUse}` },
-				},
-			);
-			if (response.status === 401) {
-				const refreshed = await refreshAccessToken();
-				if (!refreshed) {
-					await signOut();
-					return;
-				}
-				tokenToUse = refreshed;
-				response = await fetch(
-					`${API_BASE_URL}/workouts/history/?limit=${limit}`,
-					{
-						headers: { Authorization: `Bearer ${tokenToUse}` },
-					},
-				);
-			}
-			if (!response.ok) {
-				throw new Error("Failed to load workout history");
-			}
-			const json = (await response.json()) as {
+			const json = await fetchCachedJson<{
 				results?: WorkoutHistoryEntry[];
 				has_more?: boolean;
-			};
+			}>(
+				`/workouts/history/?limit=${limit}`,
+				{ accessToken, refreshAccessToken, signOut },
+				{ force, requiredAuth: true, tags: ["workout-history"], ttlMs: 10_000 },
+			);
 			if (!isMountedRef.current) return;
 			setItems(json.results ?? []);
 		} catch (err) {
@@ -69,11 +49,11 @@ export function useWorkoutHistory(limit: number = 60) {
 			if (!isMountedRef.current) return;
 			setLoading(false);
 		}
-	};
+	}, [accessToken, limit, refreshAccessToken, signOut]);
 
 	useEffect(() => {
-		void load();
-	}, [accessToken, refreshAccessToken, signOut, limit]);
+		void load(false);
+	}, [load]);
 
 	return { items, loading, error, reload: load };
 }

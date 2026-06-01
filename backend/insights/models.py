@@ -22,6 +22,8 @@ class FitnessAssessment(models.Model):
 	GENDER_CHOICES = [
 		('male', 'Male'),
 		('female', 'Female'),
+		('other', 'Other'),
+		('prefer_not_to_say', 'Prefer not to say'),
 	]
 
 	user = models.ForeignKey(
@@ -34,7 +36,7 @@ class FitnessAssessment(models.Model):
 		help_text='Age in years at the time of the assessment.',
 	)
 	gender = models.CharField(
-		max_length=16,
+		max_length=24,
 		choices=GENDER_CHOICES,
 		help_text='Gender at time of assessment.',
 	)

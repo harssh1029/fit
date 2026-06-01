@@ -11,7 +11,7 @@ from challenges.models import TrainingChallenge, UserChallengeEnrollment
 from challenges.services import enroll_user_in_training_challenge
 from community.models import CommunityActivity
 from workouts.models import UserScorePeriod
-from workouts.services import log_workout
+from workouts.services import log_workout, score_completed_workout
 
 
 class AchievementFlowTests(APITestCase):
@@ -131,7 +131,7 @@ class AchievementFlowTests(APITestCase):
 			status=TrainingChallenge.STATUS_ACTIVE,
 		)
 		enrollment = enroll_user_in_training_challenge(self.user, challenge)
-		log_workout(
+		result = log_workout(
 			self.user,
 			{
 				'title': 'Upper Body',
@@ -145,3 +145,50 @@ class AchievementFlowTests(APITestCase):
 		enrollment.refresh_from_db()
 		self.assertEqual(enrollment.progress.sessions_completed, 1)
 		self.assertEqual(enrollment.status, UserChallengeEnrollment.STATUS_ACTIVE)
+		points = enrollment.progress.points
+
+		score_completed_workout(result.session, as_of=result.session.completed_at)
+		enrollment.refresh_from_db()
+		self.assertEqual(enrollment.progress.sessions_completed, 1)
+		self.assertEqual(enrollment.progress.points, points)
+		self.assertEqual(enrollment.progress.qualifying_workout_ids, [result.session.id])
+
+	def test_completed_training_challenge_awards_reward_xp_once(self) -> None:
+		challenge = TrainingChallenge.objects.create(
+			name='Single Session Reward',
+			requirement='Complete one workout',
+			duration_days=7,
+			required_sessions=1,
+			eligible_workout_types=['strength'],
+			minimum_duration=10,
+			reward_xp=175,
+			is_official=True,
+			visibility=TrainingChallenge.VISIBILITY_OFFICIAL,
+			status=TrainingChallenge.STATUS_ACTIVE,
+		)
+		enrollment = enroll_user_in_training_challenge(self.user, challenge)
+		result = log_workout(
+			self.user,
+			{
+				'title': 'Reward Workout',
+				'entry_source': 'recorded_timer',
+				'mode': 'strength',
+				'duration_minutes': 30,
+				'intensity': 'moderate',
+				'body_groups': ['chest'],
+			},
+		)
+		result.score.refresh_from_db()
+		enrollment.refresh_from_db()
+		self.assertEqual(enrollment.status, UserChallengeEnrollment.STATUS_COMPLETED)
+		self.assertEqual(
+			result.score.calculation_breakdown['training_challenge_reward_xp'],
+			175,
+		)
+		awarded_xp = result.score.activity_xp
+
+		score_completed_workout(result.session, as_of=result.session.completed_at)
+		result.score.refresh_from_db()
+		self.user.score_summary.refresh_from_db()
+		self.assertEqual(result.score.activity_xp, awarded_xp)
+		self.assertEqual(self.user.score_summary.career_xp, awarded_xp)

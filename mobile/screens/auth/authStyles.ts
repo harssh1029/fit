@@ -30,13 +30,13 @@ const AUTH_GLASS_CARD_LIGHT = {
 export const authStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: "rgba(9,17,31,0.9)",
     paddingHorizontal: 24,
     paddingTop: 32,
   },
   onboardingRoot: {
     flex: 1,
-    backgroundColor: "#050814",
+    backgroundColor: "rgba(9,17,31,0.9)",
     paddingHorizontal: 20,
     paddingTop: 18,
   },
@@ -56,8 +56,8 @@ export const authStyles = StyleSheet.create({
     borderColor: "rgba(125,211,252,0.18)",
   },
   authBrandPillLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.74)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   authBrandText: {
     marginLeft: 7,
@@ -79,14 +79,25 @@ export const authStyles = StyleSheet.create({
     borderColor: "rgba(125,211,252,0.18)",
   },
   onboardingIconButtonLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.74)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   onboardingHeader: {
     alignItems: "center",
-    paddingTop: 46,
+    paddingTop: 34,
     paddingHorizontal: 12,
-    paddingBottom: 18,
+    paddingBottom: 16,
+  },
+  onboardingEyebrow: {
+    color: "#7DD3FC",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  onboardingEyebrowLight: {
+    color: "#2563EB",
   },
   onboardingTitle: {
     color: "#F5F7FA",
@@ -104,6 +115,22 @@ export const authStyles = StyleSheet.create({
   },
   onboardingContent: {
     paddingBottom: 24,
+  },
+  profileProgressTrack: {
+    width: "100%",
+    height: 6,
+    marginTop: 18,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(148,163,184,0.22)",
+  },
+  profileProgressTrackLight: {
+    backgroundColor: "rgba(148,163,184,0.24)",
+  },
+  profileProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: PS_BLUE,
   },
   onboardingFooter: {
     paddingTop: 10,
@@ -157,6 +184,35 @@ export const authStyles = StyleSheet.create({
   },
   registerFooter: {
     paddingTop: 14,
+  },
+  profileValueStrip: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.14)",
+    backgroundColor: "rgba(125,211,252,0.08)",
+    padding: 13,
+    marginBottom: 14,
+  },
+  profileValueItem: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  profileValueKicker: {
+    color: "#7DD3FC",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0,
+    marginBottom: 4,
+  },
+  profileValueText: {
+    color: "#D9E4F2",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  profileValueTextLight: {
+    color: "#334155",
   },
   // Segmented control for Login / Register toggle inside the card
   segmentContainer: {
@@ -320,6 +376,324 @@ export const authStyles = StyleSheet.create({
   },
   compactOptionTextSelected: {
     color: "#FFFFFF",
+  },
+  scrollPickerStack: {
+    marginBottom: 2,
+  },
+  metricGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: -5,
+    marginBottom: 2,
+  },
+  metricGridItem: {
+    width: "50%",
+    paddingHorizontal: 5,
+    marginBottom: 10,
+  },
+  metricTile: {
+    minHeight: 112,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    backgroundColor: "rgba(8,17,32,0.86)",
+    padding: 12,
+    justifyContent: "space-between",
+    ...AUTH_GLASS_CARD_DARK,
+  },
+  metricTileLight: {
+    backgroundColor: "rgba(248,250,252,0.94)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
+  },
+  metricTileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 22,
+  },
+  metricTileLabel: {
+    flex: 1,
+    marginLeft: 6,
+    color: "#A7B0C3",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  metricTileLabelLight: {
+    color: "#64748B",
+  },
+  metricValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+  },
+  metricStepButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.14)",
+  },
+  metricStepButtonLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+  },
+  metricValueBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    paddingHorizontal: 5,
+  },
+  metricValueText: {
+    color: "#F5F7FA",
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  metricValueTextLight: {
+    color: "#111827",
+  },
+  metricUnitText: {
+    marginTop: 1,
+    color: "#A7B0C3",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  metricUnitTextLight: {
+    color: "#64748B",
+  },
+  profileChipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: -4,
+    marginBottom: 12,
+  },
+  profileChip: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginHorizontal: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    backgroundColor: "rgba(8,17,32,0.82)",
+  },
+  profileChipLight: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "#CFE3F7",
+  },
+  profileChipSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
+  },
+  profileChipIcon: {
+    marginRight: 6,
+  },
+  profileChipText: {
+    color: "#D9E4F2",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  profileChipTextLight: {
+    color: "#334155",
+  },
+  profileChipTextSelected: {
+    color: "#FFFFFF",
+  },
+  revealCard: {
+    marginTop: 8,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.24)",
+    backgroundColor: "rgba(15,23,42,0.92)",
+    padding: 15,
+    ...AUTH_GLASS_CARD_DARK,
+  },
+  revealCardLight: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
+  },
+  revealHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  revealIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PS_BLUE,
+    marginRight: 11,
+  },
+  revealHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  revealKicker: {
+    color: "#7DD3FC",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  revealKickerLight: {
+    color: "#2563EB",
+  },
+  revealTitle: {
+    marginTop: 2,
+    color: "#F5F7FA",
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  revealTitleLight: {
+    color: "#111827",
+  },
+  revealMetricRow: {
+    flexDirection: "row",
+    marginTop: 14,
+    marginHorizontal: -5,
+  },
+  revealMetric: {
+    flex: 1,
+    minHeight: 70,
+    marginHorizontal: 5,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(125,211,252,0.1)",
+  },
+  revealMetricValue: {
+    color: PS_BLUE,
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  revealMetricLabel: {
+    marginTop: 2,
+    color: "#A7B0C3",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  revealMetricLabelLight: {
+    color: "#64748B",
+  },
+  revealSummary: {
+    marginTop: 12,
+    color: "#D9E4F2",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  revealSummaryLight: {
+    color: "#334155",
+  },
+  revealButton: {
+    marginTop: 16,
+  },
+  calculationPanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.24)",
+    backgroundColor: "rgba(15,23,42,0.92)",
+    padding: 18,
+    alignItems: "center",
+    ...AUTH_GLASS_CARD_DARK,
+  },
+  calculationPanelLight: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderColor: "#CFE3F7",
+    ...AUTH_GLASS_CARD_LIGHT,
+  },
+  calculationPulse: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PS_BLUE,
+    shadowColor: PS_BLUE,
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+    marginBottom: 16,
+  },
+  calculationTitle: {
+    color: "#F5F7FA",
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: 0,
+  },
+  calculationTitleLight: {
+    color: "#111827",
+  },
+  calculationSubtitle: {
+    marginTop: 7,
+    color: "#A7B0C3",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  calculationSubtitleLight: {
+    color: "#64748B",
+  },
+  calculationSteps: {
+    alignSelf: "stretch",
+    marginTop: 18,
+  },
+  calculationStepRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    backgroundColor: "rgba(125,211,252,0.07)",
+  },
+  calculationStepIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    backgroundColor: "rgba(148,163,184,0.28)",
+  },
+  calculationStepIconLight: {
+    backgroundColor: "rgba(148,163,184,0.18)",
+  },
+  calculationStepIconActive: {
+    backgroundColor: PS_BLUE,
+  },
+  calculationStepNumber: {
+    color: "#A7B0C3",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  calculationStepText: {
+    flex: 1,
+    color: "#A7B0C3",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  calculationStepTextLight: {
+    color: "#64748B",
+  },
+  calculationStepTextActive: {
+    color: PS_BLUE,
   },
   scrollPickerBlock: {
     borderRadius: 20,
@@ -487,8 +861,8 @@ export const authStyles = StyleSheet.create({
     borderColor: "rgba(125,211,252,0.18)",
   },
   goalListItemLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.64)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   goalListItemSelected: {
     backgroundColor: PS_BLUE,

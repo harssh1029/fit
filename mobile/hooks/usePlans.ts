@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import { fetchCachedJson } from "../api/client";
 import { useAuth } from "../App";
 import type { ApiPlan, Plan } from "../App";
 import { mapApiPlan } from "../App";
@@ -18,42 +18,23 @@ export function usePlans() {
 		};
 	}, []);
 
-	const loadPlans = useCallback(async () => {
+	const loadPlans = useCallback(async (force = true) => {
 		try {
 			if (isMountedRef.current) {
 				setLoading(true);
 				setError(null);
 			}
 
-			let tokenToUse = accessToken;
-			const headers: HeadersInit = {};
-			if (tokenToUse) {
-				headers.Authorization = `Bearer ${tokenToUse}`;
-			}
-
-			let response = await fetch(`${API_BASE_URL}/plans/`, { headers });
-			if (response.status === 401 && tokenToUse) {
-				const refreshed = await refreshAccessToken();
-				if (!refreshed) {
-					await signOut();
-					return;
-				}
-				tokenToUse = refreshed;
-				response = await fetch(`${API_BASE_URL}/plans/`, {
-					headers: { Authorization: `Bearer ${tokenToUse}` },
-				});
-			}
-			if (!response.ok) {
-				throw new Error(`Failed to load plans (${response.status})`);
-			}
-
-			const json = (await response.json()) as ApiPlan[] | { results: ApiPlan[] };
-			let apiPlans: ApiPlan[] = [];
-			if (Array.isArray(json)) {
-				apiPlans = json as ApiPlan[];
-			} else if (json && Array.isArray((json as any).results)) {
-				apiPlans = (json as any).results as ApiPlan[];
-			}
+			const json = await fetchCachedJson<ApiPlan[] | { results: ApiPlan[] }>(
+				"/plans/",
+				{
+				accessToken,
+				refreshAccessToken,
+				signOut,
+				},
+				{ force, tags: ["plans"], ttlMs: 30_000 },
+			);
+			const apiPlans = Array.isArray(json) ? json : json.results ?? [];
 
 			if (isMountedRef.current) {
 				setPlans(apiPlans.map(mapApiPlan));
@@ -72,7 +53,7 @@ export function usePlans() {
 	}, [accessToken, refreshAccessToken, signOut]);
 
 	useEffect(() => {
-		void loadPlans();
+		void loadPlans(false);
 	}, [loadPlans]);
 
 	return { plans, loading, error, reload: loadPlans };

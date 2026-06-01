@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   ScrollView,
@@ -10,8 +11,16 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { API_BASE_URL } from "../../api/client";
+import {
+  API_BASE_URL,
+  fetchCachedJson,
+  fetchRequiredAuth,
+  invalidateApiCache,
+} from "../../api/client";
 import { AppHeader } from "../../components/AppHeader";
 import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
 import {
@@ -31,22 +40,25 @@ import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
 import { useAchievements } from "../../hooks/useAchievements";
 import { fontFamily } from "../../styles/typography";
 import { loadExerciseDemoIds } from "../../utils/exerciseLookup";
-import type { UserProfile } from "../../App";
+import type { ProfileStackParamList, UserProfile } from "../../App";
 
 type ProfileSummary = {
   public_card?: {
     avatarInitials?: string;
+    avatarUrl?: string;
     followersCount?: number;
     followingCount?: number;
     postCount?: number;
     performanceScore?: number;
     weeklyXp?: number;
     bodyBalancePercent?: number;
+    fitnessAgeYears?: number | null;
     activePlanName?: string | null;
     tier?: string;
   };
   prs?: any[];
   challenges?: any[];
+  joined_challenges?: any[];
   groups?: any[];
   posts?: any[];
   achievements?: any;
@@ -207,27 +219,12 @@ const resolveMediaUrl = (url?: string | null) => {
   return `${base}${url.startsWith("/") ? url : `/${url}`}`;
 };
 
-const getProfilePostImageUrls = (post: any) => {
-  const metadata = post?.metadata && typeof post.metadata === "object" ? post.metadata : {};
-  const summary = post?.frontendSummary && typeof post.frontendSummary === "object" ? post.frontendSummary : {};
-  const urls = [
-    ...(Array.isArray(metadata.image_urls) ? metadata.image_urls : []),
-    ...(Array.isArray(summary.image_urls) ? summary.image_urls : []),
-    typeof metadata.image_url === "string" ? metadata.image_url : "",
-  ];
-  return Array.from(new Set(urls.filter((item): item is string => typeof item === "string" && item.trim().length > 0))).map(resolveMediaUrl);
-};
-
-const getProfilePostMetric = (post: any, key: string) => {
-  const metadata = post?.metadata && typeof post.metadata === "object" ? post.metadata : {};
-  const summary = post?.frontendSummary && typeof post.frontendSummary === "object" ? post.frontendSummary : {};
-  return summary[key] ?? metadata[key];
-};
-
 const AccountScreen: React.FC = () => {
   const { mode, toggle } = useThemeMode();
   const isLight = mode === "light";
   const { accessToken, refreshAccessToken, signOut } = useAuth();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const { prs: exercisePrs } = useExercisePrs();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(
@@ -245,7 +242,10 @@ const AccountScreen: React.FC = () => {
   const [isWorkoutHistorySheetVisible, setIsWorkoutHistorySheetVisible] =
     useState(false);
   const [badgeCategory, setBadgeCategory] = useState("all");
-  const [showAllProfilePosts, setShowAllProfilePosts] = useState(false);
+  const [areProfileBadgesExpanded, setAreProfileBadgesExpanded] =
+    useState(false);
+  const [expandedBadgeId, setExpandedBadgeId] = useState<number | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const {
     items: allWorkoutHistoryItems,
     loading: allWorkoutHistoryLoading,
@@ -255,6 +255,72 @@ const AccountScreen: React.FC = () => {
   const { summary: achievementSummary, pinBadges } = useAchievements();
   const accountUserName =
     profile?.profile.display_name || profile?.username || null;
+  const auth = { accessToken, refreshAccessToken, signOut };
+
+  const chooseProfilePicture = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Photo access needed", "Allow photo access to choose a profile picture.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.86,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    const extension = asset.uri.split(".").pop()?.toLowerCase() || "jpg";
+    const formData = new FormData();
+    formData.append(
+      "image",
+      {
+        uri: asset.uri,
+        name: `profile-picture.${extension}`,
+        type: asset.mimeType || "image/jpeg",
+      } as any,
+    );
+    setAvatarUploading(true);
+    try {
+      const response = await fetchRequiredAuth("/profiles/me/avatar/", auth, {
+        method: "POST",
+        body: formData,
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        avatar_url?: string;
+        detail?: string;
+      };
+      if (!response.ok || !json.avatar_url) {
+        throw new Error(json.detail || "Unable to upload profile picture.");
+      }
+      invalidateApiCache("profile", "profile-summary", "community-summary", "community-activity");
+      setProfile((current) =>
+        current
+          ? { ...current, profile: { ...current.profile, avatar_url: json.avatar_url } }
+          : current,
+      );
+      setProfileSummary((current) =>
+        current
+          ? {
+              ...current,
+              public_card: {
+                ...current.public_card,
+                avatarUrl: json.avatar_url,
+              },
+            }
+          : current,
+      );
+    } catch (err) {
+      Alert.alert(
+        "Upload failed",
+        err instanceof Error ? err.message : "Unable to upload profile picture.",
+      );
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -287,35 +353,19 @@ const AccountScreen: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        let tokenToUse = accessToken;
-        let response = await fetch(`${API_BASE_URL}/me/`, {
-          headers: {
-            Authorization: `Bearer ${tokenToUse}`,
-          },
-        });
-        if (response.status === 401) {
-          const refreshed = await refreshAccessToken();
-          if (!refreshed) {
-            await signOut();
-            return;
-          }
-          tokenToUse = refreshed;
-          response = await fetch(`${API_BASE_URL}/me/`, {
-            headers: { Authorization: `Bearer ${refreshed}` },
-          });
-        }
-        if (!response.ok) {
-          throw new Error("Failed to load profile");
-        }
-        const json = (await response.json()) as UserProfile;
+        const auth = { accessToken, refreshAccessToken, signOut };
+        const [json, summaryJson] = await Promise.all([
+          fetchCachedJson<UserProfile>("/me/", auth, {
+            requiredAuth: true,
+            tags: ["profile"],
+          }),
+          fetchCachedJson<ProfileSummary>("/profiles/me/summary/", auth, {
+            requiredAuth: true,
+            tags: ["profile-summary"],
+          }),
+        ]);
         if (isMounted) setProfile(json);
-        const summaryResponse = await fetch(`${API_BASE_URL}/profiles/me/summary/`, {
-          headers: { Authorization: `Bearer ${tokenToUse}` },
-        });
-        if (summaryResponse.ok) {
-          const summaryJson = (await summaryResponse.json()) as ProfileSummary;
-          if (isMounted) setProfileSummary(summaryJson);
-        }
+        if (isMounted) setProfileSummary(summaryJson);
       } catch (err) {
         if (isMounted) {
           setError(
@@ -343,6 +393,7 @@ const AccountScreen: React.FC = () => {
           isLight={isLight}
           title="Your profile"
           userName={accountUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <View style={styles.loadingContainer}>
@@ -362,6 +413,7 @@ const AccountScreen: React.FC = () => {
           isLight={isLight}
           title="Your profile"
           userName={accountUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
@@ -402,16 +454,21 @@ const AccountScreen: React.FC = () => {
       ? recentBadges
       : recentBadges.filter((item: any) => item.badge.category === badgeCategory);
   const publicCard = profileSummary?.public_card;
-  const profileBadges = featuredBadges.length ? featuredBadges : recentBadges.slice(0, 3);
+  const profileBadges = [...featuredBadges, ...recentBadges].filter(
+    (item: any, index: number, items: any[]) =>
+      items.findIndex((candidate: any) => candidate.id === item.id) === index,
+  );
+  const visibleProfileBadges = areProfileBadgesExpanded
+    ? profileBadges
+    : profileBadges.slice(0, 3);
   const profilePrs = profileSummary?.prs?.length ? profileSummary.prs : exercisePrs;
   const topCategories = [...categoryLevels]
     .sort((a: any, b: any) => (Number(b.xp) || 0) - (Number(a.xp) || 0))
     .slice(0, 3);
-  const visibleProfilePosts = showAllProfilePosts
-    ? profileSummary?.posts ?? []
-    : (profileSummary?.posts ?? []).slice(0, 4);
   const completedPlans = achievements?.completedPlans ?? [];
   const completedChallenges = achievements?.completedChallenges ?? profileSummary?.challenges ?? [];
+  const joinedChallenges = profileSummary?.joined_challenges ?? [];
+  const avatarUrl = profile.profile.avatar_url || publicCard?.avatarUrl || "";
   const initials =
     publicCard?.avatarInitials ||
     name
@@ -979,16 +1036,38 @@ const AccountScreen: React.FC = () => {
           isLight={isLight}
           title="Your profile"
           userName={accountUserName}
+          avatarUrl={avatarUrl}
           onThemeToggle={toggle}
         />
 
         <View style={[publicProfileStyles.hero, isLight && publicProfileStyles.heroLight]}>
           <View style={publicProfileStyles.heroTop}>
-            <View style={[publicProfileStyles.avatar, isLight && publicProfileStyles.avatarLight]}>
-              <Text style={[publicProfileStyles.avatarText, isLight && publicProfileStyles.avatarTextLight]}>
-                {initials}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={[publicProfileStyles.avatar, isLight && publicProfileStyles.avatarLight]}
+              activeOpacity={0.86}
+              onPress={() => void chooseProfilePicture()}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile picture"
+            >
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: resolveMediaUrl(avatarUrl) }}
+                  style={publicProfileStyles.avatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={[publicProfileStyles.avatarText, isLight && publicProfileStyles.avatarTextLight]}>
+                  {initials}
+                </Text>
+              )}
+              <View style={publicProfileStyles.avatarEditBadge}>
+                {avatarUploading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
             <View style={publicProfileStyles.heroCopy}>
               <Text style={[publicProfileStyles.name, isLight && publicProfileStyles.nameLight]} numberOfLines={1}>
                 {name}
@@ -1023,42 +1102,119 @@ const AccountScreen: React.FC = () => {
               ["Posts", publicCard?.postCount ?? 0],
               ["Workouts", profileSummary?.insights?.workout_count ?? allWorkoutHistoryItems.length],
             ].map(([label, value]) => (
-              <View key={String(label)} style={publicProfileStyles.statItem}>
+              <TouchableOpacity
+                key={String(label)}
+                style={publicProfileStyles.statItem}
+                activeOpacity={label === "Posts" ? 0.78 : 1}
+                disabled={label !== "Posts"}
+                onPress={() => navigation.navigate("ProfileActivity", { mode: "posts" })}
+                accessibilityRole={label === "Posts" ? "button" : undefined}
+                accessibilityLabel={label === "Posts" ? "Open your posts" : undefined}
+              >
                 <Text style={[publicProfileStyles.statValue, isLight && publicProfileStyles.statValueLight]}>
                   {Number(value || 0).toLocaleString()}
                 </Text>
                 <Text style={[publicProfileStyles.statLabel, isLight && publicProfileStyles.statLabelLight]}>
                   {label}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        <View style={publicProfileStyles.section}>
-          <Text style={[publicProfileStyles.sectionTitle, isLight && publicProfileStyles.sectionTitleLight]}>
-            Badges
+        <View style={[publicProfileStyles.metricCard, isLight && publicProfileStyles.metricCardLight]}>
+          <View style={[publicProfileStyles.metricIcon, isLight && publicProfileStyles.metricIconLight]}>
+            <Ionicons name="pulse-outline" size={20} color={isLight ? "#0068BD" : "#7DD3FC"} />
+          </View>
+          <View style={publicProfileStyles.activityCopy}>
+            <Text style={[publicProfileStyles.metricLabel, isLight && publicProfileStyles.metricLabelLight]}>
+              Fitness age
+            </Text>
+            <Text style={[publicProfileStyles.metricMeta, isLight && publicProfileStyles.metricMetaLight]}>
+              Your current training baseline
+            </Text>
+          </View>
+          <Text style={[publicProfileStyles.metricValue, isLight && publicProfileStyles.metricValueLight]}>
+            {publicCard?.fitnessAgeYears ?? "—"}
           </Text>
+        </View>
+
+        <View style={publicProfileStyles.section}>
+          <View style={publicProfileStyles.sectionHeaderRow}>
+            <Text style={[publicProfileStyles.sectionTitle, isLight && publicProfileStyles.sectionTitleLight]}>
+              Badges
+            </Text>
+            {profileBadges.length > 3 ? (
+              <TouchableOpacity
+                activeOpacity={0.76}
+                onPress={() => {
+                  setAreProfileBadgesExpanded((current) => !current);
+                  if (areProfileBadgesExpanded) setExpandedBadgeId(null);
+                }}
+              >
+                <Text style={publicProfileStyles.badgeToggleText}>
+                  {areProfileBadgesExpanded ? "Show less" : `Show all (${profileBadges.length})`}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
           {profileBadges.length ? (
-            <View style={publicProfileStyles.badgeRow}>
-              {profileBadges.slice(0, 3).map((item: any) => (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.86}
-                  onPress={() => pinRecentBadge(item.id)}
-                  style={[publicProfileStyles.badgeTile, isLight && publicProfileStyles.badgeTileLight]}
-                >
-                  <View style={[publicProfileStyles.badgeIcon, { borderColor: rarityColor(item.badge.rarity) }]}>
-                    <Ionicons name={categoryIcon(item.badge.category)} size={18} color={rarityColor(item.badge.rarity)} />
+            <View style={publicProfileStyles.badgeList}>
+              {visibleProfileBadges.map((item: any) => {
+                const isExpanded = expandedBadgeId === item.id;
+                const isPinned = featuredBadges.some((badge: any) => badge.id === item.id);
+                return (
+                  <View
+                    key={item.id}
+                    style={[publicProfileStyles.badgeListItem, isLight && publicProfileStyles.badgeListItemLight]}
+                  >
+                    <TouchableOpacity
+                      activeOpacity={0.86}
+                      onPress={() => setExpandedBadgeId((current) => current === item.id ? null : item.id)}
+                      style={publicProfileStyles.badgeListRow}
+                    >
+                      <View style={[publicProfileStyles.badgeIcon, { borderColor: rarityColor(item.badge.rarity) }]}>
+                        <Ionicons name={categoryIcon(item.badge.category)} size={18} color={rarityColor(item.badge.rarity)} />
+                      </View>
+                      <View style={publicProfileStyles.badgeListCopy}>
+                        <Text style={[publicProfileStyles.badgeListName, isLight && publicProfileStyles.badgeListNameLight]} numberOfLines={1}>
+                          {item.badge.name}
+                        </Text>
+                        <Text style={publicProfileStyles.badgeMeta} numberOfLines={1}>
+                          {titleize(item.badge.rarity)} badge
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={isExpanded ? "chevron-up-outline" : "chevron-down-outline"}
+                        size={17}
+                        color={isLight ? "#64748B" : "#94A3B8"}
+                      />
+                    </TouchableOpacity>
+                    {isExpanded ? (
+                      <View style={[publicProfileStyles.badgeExpandedPanel, isLight && publicProfileStyles.badgeExpandedPanelLight]}>
+                        <Text style={[publicProfileStyles.badgeExpandedText, isLight && publicProfileStyles.badgeExpandedTextLight]}>
+                          {item.badge.description}
+                        </Text>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          disabled={isPinned}
+                          onPress={() => pinRecentBadge(item.id)}
+                          style={[publicProfileStyles.badgePinButton, isPinned && publicProfileStyles.badgePinButtonPinned]}
+                        >
+                          <Ionicons
+                            name={isPinned ? "checkmark-circle-outline" : "pin-outline"}
+                            size={15}
+                            color={isPinned ? "#94A3B8" : "#7DD3FC"}
+                          />
+                          <Text style={[publicProfileStyles.badgePinButtonText, isPinned && publicProfileStyles.badgePinButtonTextPinned]}>
+                            {isPinned ? "Pinned to profile" : "Pin to profile"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={[publicProfileStyles.badgeName, isLight && publicProfileStyles.badgeNameLight]} numberOfLines={2}>
-                    {item.badge.name}
-                  </Text>
-                  <Text style={publicProfileStyles.badgeMeta} numberOfLines={1}>
-                    {titleize(item.badge.rarity)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <Text style={[publicProfileStyles.emptyText, isLight && publicProfileStyles.emptyTextLight]}>
@@ -1095,67 +1251,28 @@ const AccountScreen: React.FC = () => {
         </View>
 
         <View style={publicProfileStyles.section}>
-          <View style={publicProfileStyles.sectionHeaderRow}>
-            <Text style={[publicProfileStyles.sectionTitle, isLight && publicProfileStyles.sectionTitleLight]}>
-              Posts
-            </Text>
-            {(profileSummary?.posts?.length ?? 0) > 4 ? (
-              <TouchableOpacity
-                activeOpacity={0.84}
-                onPress={() => setShowAllProfilePosts((current) => !current)}
-              >
-                <Text style={publicProfileStyles.linkText}>
-                  {showAllProfilePosts ? "Show less" : "View more"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          {visibleProfilePosts.length ? (
-            <View style={publicProfileStyles.postGrid}>
-              {visibleProfilePosts.map((post: any) => {
-                const images = getProfilePostImageUrls(post);
-                const duration = getProfilePostMetric(post, "duration_minutes");
-                const xp = getProfilePostMetric(post, "xp");
-                const focus = getProfilePostMetric(post, "focus") ?? getProfilePostMetric(post, "focus_label");
-                return (
-                  <TouchableOpacity
-                    key={post.id}
-                    activeOpacity={0.88}
-                    style={[publicProfileStyles.postTile, isLight && publicProfileStyles.postTileLight]}
-                  >
-                    <View style={publicProfileStyles.postMedia}>
-                      {images[0] ? (
-                        <Image source={{ uri: images[0] }} style={publicProfileStyles.postImage} resizeMode="cover" />
-                      ) : (
-                        <View style={publicProfileStyles.postFallback}>
-                          <Ionicons name="barbell-outline" size={24} color="#7DD3FC" />
-                        </View>
-                      )}
-                      {images.length > 1 ? (
-                        <View style={publicProfileStyles.postStackBadge}>
-                          <Ionicons name="albums-outline" size={13} color="#FFFFFF" />
-                        </View>
-                      ) : null}
-                    </View>
-                    <View style={publicProfileStyles.postCopy}>
-                      <Text style={[publicProfileStyles.postTitle, isLight && publicProfileStyles.postTitleLight]} numberOfLines={2}>
-                        {post.title}
-                      </Text>
-                      <Text style={[publicProfileStyles.postMeta, isLight && publicProfileStyles.postMetaLight]} numberOfLines={1}>
-                        {[duration ? `${duration}m` : "", focus || "", xp ? `${xp} XP` : ""].filter(Boolean).join(" · ") || post.occurredAt}
-                      </Text>
-                      <View style={publicProfileStyles.postEngagementRow}>
-                        <Text style={publicProfileStyles.postEngagement}>{post.likesCount ?? 0} likes</Text>
-                        <Text style={publicProfileStyles.postEngagement}>{post.commentsCount ?? 0} comments</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+          <Text style={[publicProfileStyles.sectionTitle, isLight && publicProfileStyles.sectionTitleLight]}>
+            Challenges joined
+          </Text>
+          {joinedChallenges.length ? (
+            joinedChallenges.slice(0, 3).map((challenge: any) => (
+              <View key={challenge.id} style={[publicProfileStyles.clubRow, isLight && publicProfileStyles.identityCellLight]}>
+                <View style={publicProfileStyles.challengeIcon}>
+                  <Ionicons name="trophy-outline" size={17} color="#FBBF24" />
+                </View>
+                <View style={publicProfileStyles.activityCopy}>
+                  <Text style={[publicProfileStyles.activityTitle, isLight && publicProfileStyles.activityTitleLight]} numberOfLines={1}>
+                    {challenge.name}
+                  </Text>
+                  <Text style={[publicProfileStyles.activityMeta, isLight && publicProfileStyles.activityMetaLight]} numberOfLines={1}>
+                    {challenge.progressPercent ?? 0}% complete · {titleize(challenge.status ?? "active")}
+                  </Text>
+                </View>
+              </View>
+            ))
           ) : (
             <Text style={[publicProfileStyles.emptyText, isLight && publicProfileStyles.emptyTextLight]}>
-              No public posts yet.
+              No challenges joined yet.
             </Text>
           )}
         </View>
@@ -1218,6 +1335,20 @@ const AccountScreen: React.FC = () => {
             </View>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[publicProfileStyles.historyButton, isLight && publicProfileStyles.historyButtonLight]}
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate("ProfileActivity", { mode: "saved" })}
+        >
+          <View style={publicProfileStyles.historyButtonLabel}>
+            <Ionicons name="bookmark-outline" size={18} color={isLight ? "#334155" : "#CBD5E1"} />
+            <Text style={[publicProfileStyles.historyButtonText, isLight && publicProfileStyles.historyButtonTextLight]}>
+              Saved posts
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={isLight ? "#334155" : "#CBD5E1"} />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[publicProfileStyles.historyButton, isLight && publicProfileStyles.historyButtonLight]}
@@ -1542,6 +1673,24 @@ const publicProfileStyles = StyleSheet.create({
   avatarLight: {
     backgroundColor: "#EAF1FF",
   },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 32,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0068BD",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
   avatarText: {
     color: "#F8FAFC",
     fontFamily: fontFamily.uiBold,
@@ -1643,6 +1792,54 @@ const publicProfileStyles = StyleSheet.create({
   statLabelLight: {
     color: "#64748B",
   },
+  metricCard: {
+    marginTop: 14,
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: "rgba(15,23,42,0.58)",
+  },
+  metricCardLight: {
+    backgroundColor: "#FFFFFF",
+  },
+  metricIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,104,189,0.16)",
+  },
+  metricIconLight: {
+    backgroundColor: "#EEF6FF",
+  },
+  metricLabel: {
+    color: "#F8FAFC",
+    fontFamily: fontFamily.uiBold,
+    fontSize: 14,
+  },
+  metricLabelLight: {
+    color: "#0F172A",
+  },
+  metricMeta: {
+    marginTop: 3,
+    color: "#94A3B8",
+    fontFamily: fontFamily.uiMedium,
+    fontSize: 11,
+  },
+  metricMetaLight: {
+    color: "#64748B",
+  },
+  metricValue: {
+    color: "#7DD3FC",
+    fontFamily: fontFamily.uiBold,
+    fontSize: 28,
+  },
+  metricValueLight: {
+    color: "#0068BD",
+  },
   section: {
     marginTop: 20,
   },
@@ -1735,6 +1932,82 @@ const publicProfileStyles = StyleSheet.create({
     fontFamily: fontFamily.uiMedium,
     fontSize: 10,
   },
+  badgeToggleText: {
+    color: "#7DD3FC",
+    fontFamily: fontFamily.uiSemi,
+    fontSize: 12,
+  },
+  badgeList: {
+    marginTop: 10,
+    gap: 8,
+  },
+  badgeListItem: {
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(15,23,42,0.58)",
+  },
+  badgeListItemLight: {
+    backgroundColor: "#F8FAFC",
+  },
+  badgeListRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  badgeListCopy: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 11,
+  },
+  badgeListName: {
+    color: "#F8FAFC",
+    fontFamily: fontFamily.uiBold,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  badgeListNameLight: {
+    color: "#0F172A",
+  },
+  badgeExpandedPanel: {
+    paddingTop: 11,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(148,163,184,0.14)",
+  },
+  badgeExpandedPanelLight: {
+    borderTopColor: "#E2E8F0",
+  },
+  badgeExpandedText: {
+    color: "#CBD5E1",
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  badgeExpandedTextLight: {
+    color: "#64748B",
+  },
+  badgePinButton: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    minHeight: 32,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(36,84,244,0.16)",
+  },
+  badgePinButtonPinned: {
+    backgroundColor: "rgba(148,163,184,0.12)",
+  },
+  badgePinButtonText: {
+    color: "#7DD3FC",
+    fontFamily: fontFamily.uiSemi,
+    fontSize: 11,
+  },
+  badgePinButtonTextPinned: {
+    color: "#94A3B8",
+  },
   clubRow: {
     marginTop: 10,
     minHeight: 58,
@@ -1751,6 +2024,14 @@ const publicProfileStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(36,84,244,0.18)",
+  },
+  challengeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(251,191,36,0.14)",
   },
   emptyText: {
     marginTop: 10,
@@ -1948,6 +2229,11 @@ const publicProfileStyles = StyleSheet.create({
   historyButtonLight: {
     backgroundColor: "#F1F5F9",
   },
+  historyButtonLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
   historyButtonText: {
     color: "#E2E8F0",
     fontFamily: fontFamily.uiBold,
@@ -2066,8 +2352,13 @@ const ecosystemStyles = StyleSheet.create({
     backgroundColor: "rgba(15,23,42,0.52)",
   },
   cardLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   levelCard: {
     borderColor: "rgba(124,107,255,0.34)",

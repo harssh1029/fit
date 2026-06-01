@@ -635,6 +635,7 @@ const ExerciseListScreen: React.FC = () => {
           isLight={isLight}
           title="Exercise library"
           userName={exercisesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <View style={styles.loadingContainer}>
@@ -654,6 +655,7 @@ const ExerciseListScreen: React.FC = () => {
           isLight={isLight}
           title="Exercise library"
           userName={exercisesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
@@ -675,6 +677,7 @@ const ExerciseListScreen: React.FC = () => {
           isLight={isLight}
           title="Exercise library"
           userName={exercisesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <View style={styles.exerciseListTitleRow}>
@@ -900,6 +903,7 @@ const ExerciseListScreen: React.FC = () => {
         isLight={isLight}
         title="Exercise library"
         userName={exercisesUserName}
+        avatarUrl={profile?.profile.avatar_url}
         onThemeToggle={toggle}
       />
       <TouchableOpacity
@@ -1212,10 +1216,13 @@ const exerciseStyles = StyleSheet.create({
     elevation: 2,
   },
   compactCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
     shadowColor: "#111827",
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   thumbWrap: {
     width: 82,
@@ -1227,8 +1234,8 @@ const exerciseStyles = StyleSheet.create({
     borderRightColor: "rgba(148,163,184,0.14)",
   },
   thumbWrapLight: {
-    backgroundColor: "#FFFFFF",
-    borderRightColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderRightColor: "rgba(148,163,184,0.2)",
   },
   thumbImage: {
     width: "100%",

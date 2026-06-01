@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 
 from django.db.models import Avg
@@ -11,15 +13,18 @@ from plans.models import UserPlan
 from workouts.models import UserScorePeriod, UserScoreSummary
 from workouts.services import recalculate_user_score_summary
 
+from .models import UserMetricsSnapshot
 from .services import recalculate_user_metrics
 
 
 BODY_FOCUS_CONFIG = [
-    ("cardio", "Cardio", "cardio_score", "cardio", "pulse-outline", "#2454F4"),
+    ("chest", "Chest", "chest_score", "chest", "body-outline", "#2454F4"),
     ("shoulders", "Shoulders", "shoulders_score", "shoulders", "body-outline", "#22C9D8"),
-    ("abs", "Abs", "core_score", "core", "barbell-outline", "#7867F2"),
-    ("legs", "Upper Legs", "quads_score", "quads", "walk-outline", "#20DDBB"),
-    ("biceps", "Biceps", "biceps_score", "arms", "fitness-outline", "#86A5F4"),
+    ("arms", "Arms", "biceps_score", "arms", "fitness-outline", "#86A5F4"),
+    ("back", "Back", "back_score", "back", "barbell-outline", "#7867F2"),
+    ("core", "Core", "core_score", "core", "ellipse-outline", "#20DDBB"),
+    ("glutes", "Glutes", "glutes_score", "glutes", "walk-outline", "#F2C16F"),
+    ("legs", "Legs", "quads_score", "legs", "walk-outline", "#F47C5C"),
 ]
 
 CATEGORY_CONFIG = [
@@ -95,46 +100,35 @@ def _build_metric_trend(
     metric_key: str,
     ideal: int,
     current_average: int,
+    period_rows: dict | None = None,
+    average_period_rows: dict | None = None,
 ) -> list[dict]:
     today = as_of.date()
     current_week_start = today - timedelta(days=today.weekday())
     weeks = [current_week_start - timedelta(days=7 * offset) for offset in range(5, -1, -1)]
-    period_rows = {
-        row.period_start: row
-        for row in UserScorePeriod.objects.filter(
-            user=user,
-            period_type="weekly",
-            period_start__in=weeks,
-        )
-    }
+    if period_rows is None:
+        period_rows = {
+            row.period_start: row
+            for row in UserScorePeriod.objects.filter(
+                user=user,
+                period_type="weekly",
+                period_start__in=weeks,
+            )
+        }
+    average_period_rows = average_period_rows or {}
     trend = []
     for index, week_start in enumerate(weeks):
         row = period_rows.get(week_start)
+        average_row = average_period_rows.get(week_start, {})
         if metric_key == "consistency":
             you = min(100, int(round(float(getattr(row, "consistency_score", 0) or 0) / 1.5))) if row else 0
-            average = min(100, int(round(float(
-                UserScorePeriod.objects.filter(
-                    period_type="weekly",
-                    period_start=week_start,
-                ).aggregate(value=Avg("consistency_score"))["value"]
-                or 0
-            ) / 1.5)))
+            average = min(100, int(round(float(average_row.get("average_consistency") or 0) / 1.5)))
         elif metric_key == "xp":
             you = _comparison_value(getattr(row, "activity_xp", 0) if row else 0)
-            average = _comparison_value(
-                UserScorePeriod.objects.filter(
-                    period_type="weekly",
-                    period_start=week_start,
-                ).aggregate(value=Avg("activity_xp"))["value"]
-            )
+            average = _comparison_value(average_row.get("average_xp"))
         elif metric_key == "leaderboard":
             you = _comparison_value(getattr(row, "leaderboard_score", 0) if row else 0)
-            average = _comparison_value(
-                UserScorePeriod.objects.filter(
-                    period_type="weekly",
-                    period_start=week_start,
-                ).aggregate(value=Avg("leaderboard_score"))["value"]
-            )
+            average = _comparison_value(average_row.get("average_leaderboard"))
         else:
             # Balance is a current rolling score. Give it a stable trend shape
             # from current data instead of exposing the raw body-map internals.
@@ -159,14 +153,38 @@ def _build_comparison_metrics(user, summary, as_of) -> dict:
         leaderboard=Avg("performance_score"),
         balance=Avg("training_balance_score"),
     )
+    today = as_of.date()
+    current_week_start = today - timedelta(days=today.weekday())
+    weeks = [current_week_start - timedelta(days=7 * offset) for offset in range(5, -1, -1)]
+    period_rows = {
+        row.period_start: row
+        for row in UserScorePeriod.objects.filter(
+            user=user,
+            period_type="weekly",
+            period_start__in=weeks,
+        )
+    }
+    average_period_rows = {
+        row["period_start"]: row
+        for row in UserScorePeriod.objects.filter(
+            period_type="weekly",
+            period_start__in=weeks,
+        )
+        .values("period_start")
+        .annotate(
+            average_consistency=Avg("consistency_score"),
+            average_xp=Avg("activity_xp"),
+            average_leaderboard=Avg("leaderboard_score"),
+        )
+    }
     current_consistency = min(100, int(round(float(summary.consistency_score or 0) / 10)))
     average_consistency = min(100, int(round(float(averages["consistency"] or 0) / 10)))
     metric_configs = [
         {
             "key": "consistency",
-            "label": "Consistency",
+            "label": "Weekly consistency",
             "unit": "%",
-            "description": "Training rhythm compared with the field and a healthy ideal.",
+            "description": "Weeks with enough active training days compared with the field and a healthy ideal.",
             "current": current_consistency,
             "average": average_consistency,
             "ideal": 75,
@@ -182,18 +200,18 @@ def _build_comparison_metrics(user, summary, as_of) -> dict:
         },
         {
             "key": "streak",
-            "label": "Streak",
-            "unit": "days",
-            "description": "Current training run against average active users.",
+            "label": "Weekly consistency streak",
+            "unit": "weeks",
+            "description": "Consecutive consistency run from the scoring profile. Daily streak is shown separately on the dashboard.",
             "current": _comparison_value(summary.streak_count),
             "average": _comparison_value(averages["streak"]),
-            "ideal": 7,
+            "ideal": 4,
             "trend": [
                 {
-                    "label": f"{offset}d",
+                    "label": f"{offset}w",
                     "you": min(_comparison_value(summary.streak_count), offset),
                     "average": _comparison_value(averages["streak"]),
-                    "ideal": 7,
+                    "ideal": 4,
                 }
                 for offset in [1, 2, 3, 4, 5, 6]
             ],
@@ -227,6 +245,8 @@ def _build_comparison_metrics(user, summary, as_of) -> dict:
                 metric_key=config["key"],
                 ideal=config["ideal"],
                 current_average=config["average"],
+                period_rows=period_rows,
+                average_period_rows=average_period_rows,
             )
         metrics.append(metric)
     return {"default_metric": "consistency", "metrics": metrics}
@@ -234,7 +254,9 @@ def _build_comparison_metrics(user, summary, as_of) -> dict:
 
 def _build_training_profile(user, body_detail: dict, *, as_of=None) -> dict:
     as_of = as_of or timezone.now()
-    summary = recalculate_user_score_summary(user, as_of=as_of)
+    summary = UserScoreSummary.objects.filter(user=user).first()
+    if summary is None:
+        summary = recalculate_user_score_summary(user, as_of=as_of)
     body_scores = summary.body_part_scores or {}
     body_groups = body_detail.get("groups") if isinstance(body_detail, dict) else {}
     if not isinstance(body_groups, dict):
@@ -242,16 +264,14 @@ def _build_training_profile(user, body_detail: dict, *, as_of=None) -> dict:
 
     body_focus = []
     for key, label, score_field, group_key, icon, accent in BODY_FOCUS_CONFIG:
-        if score_field == "cardio_score":
-            xp = float(getattr(summary, score_field, 0) or 0)
-        else:
-            xp = float(body_scores.get(score_field, 0) or 0)
+        xp = float(body_scores.get(score_field, 0) or 0)
         target = _next_target(xp, BODY_XP_TARGETS)
         group_info = body_groups.get(group_key) or {}
         body_focus.append(
             {
                 "key": key,
                 "label": label,
+                "metric_type": "body_part",
                 "xp": int(round(xp)),
                 "target_xp": target,
                 "percent": round(max(0, min(100, (xp / target) * 100)), 1) if target else 0,
@@ -270,6 +290,7 @@ def _build_training_profile(user, body_detail: dict, *, as_of=None) -> dict:
             {
                 "key": key,
                 "label": label,
+                "metric_type": "training_category",
                 "xp": int(round(xp)),
                 "target_xp": target,
                 "percent": round(max(0, min(100, (xp / target) * 100)), 1) if target else 0,
@@ -288,6 +309,7 @@ def _build_training_profile(user, body_detail: dict, *, as_of=None) -> dict:
         "monthly_xp": int(summary.monthly_xp or 0),
         "performance_score": round(float(summary.performance_score or 0), 1),
         "training_balance_score": round(float(summary.training_balance_score or 0), 1),
+        "updated_at": summary.updated_at.isoformat() if summary.updated_at else None,
         "comparison_metrics": _build_comparison_metrics(user, summary, as_of),
     }
 
@@ -317,7 +339,10 @@ class DashboardSummaryView(APIView):
                     timezone.get_current_timezone(),
                 )
 
-        snapshot = recalculate_user_metrics(user, as_of=as_of)
+        refresh = request.query_params.get("refresh", "").lower() in {"1", "true", "yes"}
+        snapshot = UserMetricsSnapshot.objects.filter(user=user).first()
+        if snapshot is None or date_param or refresh:
+            snapshot = recalculate_user_metrics(user, as_of=as_of)
 
         def _is_available(detail: dict, has_scalar: bool) -> bool:
             if isinstance(detail, dict) and "available" in detail:

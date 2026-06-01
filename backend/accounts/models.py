@@ -12,14 +12,27 @@ User = get_user_model()
 class Profile(models.Model):
 	"""User profile fields used by the Account screen."""
 
+	GENDER_CHOICES = [
+		('male', 'Male'),
+		('female', 'Female'),
+		('other', 'Other'),
+		('prefer_not_to_say', 'Prefer not to say'),
+	]
+	FITNESS_LEVEL_CHOICES = [
+		('beginner', 'Beginner'),
+		('consistent', 'Consistent'),
+		('advanced', 'Advanced'),
+	]
+
 	user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
 	display_name = models.CharField(max_length=255, blank=True)
+	avatar_url = models.URLField(blank=True)
 	height_cm = models.FloatField(null=True, blank=True)
 	weight_kg = models.FloatField(null=True, blank=True)
 	waist_cm = models.FloatField(null=True, blank=True)
 	gender = models.CharField(
-		max_length=16,
-		choices=[('male', 'Male'), ('female', 'Female')],
+		max_length=24,
+		choices=GENDER_CHOICES,
 		blank=True,
 	)
 	date_of_birth = models.DateField(null=True, blank=True)
@@ -37,6 +50,18 @@ class Profile(models.Model):
 		blank=True,
 		help_text='Personal best records for exercises. Format: {exerciseId: {weight, sets, reps, date}}',
 	)
+	fitness_level = models.CharField(
+		max_length=24,
+		choices=FITNESS_LEVEL_CHOICES,
+		blank=True,
+		help_text='Self-reported onboarding fitness level.',
+	)
+	fitness_goals = models.JSONField(default=list, blank=True)
+	training_preferences = models.JSONField(default=dict, blank=True)
+	training_restrictions = models.JSONField(default=dict, blank=True)
+	onboarding_answers = models.JSONField(default=dict, blank=True)
+	onboarding_version = models.PositiveSmallIntegerField(default=0)
+	onboarding_completed_at = models.DateTimeField(null=True, blank=True)
 
 	def __str__(self) -> str:  # pragma: no cover - trivial
 		return self.display_name or self.user.get_username()

@@ -1,17 +1,17 @@
 // Global theme color tokens - shared across screens.
-// The primary dark theme is a restrained athletic palette for the
-// premium workout social experience. Legacy exports remain below so
-// older screens keep working while newer UI uses the workout tokens.
+// The dark workout palette remains available, while the light theme follows
+// the editorial console-style system documented in DESIGN.md: white/ice
+// surfaces, charcoal type, PlayStation blue actions, and restrained elevation.
 
-export const WORKOUT_BG = "#0E1424";
-export const WORKOUT_BG_ALT = "#0F172A";
-export const WORKOUT_CARD = "#151B2E";
-export const WORKOUT_CARD_ELEVATED = "#1B2438";
+export const WORKOUT_BG = "#09111F";
+export const WORKOUT_BG_ALT = "#0C1728";
+export const WORKOUT_CARD = "#101B2D";
+export const WORKOUT_CARD_ELEVATED = "#142037";
 export const WORKOUT_TEXT_PRIMARY = "#F7F8FA";
 export const WORKOUT_TEXT_SECONDARY = "#A1A7B8";
 export const WORKOUT_TEXT_MUTED = "#6F778A";
-export const WORKOUT_ACCENT = "#7C6BFF";
-export const WORKOUT_ACCENT_BLUE = "#5B8CFF";
+export const WORKOUT_ACCENT = "#0070CC";
+export const WORKOUT_ACCENT_BLUE = "#53B1FF";
 export const WORKOUT_SUCCESS = "#2DBA7A";
 export const WORKOUT_WARNING = "#E9A84A";
 export const WORKOUT_DANGER = "#EF6B6B";
@@ -24,27 +24,34 @@ export const DARK_ACCENT_ORANGE_SOFT = "#F2C16F";
 export const DARK_TEXT_PRIMARY = WORKOUT_TEXT_PRIMARY;
 export const DARK_TEXT_MUTED = WORKOUT_TEXT_SECONDARY;
 
-export const LIGHT_BG = "#F7F7F5";
+export const LIGHT_BG = "#F6F8FB";
 export const LIGHT_CARD = "#FFFFFF";
-export const LIGHT_CARD_ALT = "#F9FAFB";
-export const LIGHT_ACCENT_ORANGE = "#C96F43";
-export const LIGHT_TEXT_PRIMARY = "#111827";
-export const LIGHT_TEXT_MUTED = "#6B7280";
-export const LIGHT_TEXT_SUBTLE = "#9CA3AF";
-export const LIGHT_BORDER_SOFT = "#E5E7EB";
-export const LIGHT_BORDER_SUBTLE = "#EEF0F3";
+export const LIGHT_CARD_ALT = "#F8FAFC";
+export const LIGHT_SURFACE_WASH = "#F6F8FB";
+export const LIGHT_SECTION_GRADIENT_START = "#FFFFFF";
+export const LIGHT_SECTION_GRADIENT_END = "#F6F8FB";
+export const LIGHT_ACCENT_ORANGE = "#D53B00";
+export const LIGHT_TEXT_PRIMARY = "#0F172A";
+export const LIGHT_TEXT_MUTED = "#475569";
+export const LIGHT_TEXT_SUBTLE = "#64748B";
+export const LIGHT_BORDER_SOFT = "#CBD5E1";
+export const LIGHT_BORDER_SUBTLE = "#E2E8F0";
+export const LIGHT_LINK = "#0068BD";
+export const LIGHT_SHADOW_06 = "rgba(0,0,0,0.06)";
+export const LIGHT_SHADOW_08 = "rgba(0,0,0,0.08)";
+export const LIGHT_SHADOW_16 = "rgba(0,0,0,0.16)";
 
 // Sage glass theme - legacy aliases.
 export const SAGE_GRADIENT_START = "#8FA89B";
 export const SAGE_GRADIENT_END = "#5A7268";
 
-export const GLASS_BG_DARK = DARK_BG;
-export const GLASS_CARD_DARK = DARK_CARD;
-export const GLASS_BORDER_DARK = "rgba(255,255,255,0.08)";
+export const GLASS_BG_DARK = "#09111F";
+export const GLASS_CARD_DARK = "rgba(15,23,42,0.70)";
+export const GLASS_BORDER_DARK = "rgba(226,232,240,0.12)";
 
 // Legacy brand aliases mapped to the premium workout palette.
-export const PS_BLUE = WORKOUT_ACCENT;
-export const PS_CYAN = WORKOUT_ACCENT_BLUE;
+export const PS_BLUE = "#0070CC";
+export const PS_CYAN = "#1EAEDB";
 export const PS_WARNING_RED = WORKOUT_DANGER;
 
 // Legacy glass accent - kept for backwards

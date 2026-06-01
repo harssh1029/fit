@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { AppHeader } from "../../components/AppHeader";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
 import { usePlans } from "../../hooks/usePlans";
+import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useThemeMode, styles, type WorkoutHistoryEntry } from "../../App";
 import { DARK_CARD, LIGHT_TEXT_PRIMARY } from "../../styles/theme";
 
@@ -79,6 +80,7 @@ const ConsistencyScreen: React.FC = () => {
   const isLight = mode === "light";
   const { items, loading, error, reload } = useAllWorkoutHistory(500);
   const { plans } = usePlans();
+  const { profile } = useUserProfileBasic();
 
   const [selectedPlanId, setSelectedPlanId] = useState("all");
   const [visibleMonth, setVisibleMonth] = useState(
@@ -213,6 +215,8 @@ const ConsistencyScreen: React.FC = () => {
           isLight={isLight}
           title="Consistency"
           subtitle="Completed and missed training days"
+          userName={profile?.profile.display_name || profile?.username || null}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
 
@@ -527,8 +531,8 @@ const consistencyStyles = StyleSheet.create({
     backgroundColor: "rgba(17,24,39,0.82)",
   },
   dropdownLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DDE3ED",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   dropdownText: {
     flex: 1,
@@ -548,8 +552,8 @@ const consistencyStyles = StyleSheet.create({
     backgroundColor: DARK_CARD,
   },
   summaryCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   summaryHeader: {
     flexDirection: "row",
@@ -603,8 +607,8 @@ const consistencyStyles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   monthButtonLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.56)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   grid: {
     marginTop: 2,
@@ -640,8 +644,8 @@ const consistencyStyles = StyleSheet.create({
     borderColor: "rgba(203,213,225,0.16)",
   },
   axisPillCurrentLight: {
-    backgroundColor: "#EEF2F7",
-    borderColor: "#CBD5E1",
+    backgroundColor: "rgba(255,255,255,0.56)",
+    borderColor: "rgba(148,163,184,0.26)",
   },
   axisTextCurrent: {
     color: "#F8FAFC",
@@ -684,8 +688,8 @@ const consistencyStyles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.08)",
   },
   gridCellLight: {
-    backgroundColor: "#F8FAFC",
-    borderColor: "#EEF2F7",
+    backgroundColor: "rgba(255,255,255,0.46)",
+    borderColor: "rgba(148,163,184,0.16)",
   },
   gridCellCompleted: {
     backgroundColor: "rgba(34,197,94,0.32)",
@@ -763,8 +767,8 @@ const consistencyStyles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.18)",
   },
   modalCardLight: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
+    backgroundColor: "rgba(255,255,255,0.86)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   modalTitle: {
     color: "#F8FAFC",
@@ -789,7 +793,7 @@ const consistencyStyles = StyleSheet.create({
     marginTop: 7,
   },
   planOptionLight: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(255,255,255,0.5)",
   },
   planOptionText: {
     flex: 1,

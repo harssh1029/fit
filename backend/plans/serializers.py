@@ -37,23 +37,14 @@ class PlanExerciseSerializer(serializers.ModelSerializer):
 
 
 class PlanDayExerciseSerializer(serializers.ModelSerializer):
-    exercise_id = serializers.CharField(source='exercise.id', read_only=True)
-    exercise = PlanExerciseSerializer(read_only=True)
-
     class Meta:
         model = PlanDayExercise
         fields = [
             'id',
-            'exercise_id',
-            'exercise',
             'order',
-            'block',
             'label',
             'primary',
             'secondary',
-            'prescription',
-            'coach_instruction',
-            'progression_rule',
         ]
 
 
@@ -95,7 +86,10 @@ class PlanWeekSerializer(serializers.ModelSerializer):
         if selected_sessions:
             days = getVisibleWorkoutsForWeek(obj, int(selected_sessions))
         else:
-            days = obj.days.all().order_by('workout_order', 'day_index')
+            days = sorted(
+                obj.days.all(),
+                key=lambda day: (day.workout_order, day.day_index),
+            )
         return PlanDaySerializer(days, many=True, context=self.context).data
 
     class Meta:
@@ -159,7 +153,7 @@ class PlanSerializer(serializers.ModelSerializer):
 
     def get_versions(self, obj):
         return PlanVersionSummarySerializer(
-            obj.versions.all().order_by('sessions_per_week'),
+            obj.versions.all(),
             many=True,
             context=self.context,
         ).data
@@ -169,9 +163,16 @@ class PlanSerializer(serializers.ModelSerializer):
             return []
 
         selected_sessions = self.context.get('selected_sessions_per_week')
-        master_weeks = obj.weeks.filter(plan_version__isnull=True).order_by('number')
+        master_weeks = sorted(
+            (
+                week
+                for week in obj.weeks.all()
+                if week.plan_version_id is None
+            ),
+            key=lambda week: week.number,
+        )
 
-        if master_weeks.exists():
+        if master_weeks:
             if selected_sessions is None:
                 return []
             return PlanWeekSerializer(
@@ -180,10 +181,16 @@ class PlanSerializer(serializers.ModelSerializer):
                 context={**self.context, 'selected_sessions_per_week': selected_sessions},
             ).data
 
-        default_version = obj.versions.filter(is_default=True).first()
-        if default_version is not None and default_version.weeks.exists():
-            default_weeks = default_version.weeks.all().order_by('number')
-        else:
+        default_version = next(
+            (version for version in obj.versions.all() if version.is_default),
+            None,
+        )
+        default_weeks = (
+            sorted(default_version.weeks.all(), key=lambda week: week.number)
+            if default_version is not None
+            else []
+        )
+        if not default_weeks:
             default_weeks = master_weeks
         return PlanWeekSerializer(
             default_weeks,
@@ -197,11 +204,16 @@ class PlanSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return None
 
-        user_plan = (
-            obj.user_plans.filter(user=user)
-            .order_by('-is_active', '-started_at', '-created_at')
-            .first()
-        )
+        current_user_plans = getattr(obj, '_current_user_plans', None)
+        if current_user_plans is None:
+            user_plan = (
+                obj.user_plans.filter(user=user)
+                .select_related('plan_version')
+                .order_by('-is_active', '-started_at', '-created_at')
+                .first()
+            )
+        else:
+            user_plan = current_user_plans[0] if current_user_plans else None
         if user_plan is None:
             return None
 
@@ -210,7 +222,10 @@ class PlanSerializer(serializers.ModelSerializer):
         elif user_plan.plan_version_id:
             total_sessions = user_plan.plan_version.total_sessions
         else:
-            default_version = obj.versions.filter(is_default=True).first()
+            default_version = next(
+                (version for version in obj.versions.all() if version.is_default),
+                None,
+            )
             if default_version is not None:
                 total_sessions = default_version.total_sessions
             else:
@@ -287,8 +302,41 @@ class PlanSerializer(serializers.ModelSerializer):
         ]
 
 
+class ScheduledPlanExerciseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlanExercise
+        fields = ['primary_muscles', 'secondary_muscles']
+
+
+class ScheduledPlanDayExerciseSerializer(serializers.ModelSerializer):
+    exercise = ScheduledPlanExerciseSerializer(read_only=True)
+
+    class Meta:
+        model = PlanDayExercise
+        fields = ['label', 'primary', 'exercise']
+
+
+class ScheduledPlanDaySerializer(serializers.ModelSerializer):
+    exercises = ScheduledPlanDayExerciseSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanDay
+        fields = [
+            'id',
+            'title',
+            'duration',
+            'duration_minutes',
+            'day_type',
+            'intensity',
+            'rpe_target',
+            'primary_focus',
+            'coach_note',
+            'exercises',
+        ]
+
+
 class UserScheduledWorkoutSerializer(serializers.ModelSerializer):
-    plan_day = PlanDaySerializer(read_only=True)
+    plan_day = ScheduledPlanDaySerializer(read_only=True)
 
     class Meta:
         model = UserScheduledWorkout
@@ -306,9 +354,23 @@ class UserScheduledWorkoutSerializer(serializers.ModelSerializer):
         ]
 
 
+class UserPlanPlanSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Plan
+        fields = [
+            'id',
+            'name',
+            'subtitle',
+            'level',
+            'duration_weeks',
+            'goal',
+            'summary',
+        ]
+
+
 class UserPlanSerializer(serializers.ModelSerializer):
-    plan = PlanSerializer(read_only=True)
-    plan_version = PlanVersionSerializer(read_only=True)
+    plan = UserPlanPlanSummarySerializer(read_only=True)
+    plan_version = PlanVersionSummarySerializer(read_only=True)
     scheduled_workouts = UserScheduledWorkoutSerializer(many=True, read_only=True)
 
     class Meta:

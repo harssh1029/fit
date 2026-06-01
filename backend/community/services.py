@@ -34,11 +34,54 @@ def initials_for_name(name: str) -> str:
 	return f'{parts[0][0]}{parts[-1][0]}'.upper()
 
 
-def accepted_friend_user_ids(user: User) -> list[int]:
+def materialize_challenge_activity(
+	user: User,
+	*,
+	source_id: str,
+	title: str,
+	description: str = 'Challenge completed',
+	metadata: Optional[dict] = None,
+	occurred_at=None,
+) -> CommunityActivity:
+	"""Create one canonical feed activity for a completed challenge."""
+
+	activities = CommunityActivity.objects.filter(
+		user=user,
+		activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
+		metadata__source_id=source_id,
+	).order_by('-occurred_at', '-id')
+	activity = activities.first()
+	activity_metadata = {
+		**(activity.metadata if activity and isinstance(activity.metadata, dict) else {}),
+		**(metadata or {}),
+		'source_id': source_id,
+	}
+	event_time = occurred_at or (activity.occurred_at if activity else timezone.now())
+	if activity is None:
+		return CommunityActivity.objects.create(
+			user=user,
+			activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
+			title=title,
+			description=description,
+			metadata=activity_metadata,
+			occurred_at=event_time,
+		)
+	activity.title = title
+	activity.description = description
+	activity.metadata = activity_metadata
+	activity.occurred_at = event_time
+	activity.save(update_fields=['title', 'description', 'metadata', 'occurred_at'])
+	activities.exclude(id=activity.id).delete()
+	return activity
+
+
+def accepted_friend_user_ids(user: User, *, limit: Optional[int] = None) -> list[int]:
 	edges = Friendship.objects.filter(
 		Q(from_user=user) | Q(to_user=user),
 		status=Friendship.STATUS_ACCEPTED,
-	)
+	).only('from_user_id', 'to_user_id').order_by('-updated_at', '-id')
+	if limit is not None:
+		edges = edges[:limit]
 	ids: list[int] = []
 	for edge in edges:
 		ids.append(edge.to_user_id if edge.from_user_id == user.id else edge.from_user_id)
@@ -115,6 +158,7 @@ def ensure_public_card(user: User) -> UserPublicCard:
 			'display_name': display_name,
 			'username': user.get_username(),
 			'avatar_initials': initials_for_name(display_name),
+			'avatar_url': getattr(profile, 'avatar_url', '') if profile else '',
 			'overall_score': max(0, overall_score),
 			'consistency_score': max(0, consistency_score),
 			'challenges_completed': challenges_completed,
@@ -142,10 +186,35 @@ def ensure_public_cards(users: Iterable[User]) -> list[UserPublicCard]:
 	return [ensure_public_card(user) for user in users]
 
 
-def get_friend_cards(user: User) -> list[UserPublicCard]:
-	friend_ids = accepted_friend_user_ids(user)
-	users = User.objects.filter(id__in=friend_ids).select_related('profile')
-	return ensure_public_cards(users)
+def get_public_card(user: User) -> UserPublicCard:
+	card = (
+		UserPublicCard.objects.filter(user=user)
+		.select_related('user', 'user__profile', 'user__achievement_level')
+		.first()
+	)
+	if card is not None:
+		return card
+	return ensure_public_card(user)
+
+
+def refresh_public_card_if_exists(user: User) -> None:
+	if UserPublicCard.objects.filter(user=user).exists():
+		ensure_public_card(user)
+
+
+def get_friend_cards(user: User, *, limit: int = 100) -> list[UserPublicCard]:
+	friend_ids = accepted_friend_user_ids(user, limit=limit)
+	if not friend_ids:
+		return []
+	missing_users = User.objects.filter(
+		id__in=friend_ids,
+		public_card__isnull=True,
+	).select_related('profile')
+	ensure_public_cards(missing_users)
+	return list(
+		UserPublicCard.objects.filter(user_id__in=friend_ids)
+		.select_related('user', 'user__profile', 'user__achievement_level')
+	)
 
 
 def create_friendship(user: User, other_user: User) -> Friendship:
@@ -276,25 +345,31 @@ def sync_recent_activities(user: User) -> None:
 	).select_related('challenge').order_by('-completed_at', '-id'):
 		challenge_name = completion.challenge.card.get('name') or completion.challenge.id
 		source_id = f'challenge:{completion.challenge_id}'
-		activity = CommunityActivity.objects.filter(
+		materialize_challenge_activity(
 			user=user,
-			activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
-			metadata__source_id=source_id,
-		).first()
-		if activity is None:
-			CommunityActivity.objects.create(
-				user=user,
-				activity_type=CommunityActivity.ACTIVITY_CHALLENGE,
-				title=f'Completed {challenge_name}',
-				description='Challenge completed',
-				metadata={'source_id': source_id},
-				occurred_at=completion.completed_at,
-			)
-		else:
-			activity.title = f'Completed {challenge_name}'
-			activity.description = 'Challenge completed'
-			activity.occurred_at = completion.completed_at
-			activity.save(update_fields=['title', 'description', 'occurred_at'])
+			source_id=source_id,
+			title=f'Completed {challenge_name}',
+			metadata={
+				'event_type': 'challenge_completed',
+				'challenge_id': completion.challenge_id,
+				'challenge_name': challenge_name,
+			},
+			occurred_at=completion.completed_at,
+		)
+
+
+def sync_recent_activities_if_needed(user: User) -> None:
+	"""Backfill legacy sessions once while keeping normal feed reads lightweight."""
+
+	week_start = timezone.now() - timedelta(days=7)
+	if CommunityActivity.objects.filter(user=user, occurred_at__gte=week_start).exists():
+		return
+	if WorkoutSession.objects.filter(
+		user=user,
+		status='completed',
+		completed_at__gte=week_start,
+	).exists():
+		sync_recent_activities(user)
 
 
 def community_scope_user_ids(user: User) -> list[int]:

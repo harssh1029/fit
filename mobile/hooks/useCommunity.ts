@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import {
+  fetchCachedJson,
+  fetchRequiredAuth,
+  invalidateApiCache,
+} from "../api/client";
 import { useAuth } from "../App";
 import type {
   CommunityActivity,
@@ -16,7 +20,10 @@ import type {
   CommunitySummary,
   CommunityUserSuggestion,
   PremiumChallengeSections,
+  SavedCommunityActivityPage,
   TodayActivityUpdate,
+  TrainingChallengeCreatePayload,
+  TrainingChallengeParticipant,
 } from "../types/community";
 
 const normalizeFriend = (friend: CommunityFriendSummary): CommunityFriendSummary => ({
@@ -37,34 +44,11 @@ export function useCommunity() {
 
   const authorizedFetch = useCallback(
     async (path: string, options: RequestInit = {}) => {
-      if (!accessToken) {
-        throw new Error("Authentication required");
-      }
-      let tokenToUse = accessToken;
-      const headers: Record<string, string> = {
-        ...(options.headers as Record<string, string> | undefined),
-        Authorization: `Bearer ${tokenToUse}`,
-      };
-      let response = await fetch(`${API_BASE_URL}${path}`, {
-        ...options,
-        headers,
-      });
-
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          throw new Error("Session expired");
-        }
-        tokenToUse = refreshed;
-        response = await fetch(`${API_BASE_URL}${path}`, {
-          ...options,
-          headers: {
-            ...(options.headers as Record<string, string> | undefined),
-            Authorization: `Bearer ${tokenToUse}`,
-          },
-        });
-      }
+      const response = await fetchRequiredAuth(path, {
+        accessToken,
+        refreshAccessToken,
+        signOut,
+      }, options);
 
       if (!response.ok) {
         throw new Error(`Community request failed (${response.status})`);
@@ -74,7 +58,17 @@ export function useCommunity() {
     [accessToken, refreshAccessToken, signOut],
   );
 
-  const reload = useCallback(async () => {
+  const cachedAuthorizedJson = useCallback(
+    <T,>(path: string, tags: string[], ttlMs: number = 15_000, force = false) =>
+      fetchCachedJson<T>(
+        path,
+        { accessToken, refreshAccessToken, signOut },
+        { force, requiredAuth: true, tags, ttlMs },
+      ),
+    [accessToken, refreshAccessToken, signOut],
+  );
+
+  const reload = useCallback(async (force = true) => {
     if (!accessToken) {
       setLoading(false);
       return;
@@ -82,8 +76,12 @@ export function useCommunity() {
     try {
       setLoading(true);
       setError(null);
-      const response = await authorizedFetch("/community/summary/");
-      const json = (await response.json()) as CommunitySummary;
+      const json = await cachedAuthorizedJson<CommunitySummary>(
+        "/community/summary/",
+        ["community-summary"],
+        15_000,
+        force,
+      );
       setMe(json.public_card ? normalizeFriend(json.public_card) : null);
       setFriends((json.friends ?? []).map(normalizeFriend));
       setActivity(json.recent_activity ?? []);
@@ -92,10 +90,10 @@ export function useCommunity() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, authorizedFetch]);
+  }, [accessToken, cachedAuthorizedJson]);
 
   useEffect(() => {
-    void reload();
+    void reload(false);
   }, [reload]);
 
   const searchUsers = useCallback(
@@ -115,6 +113,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
+      invalidateApiCache("community-summary", "community-leaderboard", "profile-summary");
       await reload();
     },
     [authorizedFetch, reload],
@@ -148,53 +147,92 @@ export function useCommunity() {
         scope,
       });
       if (scope === "group" && groupId) params.set("group_id", String(groupId));
-      const response = await authorizedFetch(
+      const json = await cachedAuthorizedJson<CommunityLeaderboardResponse>(
         `/community/leaderboard/?${params.toString()}`,
+        ["community-leaderboard"],
+        15_000,
       );
-      const json = (await response.json()) as CommunityLeaderboardResponse;
       return {
         ...json,
         user_card: json.user_card ? normalizeFriend(json.user_card) : undefined,
         results: (json.results ?? []).map(normalizeFriend),
       };
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const loadActivity = useCallback(
     async (filter: string) => {
-      const response = await authorizedFetch(
+      const json = await cachedAuthorizedJson<CommunityActivity[]>(
         `/community/activity/?filter=${encodeURIComponent(filter)}&limit=50`,
+        ["community-activity"],
+        10_000,
       );
-      const json = (await response.json()) as CommunityActivity[];
       setActivity(json);
       return json;
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const loadTodayActivity = useCallback(async (): Promise<TodayActivityUpdate[]> => {
-    const response = await authorizedFetch("/community/today-activity/");
-    return (await response.json()) as TodayActivityUpdate[];
-  }, [authorizedFetch]);
+    return cachedAuthorizedJson<TodayActivityUpdate[]>(
+      "/community/today-activity/",
+      ["community-activity"],
+      10_000,
+    );
+  }, [cachedAuthorizedJson]);
 
   const loadOverview = useCallback(async (): Promise<CommunityOverview> => {
-    const response = await authorizedFetch("/community/overview/");
-    return (await response.json()) as CommunityOverview;
-  }, [authorizedFetch]);
+    return cachedAuthorizedJson<CommunityOverview>(
+      "/community/overview/",
+      ["community-overview", "community-groups", "training-challenges"],
+      15_000,
+    );
+  }, [cachedAuthorizedJson]);
 
   const loadTrainingChallenges = useCallback(async (): Promise<PremiumChallengeSections> => {
-    const response = await authorizedFetch("/training-challenges/");
-    return (await response.json()) as PremiumChallengeSections;
-  }, [authorizedFetch]);
+    return cachedAuthorizedJson<PremiumChallengeSections>(
+      "/training-challenges/",
+      ["training-challenges"],
+      15_000,
+    );
+  }, [cachedAuthorizedJson]);
 
   const joinTrainingChallenge = useCallback(
     async (challengeId: number) => {
       await authorizedFetch(`/training-challenges/${challengeId}/join/`, {
         method: "POST",
       });
+      invalidateApiCache("training-challenges", "community-overview");
     },
     [authorizedFetch],
+  );
+
+  const createTrainingChallenge = useCallback(
+    async (payload: TrainingChallengeCreatePayload) => {
+      const response = await authorizedFetch("/training-challenges/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      invalidateApiCache("training-challenges", "community-overview");
+      return await response.json();
+    },
+    [authorizedFetch],
+  );
+
+  const loadTrainingChallengeParticipants = useCallback(
+    async (challengeId: number) => {
+      return cachedAuthorizedJson<{
+        participants: TrainingChallengeParticipant[];
+        completed: TrainingChallengeParticipant[];
+      }>(
+        `/training-challenges/${challengeId}/participants/`,
+        ["training-challenge-participants"],
+        10_000,
+      );
+    },
+    [cachedAuthorizedJson],
   );
 
   const likeActivity = useCallback(
@@ -202,6 +240,7 @@ export function useCommunity() {
       await authorizedFetch(`/community/activity/${activityId}/like/`, {
         method: liked ? "DELETE" : "POST",
       });
+      invalidateApiCache("community-activity", "community-summary", "profile-summary");
       await loadActivity("recent");
     },
     [authorizedFetch, loadActivity],
@@ -214,6 +253,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),
       });
+      invalidateApiCache("community-activity", "community-summary", "profile-summary");
       await loadActivity("recent");
     },
     [authorizedFetch, loadActivity],
@@ -221,12 +261,13 @@ export function useCommunity() {
 
   const loadActivityComments = useCallback(
     async (activityId: number): Promise<CommunityActivityComment[]> => {
-      const response = await authorizedFetch(
+      return cachedAuthorizedJson<CommunityActivityComment[]>(
         `/community/activity/${activityId}/comments/`,
+        ["community-comments"],
+        10_000,
       );
-      return (await response.json()) as CommunityActivityComment[];
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const addActivityComment = useCallback(
@@ -242,6 +283,7 @@ export function useCommunity() {
           body: JSON.stringify({ body }),
         },
       );
+      invalidateApiCache("community-comments", "community-activity", "community-summary");
       return (await response.json()) as CommunityActivityComment;
     },
     [authorizedFetch],
@@ -255,6 +297,7 @@ export function useCommunity() {
           method: liked ? "DELETE" : "POST",
         },
       );
+      invalidateApiCache("community-activity", "community-summary", "profile-summary");
       return (await response.json()) as {
         liked: boolean;
         likesCount: number;
@@ -268,30 +311,76 @@ export function useCommunity() {
       await authorizedFetch(`/community/activity/${activityId}/share/`, {
         method: "POST",
       });
+      invalidateApiCache("community-activity", "community-summary", "profile-summary");
       await loadActivity("recent");
     },
     [authorizedFetch, loadActivity],
   );
 
-  const loadGroups = useCallback(async () => {
-    const response = await authorizedFetch("/community/groups/");
-    return (await response.json()) as CommunityGroupCard[];
-  }, [authorizedFetch]);
-
-  const loadGroupDetail = useCallback(
-    async (groupId: number) => {
-      const response = await authorizedFetch(`/community/groups/${groupId}/`);
-      return (await response.json()) as CommunityGroupDetail;
+  const setActivitySaved = useCallback(
+    async (activityId: number, saved: boolean) => {
+      const response = await authorizedFetch(
+        `/community/activity/${activityId}/save/`,
+        { method: saved ? "DELETE" : "POST" },
+      );
+      const result = (await response.json()) as { saved: boolean };
+      setActivity((items) =>
+        items.map((item) =>
+          item.id === activityId ? { ...item, savedByMe: result.saved } : item,
+        ),
+      );
+      invalidateApiCache(
+        "saved-activities",
+        "community-activity",
+        "community-summary",
+        "community-group-detail",
+        "community-group-feed",
+      );
+      return result;
     },
     [authorizedFetch],
   );
 
+  const loadSavedActivities = useCallback(
+    async (before?: number | null): Promise<SavedCommunityActivityPage> => {
+      const suffix = before ? `&before=${before}` : "";
+      return cachedAuthorizedJson<SavedCommunityActivityPage>(
+        `/community/saved/?limit=30${suffix}`,
+        ["saved-activities"],
+        10_000,
+      );
+    },
+    [cachedAuthorizedJson],
+  );
+
+  const loadGroups = useCallback(async () => {
+    return cachedAuthorizedJson<CommunityGroupCard[]>(
+      "/community/groups/",
+      ["community-groups"],
+      15_000,
+    );
+  }, [cachedAuthorizedJson]);
+
+  const loadGroupDetail = useCallback(
+    async (groupId: number) => {
+      return cachedAuthorizedJson<CommunityGroupDetail>(
+        `/community/groups/${groupId}/`,
+        ["community-group-detail", `community-group-${groupId}`],
+        10_000,
+      );
+    },
+    [cachedAuthorizedJson],
+  );
+
   const loadGroupMembers = useCallback(
     async (groupId: number) => {
-      const response = await authorizedFetch(`/community/groups/${groupId}/members/`);
-      return (await response.json()) as CommunityGroupMember[];
+      return cachedAuthorizedJson<CommunityGroupMember[]>(
+        `/community/groups/${groupId}/members/`,
+        ["community-group-members", `community-group-${groupId}`],
+        10_000,
+      );
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const createGroup = useCallback(
@@ -307,6 +396,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, privacy, group_type: groupType, goal, description }),
       });
+      invalidateApiCache("community-groups", "community-overview", "profile-summary");
     },
     [authorizedFetch],
   );
@@ -318,6 +408,12 @@ export function useCommunity() {
         headers: inviteToken ? { "Content-Type": "application/json" } : undefined,
         body: inviteToken ? JSON.stringify({ invite_token: inviteToken }) : undefined,
       });
+      invalidateApiCache(
+        "community-groups",
+        "community-overview",
+        "profile-summary",
+        `community-group-${groupId}`,
+      );
       if (response.status === 204) return null;
       return await response.json().catch(() => null);
     },
@@ -341,6 +437,7 @@ export function useCommunity() {
           min_duration: 20,
         }),
       });
+      invalidateApiCache("community-groups", "community-overview", `community-group-${groupId}`);
     },
     [authorizedFetch],
   );
@@ -352,16 +449,20 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
+      invalidateApiCache(`community-group-${groupId}`);
     },
     [authorizedFetch],
   );
 
   const loadGroupInviteLink = useCallback(
     async (groupId: number): Promise<{ token: string; url: string; appUrl: string }> => {
-      const response = await authorizedFetch(`/community/groups/${groupId}/invite/`);
-      return (await response.json()) as { token: string; url: string; appUrl: string };
+      return cachedAuthorizedJson<{ token: string; url: string; appUrl: string }>(
+        `/community/groups/${groupId}/invite/`,
+        [`community-group-${groupId}`],
+        60_000,
+      );
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const removeGroupMember = useCallback(
@@ -371,6 +472,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
+      invalidateApiCache("community-groups", "community-overview", `community-group-${groupId}`);
     },
     [authorizedFetch],
   );
@@ -382,6 +484,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, body, announcement_type: "admin_note" }),
       });
+      invalidateApiCache(`community-group-${groupId}`);
     },
     [authorizedFetch],
   );
@@ -399,6 +502,7 @@ export function useCommunity() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description, kind, image_urls: imageUrls }),
       });
+      invalidateApiCache("community-activity", "community-summary", `community-group-${groupId}`);
       return (await response.json()) as CommunityActivity;
     },
     [authorizedFetch],
@@ -430,18 +534,24 @@ export function useCommunity() {
 
   const loadGroupFeed = useCallback(
     async (groupId: number): Promise<CommunityGroupFeed> => {
-      const response = await authorizedFetch(`/community/groups/${groupId}/activity/`);
-      return (await response.json()) as CommunityGroupFeed;
+      return cachedAuthorizedJson<CommunityGroupFeed>(
+        `/community/groups/${groupId}/activity/`,
+        ["community-group-feed", `community-group-${groupId}`],
+        10_000,
+      );
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const loadPublicProfile = useCallback(
     async (userId: number): Promise<CommunityPublicProfile> => {
-      const response = await authorizedFetch(`/profiles/${userId}/public/`);
-      return (await response.json()) as CommunityPublicProfile;
+      return cachedAuthorizedJson<CommunityPublicProfile>(
+        `/profiles/${userId}/public/`,
+        ["profile-summary"],
+        15_000,
+      );
     },
-    [authorizedFetch],
+    [cachedAuthorizedJson],
   );
 
   const actOnGroupJoinRequest = useCallback(
@@ -454,6 +564,7 @@ export function useCommunity() {
         `/community/groups/${groupId}/requests/${requestId}/${action}/`,
         { method: "POST" },
       );
+      invalidateApiCache("community-groups", "community-overview", `community-group-${groupId}`);
       return await response.json().catch(() => null);
     },
     [authorizedFetch],
@@ -475,9 +586,13 @@ export function useCommunity() {
     loadOverview,
     loadTrainingChallenges,
     joinTrainingChallenge,
+    createTrainingChallenge,
+    loadTrainingChallengeParticipants,
     likeActivity,
     commentActivity,
     shareActivity,
+    setActivitySaved,
+    loadSavedActivities,
     loadActivityComments,
     addActivityComment,
     setActivityLiked,

@@ -53,7 +53,7 @@ export const LuxuryHeading: React.FC<{
   uppercase?: boolean;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
-}> = ({ children, isLight, uppercase = true, style, numberOfLines }) => (
+}> = ({ children, isLight, uppercase = false, style, numberOfLines }) => (
   <Text
     style={[
       styles.luxuryHeading,
@@ -82,7 +82,7 @@ export const SectionTitle: React.FC<{
             isLight && styles.luxuryCaptionLight,
           ]}
         >
-          {caption.toUpperCase()}
+          {caption}
         </Text>
       )}
       <LuxuryHeading isLight={isLight} style={styles.sectionTitleHeading}>
@@ -142,7 +142,7 @@ export const AppButton: React.FC<{
       ]}
       numberOfLines={1}
     >
-      {label.toUpperCase()}
+      {label}
     </Text>
   </TouchableOpacity>
 );
@@ -172,7 +172,7 @@ export const AppTabs: React.FC<{
             ]}
             numberOfLines={1}
           >
-            {tab.label.toUpperCase()}
+            {tab.label}
           </Text>
         </TouchableOpacity>
       );

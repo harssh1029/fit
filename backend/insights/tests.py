@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from workouts.models import WorkoutSession
 from .models import FitnessAssessment, RaceBenchmark
 
 
@@ -81,7 +83,43 @@ class DashboardSummaryViewTests(APITestCase):
 		self.assertIn("body_focus", training_profile)
 		self.assertIn("category_levels", training_profile)
 		self.assertIn("comparison_metrics", training_profile)
+		self.assertEqual(
+			{item["metric_type"] for item in training_profile["body_focus"]},
+			{"body_part"},
+		)
+		self.assertNotIn(
+			"cardio",
+			{item["key"] for item in training_profile["body_focus"]},
+		)
+		self.assertEqual(
+			{item["metric_type"] for item in training_profile["category_levels"]},
+			{"training_category"},
+		)
 		self.assertGreaterEqual(
 			len(training_profile["comparison_metrics"].get("metrics", [])),
 			1,
 		)
+
+	def test_fitness_age_has_profile_activity_estimate_without_assessment(self) -> None:
+		WorkoutSession.objects.create(
+			user=self.user,
+			status="completed",
+			completed_at=timezone.now(),
+			duration_minutes=45,
+			title="Starter Session",
+			workout_type="strength",
+			entry_source="manual",
+		)
+		self.client.force_authenticate(self.user)
+
+		response = self.client.get("/api/v1/dashboard/summary/")
+
+		self.assertEqual(response.status_code, 200)
+		metrics = response.json()["metrics"]
+		fitness_age = metrics["fitness_age"]
+		percentile = metrics["percentile_rank"]
+		self.assertTrue(fitness_age.get("available"))
+		self.assertEqual(fitness_age["detail"].get("source"), "profile_activity_estimate")
+		self.assertEqual(percentile["detail"].get("source"), "profile_activity_estimate")
+		self.assertIsNotNone(fitness_age.get("fitness_age_years"))
+		self.assertIsNotNone(percentile.get("percentile"))

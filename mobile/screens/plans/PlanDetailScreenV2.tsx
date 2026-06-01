@@ -11,10 +11,13 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { GLASS_ACCENT_GREEN } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
-import { API_BASE_URL } from "../../api/client";
+import {
+  fetchRequiredAuth,
+  invalidatePlanData,
+  invalidateWorkoutData,
+} from "../../api/client";
 import { usePlanDetail } from "../../hooks/usePlanDetail";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
-import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
 import {
   useAuth,
@@ -58,6 +61,57 @@ const buildPlanDetailCopy = (
   const isBusyProfessionalPlan = /busy\s*professional/i.test(planName);
   const isHybridAthletePlan = /hybrid\s*athlete/i.test(planName);
   const isFatLossShredPlan = /fat\s*loss|shred/i.test(planName);
+  const isMovementFoundationPlan = /movement\s*foundation/i.test(planName);
+  const isStrengthPerformancePlan = /strength\s*performance/i.test(planName);
+  const isMobilityLongevityPlan = /mobility|longevity/i.test(planName);
+
+  if (isMovementFoundationPlan) {
+    return {
+      goalTitle: "No-Gym Movement Foundation",
+      goalSubtitle:
+        "Build strength, fitness, and confidence with structured home sessions.",
+      forText: "Beginners & returning exercisers",
+      focusText: "Bodyweight strength, posture, conditioning",
+      resultText: "Stronger movement, better energy, more confidence",
+      expectItems: [
+        "Low-friction home training",
+        "Progressive bodyweight strength",
+        "Mobility and aerobic support",
+      ],
+    };
+  }
+
+  if (isStrengthPerformancePlan) {
+    return {
+      goalTitle: "Strength & Athletic Power",
+      goalSubtitle:
+        "Progress the main lifts with coached loading and recovery-aware volume.",
+      forText: "Regular gym users & lifters",
+      focusText: "Squat, bench, deadlift, power",
+      resultText: "Stronger lifts, sharper technique, better power",
+      expectItems: [
+        "Coached barbell progression",
+        "Athletic power development",
+        "Recovery-managed volume",
+      ],
+    };
+  }
+
+  if (isMobilityLongevityPlan) {
+    return {
+      goalTitle: "Mobility & Durability",
+      goalSubtitle:
+        "Build joint-friendly strength, range, posture, and balance.",
+      forText: "Beginners & active adults",
+      focusText: "Joint strength, posture, balance",
+      resultText: "Better range, comfort, and durable movement",
+      expectItems: [
+        "Controlled mobility progressions",
+        "Low-impact strength work",
+        "Balance and posture training",
+      ],
+    };
+  }
 
   if (isFatLossShredPlan) {
     return {
@@ -224,14 +278,13 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     planId,
     submittedSessionsPerWeek,
   );
-  const { reload: reloadDashboardSummary } = useDashboardSummary();
-
   const [activeViewWorkoutWeek, setActiveViewWorkoutWeek] =
     useState<ViewWorkoutWeek | null>(null);
   const [activeNutritionWeek, setActiveNutritionWeek] =
     useState<ViewNutritionWeek | null>(null);
   const [isOptingOut, setIsOptingOut] = useState(false);
   const [isCalculatingSchedule, setIsCalculatingSchedule] = useState(false);
+  const [isRecalibrating, setIsRecalibrating] = useState(false);
   const calculateTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -277,6 +330,13 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
   // manually, we only reset it when the underlying version changes.
   useEffect(() => {
     if (!plan || !pendingSessionsPerWeek) return;
+    if (
+      activeUserPlan?.plan.id === plan.id &&
+      activeUserPlan.training_days_pattern?.length
+    ) {
+      setSelectedTrainingDays(activeUserPlan.training_days_pattern);
+      return;
+    }
     const version = plan.versions?.find(
       (item) => item.sessionsPerWeek === pendingSessionsPerWeek,
     );
@@ -285,7 +345,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     } else {
       setSelectedTrainingDays([]);
     }
-  }, [plan, pendingSessionsPerWeek]);
+  }, [activeUserPlan, plan, pendingSessionsPerWeek]);
 
   const selectWeeklyRhythm = (days: number) => {
     setPendingSessionsPerWeek(days);
@@ -314,14 +374,6 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
     (profile?.profile.personal_bests as any)?.subscription === "premium",
   );
 
-  const backToPlansLink = (
-    <TouchableOpacity onPress={() => navigation.goBack()}>
-      <Text style={[styles.linkText, isLight && styles.linkTextLight]}>
-        {"\u2039 Back to plans"}
-      </Text>
-    </TouchableOpacity>
-  );
-
   const handleOptOut = () => {
     if (!plan || !accessToken || isOptingOut) return;
 
@@ -336,32 +388,15 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           onPress: async () => {
             setIsOptingOut(true);
             try {
-              let tokenToUse = accessToken;
-              let response = await fetch(`${API_BASE_URL}/plans/opt-out/`, {
+              const response = await fetchRequiredAuth("/plans/opt-out/", {
+                accessToken,
+                refreshAccessToken,
+                signOut,
+              }, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${tokenToUse}`,
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ plan_id: plan.id }),
               });
-
-              if (response.status === 401) {
-                const refreshed = await refreshAccessToken();
-                if (!refreshed) {
-                  await signOut();
-                  return;
-                }
-                tokenToUse = refreshed;
-                response = await fetch(`${API_BASE_URL}/plans/opt-out/`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${tokenToUse}`,
-                  },
-                  body: JSON.stringify({ plan_id: plan.id }),
-                });
-              }
 
               if (!response.ok) {
                 const data = await response.json().catch(() => null);
@@ -372,7 +407,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                 return;
               }
 
-              reloadDashboardSummary();
+              invalidatePlanData();
               await reloadProfile();
               Alert.alert("Plan removed", "This plan is no longer active.");
               navigation.goBack();
@@ -429,12 +464,13 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         : (version?.trainingDaysPattern ?? []);
 
     const today = new Date().toISOString().slice(0, 10);
-    const response = await fetch(`${API_BASE_URL}/user-plans/start`, {
+    const response = await fetchRequiredAuth("/user-plans/start/", {
+      accessToken,
+      refreshAccessToken,
+      signOut,
+    }, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         planId,
         sessionsPerWeek,
@@ -458,23 +494,16 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
       return;
     }
 
+    invalidatePlanData();
     await reloadProfile();
     await reloadActiveUserPlan();
-    reloadDashboardSummary();
     setPendingSessionsPerWeek(sessionsPerWeek);
     setSubmittedSessionsPerWeek(sessionsPerWeek);
     Alert.alert("Plan started", "Your workouts have been added to your plan.");
   };
 
   const recalibratePlan = () => {
-    if (!activeUserPlan) return;
-    if (!isPremiumUser) {
-      Alert.alert(
-        "Premium required",
-        "Recalibration is available with Premium.",
-      );
-      return;
-    }
+    if (!activeUserPlan || isRecalibrating) return;
     Alert.alert(
       "Recalibrate plan?",
       "This will move your missed workouts forward and extend your plan end date. Completed workouts will stay unchanged.",
@@ -484,33 +513,32 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           text: "Recalibrate",
           onPress: async () => {
             if (!accessToken) return;
-            const response = await fetch(
-              `${API_BASE_URL}/user-plans/${activeUserPlan.id}/recalibrate`,
-              {
-                method: "POST",
-                headers: { Authorization: `Bearer ${accessToken}` },
-              },
-            );
-            if (response.status === 402) {
-              Alert.alert(
-                "Premium required",
-                "Recalibration is available with Premium.",
+            setIsRecalibrating(true);
+            try {
+              const response = await fetchRequiredAuth(
+                `/user-plans/${activeUserPlan.id}/recalibrate/`,
+                { accessToken, refreshAccessToken, signOut },
+                { method: "POST" },
               );
-              return;
-            }
-            if (!response.ok) {
+              if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                Alert.alert(
+                  "Could not recalibrate",
+                  data?.detail || `Server returned ${response.status}.`,
+                );
+                return;
+              }
+              invalidatePlanData();
+              await reloadActiveUserPlan();
               Alert.alert(
-                "Could not recalibrate",
-                `Server returned ${response.status}.`,
+                "Plan recalibrated",
+                "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
               );
-              return;
+            } catch {
+              Alert.alert("Could not recalibrate", "Please try again.");
+            } finally {
+              setIsRecalibrating(false);
             }
-            await reloadActiveUserPlan();
-            reloadDashboardSummary();
-            Alert.alert(
-              "Plan recalibrated",
-              "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
-            );
           },
         },
       ],
@@ -526,8 +554,9 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           isLight={isLight}
           title="Your plan"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
+          onBack={() => navigation.goBack()}
           onThemeToggle={toggle}
-          topContent={backToPlansLink}
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={GLASS_ACCENT_GREEN} />
@@ -546,8 +575,9 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
           isLight={isLight}
           title="Your plan"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
+          onBack={() => navigation.goBack()}
           onThemeToggle={toggle}
-          topContent={backToPlansLink}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
           Plan Details
@@ -620,50 +650,32 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         contentContainerStyle={styles.planDetailScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.planDetailTopNav}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.goBack()}
-            style={[
-              styles.planDetailNavButton,
-              isLight
-                ? styles.planDetailNavButtonLight
-                : styles.planDetailNavButtonDark,
-            ]}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={25}
-              color={isLight ? "#111827" : "#F8FAFC"}
-            />
-          </TouchableOpacity>
-          <Text
-            style={[
-              styles.planDetailNavTitle,
-              isLight
-                ? styles.planDetailNavTitleLight
-                : styles.planDetailNavTitleDark,
-            ]}
-          >
-            Training Plan
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={openPlanOptions}
-            style={[
-              styles.planDetailNavButton,
-              isLight
-                ? styles.planDetailNavButtonLight
-                : styles.planDetailNavButtonDark,
-            ]}
-          >
-            <Ionicons
-              name="ellipsis-vertical"
-              size={22}
-              color={isLight ? "#111827" : "#F8FAFC"}
-            />
-          </TouchableOpacity>
-        </View>
+        <AppHeader
+          isLight={isLight}
+          title="Training plan"
+          userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
+          onBack={() => navigation.goBack()}
+          onThemeToggle={toggle}
+          rightContent={(
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={openPlanOptions}
+              style={[
+                styles.compactHeaderIconButton,
+                isLight && styles.compactHeaderIconButtonLight,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Plan options"
+            >
+              <Ionicons
+                name="ellipsis-vertical"
+                size={22}
+                color={isLight ? "#111827" : "#F8FAFC"}
+              />
+            </TouchableOpacity>
+          )}
+        />
 
         <View style={styles.planDetailHero}>
           <View style={styles.planDetailHeroHeader}>
@@ -1296,9 +1308,11 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
               </View>
               <TouchableOpacity
                 activeOpacity={0.9}
+                disabled={isRecalibrating}
                 style={[
                   styles.planRecalibrateButton,
                   isLight && styles.planRecalibrateButtonLight,
+                  isRecalibrating && { opacity: 0.65 },
                 ]}
                 onPress={recalibratePlan}
               >
@@ -1310,7 +1324,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                       : styles.planRecalibrateButtonTextDark,
                   ]}
                 >
-                  Recalibrate
+                  {isRecalibrating ? "Updating..." : "Recalibrate"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1389,7 +1403,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
                     : styles.planDetailHeadingDark,
                 ]}
               >
-                WEEK DETAILS
+                Week details
               </Text>
               <Text
                 style={[
@@ -1558,7 +1572,7 @@ const PlanDetailScreenV2: React.FC<PlanDetailProps> = ({
         planId={plan.id}
         canMarkComplete={canMarkComplete}
         onClose={() => setActiveViewWorkoutWeek(null)}
-        onDayMarkedComplete={reloadDashboardSummary}
+        onDayMarkedComplete={invalidateWorkoutData}
       />
       <ViewNutritionWeekModal
         week={activeNutritionWeek}

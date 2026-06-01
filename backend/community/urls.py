@@ -2,8 +2,10 @@ from django.urls import path
 
 from .views import (
 	ActivityFeedView,
+	ActivityCommentDetailView,
 	ActivityCommentsView,
 	ActivityLikeView,
+	ActivitySaveView,
 	ActivityShareView,
 	AddFriendView,
 	CommunitySummaryView,
@@ -24,6 +26,7 @@ from .views import (
 	GroupRemoveMemberView,
 	LeaderboardView,
 	RemoveFriendView,
+	SavedActivityListView,
 	TodayActivityView,
 	UserSearchView,
 )
@@ -42,7 +45,10 @@ urlpatterns = [
 	path('community/activity/', ActivityFeedView.as_view(), name='community-activity'),
 	path('community/activity/<int:activity_id>/like/', ActivityLikeView.as_view(), name='community-activity-like'),
 	path('community/activity/<int:activity_id>/comments/', ActivityCommentsView.as_view(), name='community-activity-comments'),
+	path('community/activity/<int:activity_id>/comments/<int:comment_id>/', ActivityCommentDetailView.as_view(), name='community-activity-comment-detail'),
 	path('community/activity/<int:activity_id>/share/', ActivityShareView.as_view(), name='community-activity-share'),
+	path('community/activity/<int:activity_id>/save/', ActivitySaveView.as_view(), name='community-activity-save'),
+	path('community/saved/', SavedActivityListView.as_view(), name='community-saved'),
 	path('community/groups/', GroupListCreateView.as_view(), name='community-groups'),
 	path('community/groups/<int:group_id>/', GroupDetailView.as_view(), name='community-group-detail'),
 	path('community/groups/<int:group_id>/members/', GroupMembersView.as_view(), name='community-group-members'),

@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   RefreshControl,
@@ -28,7 +29,8 @@ import type {
   CommunityActivity,
   CommunityActivityComment,
 } from "../../types/community";
-import { API_BASE_URL, useAuth, useThemeMode } from "../../App";
+import { API_BASE_URL, fetchRequiredAuth, invalidateWorkoutData } from "../../api/client";
+import { useAuth, useThemeMode } from "../../App";
 import { fontFamily } from "../../styles/typography";
 import {
   PS_BLUE,
@@ -54,6 +56,12 @@ const MANUAL_TYPES = [
   { key: "conditioning", label: "Conditioning" },
   { key: "mobility", label: "Mobility" },
   { key: "sport", label: "Sport" },
+] as const;
+const MANUAL_INTENSITIES = [
+  { key: "light", label: "Light" },
+  { key: "moderate", label: "Moderate" },
+  { key: "hard", label: "Hard" },
+  { key: "max_effort", label: "Max effort" },
 ] as const;
 
 const GROUP_TO_MUSCLES: Record<string, MuscleName[]> = {
@@ -107,6 +115,7 @@ export type FeedItem =
       userId: number;
       userName: string;
       avatarInitials?: string;
+      avatarUrl?: string;
       type: CommunityActivity["type"] | "streak" | "rank" | "transformation";
       title: string;
       description?: string;
@@ -114,6 +123,7 @@ export type FeedItem =
       metadata?: Record<string, unknown>;
       occurredAt: string;
       likedByMe?: boolean;
+      savedByMe?: boolean;
       likesCount?: number;
       commentsCount?: number;
       shareCount?: number;
@@ -258,6 +268,12 @@ const getPrSummary = (metadata?: Record<string, unknown>) => {
 const getCaption = (metadata?: Record<string, unknown>) =>
   typeof metadata?.caption === "string" ? metadata.caption.trim() : "";
 
+const resolveMediaUrl = (url?: string | null) => {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_BASE_URL.replace(/\/api\/v1\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+};
+
 const getImageUrl = (metadata?: Record<string, unknown>) =>
   typeof metadata?.image_url === "string" ? metadata.image_url.trim() : "";
 
@@ -383,11 +399,10 @@ const getWorkoutSubtitle = (item: FeedItem) => {
 const getWorkoutTakeaway = (item: FeedItem) => {
   const groups = asStringArray(item.metadata?.body_groups);
   const muscles = getActivityMuscles(item.metadata);
-  const points = Math.max(1, Math.min(8, muscles.length || groups.length || 1));
   const xp =
     typeof item.metadata?.activity_xp === "number"
       ? item.metadata.activity_xp
-      : points;
+      : 0;
   const hasStrength = groups.some((group) =>
     ["chest", "back", "shoulders", "arms", "legs", "glutes"].includes(group),
   );
@@ -449,7 +464,7 @@ const buildStats = (item: FeedItem) => {
       ? item.metadata.duration_minutes
       : typeof item.score === "number" && item.score > 0
         ? Math.round(item.score)
-        : 48;
+        : 0;
   const groups = asStringArray(item.metadata?.body_groups);
   const focus =
     typeof item.metadata?.focus_label === "string" &&
@@ -468,13 +483,30 @@ const buildStats = (item: FeedItem) => {
   const streak =
     typeof item.metadata?.streak_days === "number"
       ? item.metadata.streak_days
-      : 3;
+      : 0;
   if (item.type === "challenge") {
+    const summary =
+      item.metadata?.frontend_summary &&
+      typeof item.metadata.frontend_summary === "object"
+        ? (item.metadata.frontend_summary as Record<string, unknown>)
+        : {};
+    const challengeXp =
+      typeof summary.xp === "number"
+        ? summary.xp
+        : typeof item.metadata?.xp === "number"
+          ? item.metadata.xp
+          : 0;
+    const occurredAt = new Date(item.occurredAt);
     return [
       {
         key: "time",
         icon: "calendar-outline" as const,
-        value: "12 Apr",
+        value: Number.isNaN(occurredAt.getTime())
+          ? "Logged"
+          : occurredAt.toLocaleDateString(undefined, {
+              day: "numeric",
+              month: "short",
+            }),
         label: "Time",
       },
       {
@@ -486,8 +518,8 @@ const buildStats = (item: FeedItem) => {
       {
         key: "points",
         icon: "shield-outline" as const,
-        value: "200",
-        label: "Points",
+        value: String(challengeXp),
+        label: "XP",
       },
     ];
   }
@@ -495,7 +527,7 @@ const buildStats = (item: FeedItem) => {
     {
       key: "duration",
       icon: "time-outline" as const,
-      value: `${Math.max(1, Math.round(duration))}m`,
+      value: `${Math.max(0, Math.round(duration))}m`,
       label: "Duration",
     },
     {
@@ -522,19 +554,23 @@ const buildStats = (item: FeedItem) => {
 const MetricRail: React.FC<{
   streakDays?: number | null;
   thisWeekPoints?: number;
+  weeklyWorkoutCount?: number;
   loggedWeekDays?: number[];
   onRecord: () => void;
   cardWidth: number;
+  isLight: boolean;
 }> = ({
   streakDays,
-  thisWeekPoints = 842,
+  thisWeekPoints = 0,
+  weeklyWorkoutCount = 0,
   loggedWeekDays = [],
   onRecord,
   cardWidth,
+  isLight,
 }) => {
-  const currentStreak = Math.max(1, streakDays ?? 12);
+  const currentStreak = Math.max(0, streakDays ?? 0);
   const weekLabels = ["M", "T", "W", "T", "F", "S", "S"];
-  const loggedDaySet = new Set(loggedWeekDays.length ? loggedWeekDays : [0, 1, 2, 3]);
+  const loggedDaySet = new Set(loggedWeekDays);
   const [activeMetricIndex, setActiveMetricIndex] = useState(0);
   const items = [
     {
@@ -543,28 +579,18 @@ const MetricRail: React.FC<{
       label: "Streak",
       value: String(currentStreak),
       unit: "days",
-      caption: "Best: 28 days",
+      caption: "Consecutive training days",
       accent: "#6D7DFF",
     },
     {
       key: "goal",
       icon: "radio-button-on" as const,
-      label: "Weekly goal",
-      value: "4",
-      unit: "/ 6",
+      label: "This week",
+      value: String(weeklyWorkoutCount),
+      unit: weeklyWorkoutCount === 1 ? " workout" : " workouts",
       subLabel: "Workouts",
-      caption: "67% completed",
+      caption: "Logged in the last 7 days",
       accent: "#4CE4D0",
-    },
-    {
-      key: "challenge",
-      icon: "trophy-outline" as const,
-      label: "Next challenge",
-      value: "HYROX Pro",
-      unit: "",
-      caption: "Starts in",
-      subLabel: "3 days",
-      accent: "#C084FC",
     },
     {
       key: "points",
@@ -573,7 +599,7 @@ const MetricRail: React.FC<{
       value: String(thisWeekPoints),
       unit: "",
       subLabel: "Hybrid Points",
-      caption: "+18% vs last week",
+      caption: "Earned from synced workouts",
       accent: "#34D399",
     },
   ];
@@ -600,7 +626,11 @@ const MetricRail: React.FC<{
         {items.map((item) => (
           <View
             key={item.key}
-            style={[feedStyles.metricCard, { width: cardWidth }]}
+            style={[
+              feedStyles.metricCard,
+              isLight && feedStyles.metricCardLight,
+              { width: cardWidth },
+            ]}
           >
             <View style={feedStyles.metricTopRow}>
               <View
@@ -608,30 +638,44 @@ const MetricRail: React.FC<{
               >
                 <FitnessIcon3D name={metricIcon3D(item.key)} size={28} active />
               </View>
-              <Text style={feedStyles.metricLabel}>{item.label}</Text>
+              <Text
+                style={[
+                  feedStyles.metricLabel,
+                  isLight && feedStyles.metricLabelLight,
+                ]}
+              >
+                {item.label}
+              </Text>
             </View>
             <View style={feedStyles.metricValueRow}>
-              <Text style={feedStyles.metricValue}>{item.value}</Text>
+              <Text
+                style={[
+                  feedStyles.metricValue,
+                  isLight && feedStyles.metricValueLight,
+                ]}
+              >
+                {item.value}
+              </Text>
               {!!item.unit && (
-                <Text style={feedStyles.metricUnit}>{item.unit}</Text>
+                <Text
+                  style={[
+                    feedStyles.metricUnit,
+                    isLight && feedStyles.metricUnitLight,
+                  ]}
+                >
+                  {item.unit}
+                </Text>
               )}
             </View>
             {item.subLabel && item.key !== "challenge" ? (
-              <Text style={feedStyles.metricSubLabel}>{item.subLabel}</Text>
-            ) : null}
-            {item.key === "goal" ? (
-              <View style={feedStyles.metricProgressTrack}>
-                <View style={feedStyles.metricProgressFill} />
-              </View>
-            ) : null}
-            {item.key === "challenge" ? (
-              <View style={feedStyles.metricChallengeBlock}>
-                <Text style={feedStyles.metricChallengePrefix}>{item.caption}</Text>
-                <View style={feedStyles.metricChallengeRow}>
-                  <Text style={feedStyles.metricChallengeValue}>{item.subLabel}</Text>
-                  <Ionicons name="arrow-forward" size={22} color="#6F778A" />
-                </View>
-              </View>
+              <Text
+                style={[
+                  feedStyles.metricSubLabel,
+                  isLight && feedStyles.metricSubLabelLight,
+                ]}
+              >
+                {item.subLabel}
+              </Text>
             ) : null}
             {item.key === "streak" ? (
               <View style={feedStyles.streakWeek}>
@@ -642,10 +686,18 @@ const MetricRail: React.FC<{
                       key={`${label}-${index}`}
                       style={feedStyles.streakDay}
                     >
-                      <Text style={feedStyles.streakDayLabel}>{label}</Text>
+                      <Text
+                        style={[
+                          feedStyles.streakDayLabel,
+                          isLight && feedStyles.streakDayLabelLight,
+                        ]}
+                      >
+                        {label}
+                      </Text>
                       <View
                         style={[
                           feedStyles.streakCheck,
+                          isLight && feedStyles.streakCheckLight,
                           logged && feedStyles.streakCheckActive,
                         ]}
                       >
@@ -662,16 +714,15 @@ const MetricRail: React.FC<{
                 })}
               </View>
             ) : null}
-            {item.key !== "challenge" ? (
-              <Text
-                style={[
-                  feedStyles.metricCaption,
-                  item.key === "points" && { color: "#34D399" },
-                ]}
-              >
-                {item.caption}
-              </Text>
-            ) : null}
+            <Text
+              style={[
+                feedStyles.metricCaption,
+                isLight && feedStyles.metricCaptionLight,
+                item.key === "points" && { color: "#34D399" },
+              ]}
+            >
+              {item.caption}
+            </Text>
           </View>
         ))}
       </ScrollView>
@@ -687,15 +738,17 @@ const MetricRail: React.FC<{
         ))}
       </View>
       <TouchableOpacity
-        style={feedStyles.composer}
+        style={[feedStyles.composer, isLight && feedStyles.composerLight]}
         activeOpacity={0.86}
         onPress={onRecord}
       >
-        <View style={feedStyles.composerPlus}>
-          <Ionicons name="add" size={30} color="#F8FAFC" />
+        <View style={[feedStyles.composerPlus, isLight && feedStyles.composerPlusLight]}>
+          <Ionicons name="add" size={30} color={isLight ? "#1F1F1F" : "#F8FAFC"} />
         </View>
-        <Text style={feedStyles.composerText}>What did you train today?</Text>
-        <Ionicons name="image-outline" size={24} color="#E5E7EB" />
+        <Text style={[feedStyles.composerText, isLight && feedStyles.composerTextLight]}>
+          What did you train today?
+        </Text>
+        <Ionicons name="image-outline" size={24} color={isLight ? "#475569" : "#E5E7EB"} />
       </TouchableOpacity>
     </View>
   );
@@ -703,6 +756,7 @@ const MetricRail: React.FC<{
 
 const ManualWorkoutModal: React.FC<{
   visible: boolean;
+  isLight: boolean;
   saving: boolean;
   error: string | null;
   duration: string;
@@ -710,15 +764,20 @@ const ManualWorkoutModal: React.FC<{
   selectedType: string;
   selectedGroups: string[];
   includeCardio: boolean;
+  selectedIntensity: string;
+  notes: string;
   onClose: () => void;
   onDurationChange: (value: string) => void;
   onExerciseCountChange: (value: string) => void;
   onTypeChange: (value: string) => void;
   onToggleGroup: (value: string) => void;
   onToggleCardio: () => void;
+  onIntensityChange: (value: string) => void;
+  onNotesChange: (value: string) => void;
   onSubmit: () => void;
 }> = ({
   visible,
+  isLight,
   saving,
   error,
   duration,
@@ -726,12 +785,16 @@ const ManualWorkoutModal: React.FC<{
   selectedType,
   selectedGroups,
   includeCardio,
+  selectedIntensity,
+  notes,
   onClose,
   onDurationChange,
   onExerciseCountChange,
   onTypeChange,
   onToggleGroup,
   onToggleCardio,
+  onIntensityChange,
+  onNotesChange,
   onSubmit,
 }) => (
   <Modal
@@ -746,15 +809,31 @@ const ManualWorkoutModal: React.FC<{
         activeOpacity={1}
         onPress={onClose}
       />
-      <View style={feedStyles.manualModalCard}>
+      <View
+        style={[
+          feedStyles.manualModalCard,
+          isLight && feedStyles.manualModalCardLight,
+        ]}
+      >
         <View style={feedStyles.manualModalHeader}>
-          <Text style={feedStyles.manualModalTitle}>Log workout</Text>
+          <Text
+            style={[
+              feedStyles.manualModalTitle,
+              isLight && feedStyles.manualModalTitleLight,
+            ]}
+          >
+            Log workout
+          </Text>
           <TouchableOpacity onPress={onClose} activeOpacity={0.8}>
-            <Ionicons name="close" size={22} color="#CBD5E1" />
+            <Ionicons name="close" size={22} color={isLight ? "#334155" : "#CBD5E1"} />
           </TouchableOpacity>
         </View>
 
-        <Text style={feedStyles.manualLabel}>Type</Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+        <Text style={[feedStyles.manualLabel, isLight && feedStyles.manualLabelLight]}>Type</Text>
         <View style={feedStyles.manualChipRow}>
           {MANUAL_TYPES.map((item) => {
             const selected = selectedType === item.key;
@@ -763,6 +842,7 @@ const ManualWorkoutModal: React.FC<{
                 key={item.key}
                 style={[
                   feedStyles.manualChip,
+                  isLight && feedStyles.manualChipLight,
                   selected && feedStyles.manualChipActive,
                 ]}
                 activeOpacity={0.85}
@@ -771,6 +851,7 @@ const ManualWorkoutModal: React.FC<{
                 <Text
                   style={[
                     feedStyles.manualChipText,
+                    isLight && feedStyles.manualChipTextLight,
                     selected && feedStyles.manualChipTextActive,
                   ]}
                 >
@@ -781,7 +862,7 @@ const ManualWorkoutModal: React.FC<{
           })}
         </View>
 
-        <Text style={feedStyles.manualLabel}>Focus</Text>
+        <Text style={[feedStyles.manualLabel, isLight && feedStyles.manualLabelLight]}>Focus</Text>
         <View style={feedStyles.manualChipRow}>
           {MANUAL_BODY_GROUPS.map((item) => {
             const selected = selectedGroups.includes(item.key);
@@ -790,6 +871,7 @@ const ManualWorkoutModal: React.FC<{
                 key={item.key}
                 style={[
                   feedStyles.manualChip,
+                  isLight && feedStyles.manualChipLight,
                   selected && feedStyles.manualChipActive,
                 ]}
                 activeOpacity={0.85}
@@ -798,6 +880,7 @@ const ManualWorkoutModal: React.FC<{
                 <Text
                   style={[
                     feedStyles.manualChipText,
+                    isLight && feedStyles.manualChipTextLight,
                     selected && feedStyles.manualChipTextActive,
                   ]}
                 >
@@ -809,6 +892,7 @@ const ManualWorkoutModal: React.FC<{
           <TouchableOpacity
             style={[
               feedStyles.manualChip,
+              isLight && feedStyles.manualChipLight,
               includeCardio && feedStyles.manualChipActive,
             ]}
             activeOpacity={0.85}
@@ -817,6 +901,7 @@ const ManualWorkoutModal: React.FC<{
             <Text
               style={[
                 feedStyles.manualChipText,
+                isLight && feedStyles.manualChipTextLight,
                 includeCardio && feedStyles.manualChipTextActive,
               ]}
             >
@@ -827,28 +912,72 @@ const ManualWorkoutModal: React.FC<{
 
         <View style={feedStyles.manualInputRow}>
           <View style={feedStyles.manualInputBlock}>
-            <Text style={feedStyles.manualLabel}>Time</Text>
+            <Text style={[feedStyles.manualLabel, isLight && feedStyles.manualLabelLight]}>Time</Text>
             <TextInput
               value={duration}
               onChangeText={onDurationChange}
               keyboardType="numeric"
               placeholder="45"
-              placeholderTextColor="#64748B"
-              style={feedStyles.manualInput}
+              placeholderTextColor={isLight ? "#94A3B8" : "#64748B"}
+              style={[feedStyles.manualInput, isLight && feedStyles.manualInputLight]}
             />
           </View>
           <View style={feedStyles.manualInputBlock}>
-            <Text style={feedStyles.manualLabel}>Exercises</Text>
+            <Text style={[feedStyles.manualLabel, isLight && feedStyles.manualLabelLight]}>Exercises</Text>
             <TextInput
               value={exerciseCount}
               onChangeText={onExerciseCountChange}
               keyboardType="numeric"
               placeholder="5"
-              placeholderTextColor="#64748B"
-              style={feedStyles.manualInput}
+              placeholderTextColor={isLight ? "#94A3B8" : "#64748B"}
+              style={[feedStyles.manualInput, isLight && feedStyles.manualInputLight]}
             />
           </View>
         </View>
+
+        <Text style={[feedStyles.manualLabel, isLight && feedStyles.manualLabelLight]}>
+          Intensity
+        </Text>
+        <View style={feedStyles.manualChipRow}>
+          {MANUAL_INTENSITIES.map((item) => {
+            const selected = selectedIntensity === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={[
+                  feedStyles.manualChip,
+                  isLight && feedStyles.manualChipLight,
+                  selected && feedStyles.manualChipActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => onIntensityChange(item.key)}
+              >
+                <Text
+                  style={[
+                    feedStyles.manualChipText,
+                    isLight && feedStyles.manualChipTextLight,
+                    selected && feedStyles.manualChipTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TextInput
+          value={notes}
+          onChangeText={onNotesChange}
+          multiline
+          placeholder="Optional notes"
+          placeholderTextColor={isLight ? "#94A3B8" : "#64748B"}
+          style={[
+            feedStyles.manualInput,
+            feedStyles.manualNotesInput,
+            isLight && feedStyles.manualInputLight,
+          ]}
+        />
 
         {error ? <Text style={feedStyles.manualError}>{error}</Text> : null}
 
@@ -864,6 +993,7 @@ const ManualWorkoutModal: React.FC<{
             <Text style={feedStyles.manualSubmitText}>Save workout</Text>
           )}
         </TouchableOpacity>
+        </ScrollView>
       </View>
     </View>
   </Modal>
@@ -872,7 +1002,8 @@ const ManualWorkoutModal: React.FC<{
 const ActivityBodyMap: React.FC<{
   metadata?: Record<string, unknown>;
   compact?: boolean;
-}> = ({ metadata, compact }) => {
+  isLight: boolean;
+}> = ({ metadata, compact, isLight }) => {
   const muscles = getActivityMuscles(metadata);
   if (!muscles.length) return null;
 
@@ -882,13 +1013,14 @@ const ActivityBodyMap: React.FC<{
   const showBack = backMuscles.length > 0;
 
   return (
-    <View style={feedStyles.bodyMapPreview}>
+    <View style={[feedStyles.bodyMapPreview, isLight && feedStyles.bodyMapPreviewLight]}>
       <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
         {[25, 50, 75].map((top) => (
           <View
             key={`h-${top}`}
             style={[
               feedStyles.mapGridLine,
+              isLight && feedStyles.mapGridLineLight,
               feedStyles.mapGridLineHorizontal,
               { top: `${top}%` },
             ]}
@@ -899,6 +1031,7 @@ const ActivityBodyMap: React.FC<{
             key={`v-${left}`}
             style={[
               feedStyles.mapGridLine,
+              isLight && feedStyles.mapGridLineLight,
               feedStyles.mapGridLineVertical,
               { left: `${left}%` },
             ]}
@@ -914,7 +1047,7 @@ const ActivityBodyMap: React.FC<{
             ]}
           >
             <BodyMuscleFront
-              isLight={false}
+              isLight={isLight}
               activeMuscles={muscles}
               readOnly
               highlightColor={WORKOUT_ACCENT}
@@ -929,7 +1062,7 @@ const ActivityBodyMap: React.FC<{
             ]}
           >
             <BodyMuscleBack
-              isLight={false}
+              isLight={isLight}
               activeMuscles={muscles}
               readOnly
               highlightColor={WORKOUT_ACCENT_BLUE}
@@ -962,7 +1095,10 @@ const ActivityDetailModal: React.FC<{
     "frontendSummary" in item ? item.frontendSummary : null,
   );
   const exercises = isWorkout ? getWorkoutExerciseRows(item.metadata) : [];
-  const badges = isWorkout ? getEarnedWorkoutBadges(item.metadata) : [];
+  const badges =
+    isWorkout || item.type === "challenge"
+      ? getEarnedWorkoutBadges(item.metadata)
+      : [];
   const chips = isWorkout ? getActivityChips(item) : [];
 
   return (
@@ -986,9 +1122,13 @@ const ActivityDetailModal: React.FC<{
           >
             <View style={feedStyles.detailHeader}>
               <View style={[feedStyles.avatar, isLight && feedStyles.avatarLight]}>
-                <Text style={feedStyles.avatarText}>
-                  {(item.avatarInitials || item.userName.slice(0, 2)).toUpperCase()}
-                </Text>
+                {item.avatarUrl ? (
+                  <Image source={{ uri: resolveMediaUrl(item.avatarUrl) }} style={feedStyles.avatarImage} />
+                ) : (
+                  <Text style={feedStyles.avatarText}>
+                    {(item.avatarInitials || item.userName.slice(0, 2)).toUpperCase()}
+                  </Text>
+                )}
               </View>
               <View style={feedStyles.detailHeaderCopy}>
                 <Text style={feedStyles.detailUserName}>{item.userName}</Text>
@@ -1027,7 +1167,7 @@ const ActivityDetailModal: React.FC<{
 
             {isWorkout ? (
               <View style={feedStyles.detailMapBlock}>
-                <ActivityBodyMap metadata={item.metadata} />
+                <ActivityBodyMap metadata={item.metadata} isLight={isLight} />
               </View>
             ) : null}
 
@@ -1147,9 +1287,12 @@ export const FeedCard: React.FC<{
   onLike: (item: FeedItem) => void;
   onComment: (item: FeedItem) => void;
   onShare: (item: FeedItem) => void;
-}> = ({ item, isLight, onOpen, onLike, onComment, onShare }) => {
+  onSave: (item: FeedItem, saved: boolean) => void | Promise<void>;
+  openOnPress?: boolean;
+}> = ({ item, isLight, onOpen, onLike, onComment, onShare, onSave, openOnPress = true }) => {
   const { width } = useWindowDimensions();
   const [mediaIndex, setMediaIndex] = useState(0);
+  const [saved, setSaved] = useState(Boolean(item.savedByMe));
   const icon3d = getFeedIcon3D(item.type);
   const stats = buildStats(item);
   const isChallenge = item.type === "challenge";
@@ -1163,11 +1306,34 @@ export const FeedCard: React.FC<{
     ...imageUrls.map((uri) => ({ key: `image:${uri}`, type: "image" as const, uri })),
     ...(isWorkout ? [{ key: "body-map", type: "bodyMap" as const }] : []),
   ];
-  const earnedBadges = isWorkout ? getEarnedWorkoutBadges(item.metadata) : [];
+  const earnedBadges =
+    isWorkout || isChallenge ? getEarnedWorkoutBadges(item.metadata) : [];
   const planName =
     isWorkout && typeof item.metadata?.plan_name === "string"
       ? item.metadata.plan_name.trim()
       : "";
+  const leaderboardXp =
+    isWorkout && typeof item.metadata?.leaderboard_xp === "number"
+      ? item.metadata.leaderboard_xp
+      : 0;
+  const challengePoints =
+    isWorkout && typeof item.metadata?.challenge_points === "number"
+      ? item.metadata.challenge_points
+      : 0;
+
+  useEffect(() => {
+    setSaved(Boolean(item.savedByMe));
+  }, [item.savedByMe]);
+
+  const toggleSaved = async () => {
+    const previous = saved;
+    setSaved(!previous);
+    try {
+      await onSave(item, previous);
+    } catch {
+      setSaved(previous);
+    }
+  };
 
   return (
     <TouchableOpacity
@@ -1176,19 +1342,24 @@ export const FeedCard: React.FC<{
         isWorkout && feedStyles.workoutCard,
         isLight && feedStyles.cardLight,
       ]}
-      activeOpacity={0.92}
-      onPress={() => onOpen(item)}
+      activeOpacity={openOnPress ? 0.92 : 1}
+      disabled={!openOnPress}
+      onPress={openOnPress ? () => onOpen(item) : undefined}
     >
       <View style={feedStyles.cardHeader}>
         <View style={[feedStyles.avatar, isLight && feedStyles.avatarLight]}>
-          <Text
-            style={[
-              feedStyles.avatarText,
-              isLight && feedStyles.avatarTextLight,
-            ]}
-          >
-            {(item.avatarInitials || item.userName.slice(0, 2)).toUpperCase()}
-          </Text>
+          {item.avatarUrl ? (
+            <Image source={{ uri: resolveMediaUrl(item.avatarUrl) }} style={feedStyles.avatarImage} />
+          ) : (
+            <Text
+              style={[
+                feedStyles.avatarText,
+                isLight && feedStyles.avatarTextLight,
+              ]}
+            >
+              {(item.avatarInitials || item.userName.slice(0, 2)).toUpperCase()}
+            </Text>
+          )}
         </View>
         <View style={feedStyles.cardHeaderText}>
           <Text
@@ -1219,7 +1390,9 @@ export const FeedCard: React.FC<{
         <View
           style={[
             feedStyles.statusBadge,
+            isLight && feedStyles.statusBadgeLight,
             isChallenge && feedStyles.statusBadgeChallenge,
+            isLight && isChallenge && feedStyles.statusBadgeChallengeLight,
           ]}
         >
           <Ionicons
@@ -1230,7 +1403,9 @@ export const FeedCard: React.FC<{
           <Text
             style={[
               feedStyles.statusBadgeText,
+              isLight && feedStyles.statusBadgeTextLight,
               isChallenge && feedStyles.statusBadgeTextChallenge,
+              isLight && isChallenge && feedStyles.statusBadgeTextChallengeLight,
             ]}
           >
             {isChallenge ? "Challenge completed" : getActivityLabel(item)}
@@ -1286,7 +1461,13 @@ export const FeedCard: React.FC<{
               >
                 {getWorkoutDisplayTitle(item)}
               </Text>
-              <Text style={feedStyles.workoutSubtitle} numberOfLines={1}>
+              <Text
+                style={[
+                  feedStyles.workoutSubtitle,
+                  isLight && feedStyles.workoutSubtitleLight,
+                ]}
+                numberOfLines={1}
+              >
                 {getWorkoutSubtitle(item)}
               </Text>
             </>
@@ -1316,12 +1497,25 @@ export const FeedCard: React.FC<{
             </>
           )}
           {caption ? (
-            <Text style={feedStyles.activityCaption}>{caption}</Text>
+            <Text
+              style={[
+                feedStyles.activityCaption,
+                isLight && feedStyles.activityCaptionLight,
+              ]}
+            >
+              {caption}
+            </Text>
           ) : null}
         </View>
 
         {mediaSlides.length > 1 ? (
-          <View style={[feedStyles.mediaCarouselFrame, { width: mediaFrameWidth }]}>
+          <View
+            style={[
+              feedStyles.mediaCarouselFrame,
+              isLight && feedStyles.mediaCarouselFrameLight,
+              { width: mediaFrameWidth },
+            ]}
+          >
             <View style={feedStyles.mediaCounter}>
               <Text style={feedStyles.mediaCounterText}>
                 {Math.min(mediaIndex + 1, mediaSlides.length)}/{mediaSlides.length}
@@ -1330,8 +1524,14 @@ export const FeedCard: React.FC<{
             <ScrollView
               horizontal
               pagingEnabled
+              nestedScrollEnabled
+              directionalLockEnabled
+              snapToInterval={mediaFrameWidth}
+              snapToAlignment="start"
+              disableIntervalMomentum
               showsHorizontalScrollIndicator={false}
               decelerationRate="fast"
+              scrollEventThrottle={16}
               onMomentumScrollEnd={(event) => {
                 const offsetX = event.nativeEvent.contentOffset.x;
                 setMediaIndex(
@@ -1351,7 +1551,7 @@ export const FeedCard: React.FC<{
                       resizeMode="cover"
                     />
                   ) : (
-                    <ActivityBodyMap metadata={item.metadata} />
+                    <ActivityBodyMap metadata={item.metadata} isLight={isLight} />
                   )}
                 </View>
               ))}
@@ -1359,10 +1559,16 @@ export const FeedCard: React.FC<{
           </View>
         ) : isWorkout ? (
           <View style={feedStyles.activityMapColumn}>
-            <ActivityBodyMap metadata={item.metadata} />
+            <ActivityBodyMap metadata={item.metadata} isLight={isLight} />
           </View>
         ) : imageUrls.length === 1 ? (
-          <View style={[feedStyles.mediaCarouselFrame, { width: mediaFrameWidth }]}>
+          <View
+            style={[
+              feedStyles.mediaCarouselFrame,
+              isLight && feedStyles.mediaCarouselFrameLight,
+              { width: mediaFrameWidth },
+            ]}
+          >
             <Image
               source={{ uri: imageUrls[0] }}
               style={feedStyles.activityImage}
@@ -1428,37 +1634,49 @@ export const FeedCard: React.FC<{
                 />
               </View>
               <View style={feedStyles.takeawayCopy}>
-                <Text style={feedStyles.takeawayTitle}>{takeaway.title}</Text>
-                <Text style={feedStyles.takeawayBody}>{takeaway.body}</Text>
+                <Text style={[feedStyles.takeawayTitle, isLight && feedStyles.takeawayTitleLight]}>
+                  {takeaway.title}
+                </Text>
+                <Text style={[feedStyles.takeawayBody, isLight && feedStyles.takeawayBodyLight]}>
+                  {takeaway.body}
+                </Text>
               </View>
               <View style={feedStyles.takeawayScoreBlock}>
                 <Text style={feedStyles.takeawayScore}>{takeaway.score}</Text>
-                <Text style={feedStyles.takeawayLabel}>{takeaway.label}</Text>
+                <Text style={[feedStyles.takeawayLabel, isLight && feedStyles.takeawayLabelLight]}>
+                  {takeaway.label}
+                </Text>
               </View>
             </View>
 
+            {leaderboardXp > 0 || challengePoints > 0 ? (
             <View style={feedStyles.competitionRow}>
+              {leaderboardXp > 0 ? (
               <View style={feedStyles.competitionItem}>
                 <Ionicons
                   name="trending-up-outline"
                   size={15}
                   color={WORKOUT_ACCENT_BLUE}
                 />
-                <Text style={feedStyles.competitionText}>
-                  Rank +12 this week
+                <Text style={[feedStyles.competitionText, isLight && feedStyles.competitionTextLight]}>
+                  +{leaderboardXp} board XP
                 </Text>
               </View>
+              ) : null}
+              {challengePoints > 0 ? (
               <View style={feedStyles.competitionItem}>
                 <Ionicons
                   name="people-outline"
                   size={15}
-                  color={WORKOUT_TEXT_SECONDARY}
+                  color={isLight ? "#64748B" : WORKOUT_TEXT_SECONDARY}
                 />
-                <Text style={feedStyles.competitionText}>
-                  3 friends trained today
+                <Text style={[feedStyles.competitionText, isLight && feedStyles.competitionTextLight]}>
+                  +{challengePoints} challenge points
                 </Text>
               </View>
+              ) : null}
             </View>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -1477,7 +1695,7 @@ export const FeedCard: React.FC<{
                   color="#EF4444"
                 />
               </TouchableOpacity>
-              <Text style={feedStyles.socialMetricText}>
+              <Text style={[feedStyles.socialMetricText, isLight && feedStyles.socialMetricTextLight]}>
                 {item.likesCount ?? 0}
               </Text>
             </View>
@@ -1486,9 +1704,9 @@ export const FeedCard: React.FC<{
                 activeOpacity={0.78}
                 onPress={() => onComment(item)}
               >
-                <Ionicons name="chatbubble-outline" size={21} color="#E5E7EB" />
+                <Ionicons name="chatbubble-outline" size={21} color={isLight ? "#475569" : "#E5E7EB"} />
               </TouchableOpacity>
-              <Text style={feedStyles.socialMetricText}>
+              <Text style={[feedStyles.socialMetricText, isLight && feedStyles.socialMetricTextLight]}>
                 {item.commentsCount ?? 0}
               </Text>
             </View>
@@ -1496,15 +1714,20 @@ export const FeedCard: React.FC<{
             <TouchableOpacity
               style={feedStyles.socialIconButton}
               activeOpacity={0.78}
+              onPress={() => void toggleSaved()}
             >
-              <Ionicons name="bookmark-outline" size={21} color="#E5E7EB" />
+              <Ionicons
+                name={saved ? "bookmark" : "bookmark-outline"}
+                size={21}
+                color={saved ? WORKOUT_ACCENT_BLUE : isLight ? "#475569" : "#E5E7EB"}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={feedStyles.socialIconButton}
               activeOpacity={0.78}
               onPress={() => onShare(item)}
             >
-              <Ionicons name="share-social-outline" size={21} color="#E5E7EB" />
+              <Ionicons name="share-social-outline" size={21} color={isLight ? "#475569" : "#E5E7EB"} />
             </TouchableOpacity>
           </View>
           <View style={feedStyles.likedByRow}>
@@ -1521,7 +1744,7 @@ export const FeedCard: React.FC<{
                 </View>
               ))}
             </View>
-            <Text style={feedStyles.likedByText}>
+            <Text style={[feedStyles.likedByText, isLight && feedStyles.likedByTextLight]}>
               {(item.likesCount ?? 0) > 0
                 ? `${item.likesCount} people liked this`
                 : "Be first to support this workout"}
@@ -1590,6 +1813,17 @@ export const FeedCard: React.FC<{
             >
               {item.shareCount ?? 0}
             </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={feedStyles.footerAction}
+            activeOpacity={0.78}
+            onPress={() => void toggleSaved()}
+          >
+            <Ionicons
+              name={saved ? "bookmark" : "bookmark-outline"}
+              size={17}
+              color={saved ? WORKOUT_ACCENT_BLUE : isLight ? "#475569" : "#CBD5E1"}
+            />
           </TouchableOpacity>
         </View>
       ) : null}
@@ -1709,10 +1943,15 @@ const HomeFeedScreen: React.FC = () => {
     reload,
     likeActivity,
     shareActivity,
+    setActivitySaved,
     loadActivityComments,
     addActivityComment,
   } = useCommunity();
   const { accessToken, refreshAccessToken, signOut } = useAuth();
+  const auth = useMemo(
+    () => ({ accessToken, refreshAccessToken, signOut }),
+    [accessToken, refreshAccessToken, signOut],
+  );
   const [manualVisible, setManualVisible] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
@@ -1721,7 +1960,8 @@ const HomeFeedScreen: React.FC = () => {
   const [manualType, setManualType] = useState("strength");
   const [manualGroups, setManualGroups] = useState<string[]>(["chest"]);
   const [manualCardio, setManualCardio] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<FeedItem | null>(null);
+  const [manualIntensity, setManualIntensity] = useState("moderate");
+  const [manualNotes, setManualNotes] = useState("");
   const [commentPost, setCommentPost] = useState<FeedItem | null>(null);
   const [comments, setComments] = useState<CommunityActivityComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
@@ -1752,7 +1992,7 @@ const HomeFeedScreen: React.FC = () => {
     });
     return Array.from(days);
   }, [feedItems]);
-  const metricCardWidth = Math.max(280, width - 32);
+  const metricCardWidth = Math.max(214, Math.min(244, width * 0.62));
 
   useFocusEffect(
     useCallback(() => {
@@ -1809,32 +2049,21 @@ const HomeFeedScreen: React.FC = () => {
       entry_source: "manual",
       title: manualTitle,
       focus_label: manualFocus,
-      intensity: "Logged",
+      intensity: manualIntensity,
+      notes: manualNotes.trim(),
     };
 
-    const request = (token: string) =>
-      fetch(`${API_BASE_URL}/workouts/log/`, {
+    const request = () =>
+      fetchRequiredAuth("/workouts/log/", auth, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
 
     try {
-      let tokenToUse = accessToken;
-      let response = await request(tokenToUse);
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          setManualError("Session expired. Please sign in again.");
-          return;
-        }
-        tokenToUse = refreshed;
-        response = await request(tokenToUse);
-      }
+      const response = await request();
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -1844,14 +2073,25 @@ const HomeFeedScreen: React.FC = () => {
             : "Could not save workout.",
         );
       }
+      const result = (await response.json()) as {
+        activity_xp?: number;
+        leaderboard_xp?: number;
+      };
 
+      invalidateWorkoutData();
       setManualVisible(false);
       setManualDuration("45");
       setManualExerciseCount("5");
       setManualType("strength");
       setManualGroups(["chest"]);
       setManualCardio(false);
+      setManualIntensity("moderate");
+      setManualNotes("");
       await reload();
+      Alert.alert(
+        "Workout logged",
+        `+${result.activity_xp ?? 0} XP added to your profile.`,
+      );
     } catch (err) {
       setManualError(
         err instanceof Error ? err.message : "Could not save workout.",
@@ -1911,14 +2151,17 @@ const HomeFeedScreen: React.FC = () => {
           title="Home"
           subtitle="Your fitness community"
           userName={me?.name ?? null}
+          avatarUrl={me?.avatarUrl}
           onThemeToggle={toggle}
         />
 
         <MetricRail
           streakDays={me?.streakDays}
-          thisWeekPoints={(me?.recentSessionsThisWeek ?? 0) * 120 || 842}
+          thisWeekPoints={me?.weeklyXp ?? 0}
+          weeklyWorkoutCount={me?.recentSessionsThisWeek ?? 0}
           loggedWeekDays={loggedWeekDays}
           cardWidth={metricCardWidth}
+          isLight={isLight}
           onRecord={() => setManualVisible(true)}
         />
 
@@ -1937,8 +2180,10 @@ const HomeFeedScreen: React.FC = () => {
         ) : !feedItems.length ? (
           <View style={feedStyles.emptyFeed}>
             <Ionicons name="barbell-outline" size={24} color="#64748B" />
-            <Text style={feedStyles.emptyFeedTitle}>No activity this week</Text>
-            <Text style={feedStyles.emptyFeedBody}>
+            <Text style={[feedStyles.emptyFeedTitle, isLight && feedStyles.emptyFeedTitleLight]}>
+              No activity this week
+            </Text>
+            <Text style={[feedStyles.emptyFeedBody, isLight && feedStyles.emptyFeedBodyLight]}>
               Record or manually log a workout to start your feed.
             </Text>
           </View>
@@ -1948,7 +2193,8 @@ const HomeFeedScreen: React.FC = () => {
               key={`${item.id}-${item.type}`}
               item={item}
               isLight={isLight}
-              onOpen={setSelectedPost}
+              openOnPress={false}
+              onOpen={() => undefined}
               onLike={(activityItem) =>
                 void likeActivity(
                   activityItem.id,
@@ -1959,6 +2205,11 @@ const HomeFeedScreen: React.FC = () => {
                 void openComments(activityItem)
               }
               onShare={(activityItem) => void shareActivity(activityItem.id)}
+              onSave={(activityItem, saved) =>
+                activityItem.synthetic
+                  ? Promise.resolve()
+                  : setActivitySaved(activityItem.id, saved).then(() => undefined)
+              }
             />
           ))
         )}
@@ -1966,6 +2217,7 @@ const HomeFeedScreen: React.FC = () => {
 
       <ManualWorkoutModal
         visible={manualVisible}
+        isLight={isLight}
         saving={manualSaving}
         error={manualError}
         duration={manualDuration}
@@ -1973,26 +2225,17 @@ const HomeFeedScreen: React.FC = () => {
         selectedType={manualType}
         selectedGroups={manualGroups}
         includeCardio={manualCardio}
+        selectedIntensity={manualIntensity}
+        notes={manualNotes}
         onClose={() => setManualVisible(false)}
         onDurationChange={setManualDuration}
         onExerciseCountChange={setManualExerciseCount}
         onTypeChange={setManualType}
         onToggleGroup={toggleManualGroup}
         onToggleCardio={() => setManualCardio((prev) => !prev)}
+        onIntensityChange={setManualIntensity}
+        onNotesChange={setManualNotes}
         onSubmit={submitManualWorkout}
-      />
-      <ActivityDetailModal
-        visible={!!selectedPost}
-        item={selectedPost}
-        isLight={isLight}
-        onClose={() => setSelectedPost(null)}
-        onLike={(activityItem) =>
-          void likeActivity(activityItem.id, Boolean(activityItem.likedByMe))
-        }
-        onComment={(activityItem) =>
-          void openComments(activityItem)
-        }
-        onShare={(activityItem) => void shareActivity(activityItem.id)}
       />
       <ActivityCommentSheet
         visible={!!commentPost}
@@ -2012,44 +2255,53 @@ const HomeFeedScreen: React.FC = () => {
 const feedStyles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0C1828",
+    backgroundColor: "#09111F",
   },
   screenLight: {
-    backgroundColor: "#0C1828",
+    backgroundColor: "#F6F8FB",
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 18,
+    paddingTop: 14,
     paddingBottom: 118,
   },
   metricRailWrap: {
     marginHorizontal: -16,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   metricRailContent: {
     paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingBottom: 8,
   },
   metricCard: {
     width: 204,
-    minHeight: 214,
-    borderRadius: 18,
-    paddingVertical: 22,
-    paddingHorizontal: 22,
+    minHeight: 148,
+    borderRadius: 20,
+    paddingVertical: 15,
+    paddingHorizontal: 16,
     marginRight: 12,
-    backgroundColor: "#080E18",
+    backgroundColor: "#0F1A2C",
     borderWidth: 1,
-    borderColor: "rgba(161,167,184,0.34)",
+    borderColor: "rgba(148,163,184,0.16)",
     shadowColor: "#000000",
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 3,
+  },
+  metricCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    shadowColor: "#000000",
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
   },
   metricTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 22,
+    marginBottom: 12,
   },
   metricIcon: {
     width: 28,
@@ -2066,22 +2318,31 @@ const feedStyles = StyleSheet.create({
     letterSpacing: 0.2,
     textTransform: "uppercase",
   },
+  metricLabelLight: {
+    color: "#1F1F1F",
+  },
   metricValueRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    minHeight: 48,
+    minHeight: 38,
   },
   metricValue: {
     color: "#F8FAFC",
     fontFamily: fontFamily.uiBold,
-    fontSize: 42,
-    lineHeight: 48,
+    fontSize: 34,
+    lineHeight: 38,
+  },
+  metricValueLight: {
+    color: "#1F1F1F",
   },
   metricUnit: {
     marginLeft: 6,
     color: "#CBD5E1",
     fontFamily: fontFamily.uiMedium,
-    fontSize: 18,
+    fontSize: 15,
+  },
+  metricUnitLight: {
+    color: "#475569",
   },
   metricSubLabel: {
     marginTop: 4,
@@ -2089,19 +2350,28 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiMedium,
     fontSize: 15,
   },
+  metricSubLabelLight: {
+    color: "#1F1F1F",
+  },
   metricCaption: {
-    marginTop: 12,
+    marginTop: 7,
     color: "#8EA0B8",
     fontFamily: fontFamily.uiSemi,
-    fontSize: 13,
+    fontSize: 12,
+  },
+  metricCaptionLight: {
+    color: "#475569",
   },
   metricChallengeBlock: {
-    marginTop: 18,
+    marginTop: 8,
   },
   metricChallengePrefix: {
     color: "#F7F8FA",
     fontFamily: fontFamily.uiMedium,
     fontSize: 14,
+  },
+  metricChallengePrefixLight: {
+    color: "#1F1F1F",
   },
   metricChallengeRow: {
     marginTop: 4,
@@ -2112,11 +2382,11 @@ const feedStyles = StyleSheet.create({
   metricChallengeValue: {
     color: "#C084FC",
     fontFamily: fontFamily.uiBold,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 22,
+    lineHeight: 28,
   },
   streakWeek: {
-    marginTop: 14,
+    marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -2129,6 +2399,9 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiBold,
     fontSize: 10,
   },
+  streakDayLabelLight: {
+    color: "#475569",
+  },
   streakCheck: {
     marginTop: 5,
     width: 16,
@@ -2140,17 +2413,21 @@ const feedStyles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(7,17,31,0.74)",
   },
+  streakCheckLight: {
+    backgroundColor: "rgba(255,255,255,0.74)",
+    borderColor: "rgba(148,163,184,0.34)",
+  },
   streakCheckActive: {
     backgroundColor: "#6D7DFF",
     borderColor: "#6D7DFF",
   },
   metricProgressTrack: {
-    height: 7,
+    height: 6,
     borderRadius: 999,
     backgroundColor: "rgba(148,163,184,0.26)",
     overflow: "hidden",
-    marginTop: 18,
-    maxWidth: 142,
+    marginTop: 10,
+    maxWidth: 118,
   },
   metricProgressFill: {
     width: "67%",
@@ -2162,7 +2439,7 @@ const feedStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   metricDot: {
     width: 18,
@@ -2177,15 +2454,17 @@ const feedStyles = StyleSheet.create({
   composer: {
     marginHorizontal: 16,
     minHeight: 68,
-    borderRadius: 0,
-    borderWidth: 0,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderRadius: 28,
+    borderWidth: 1,
     borderColor: "rgba(148,163,184,0.22)",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(15,23,42,0.24)",
+  },
+  composerLight: {
+    borderColor: "rgba(148,163,184,0.14)",
+    backgroundColor: "rgba(255,255,255,0.56)",
   },
   composerPlus: {
     width: 48,
@@ -2197,11 +2476,18 @@ const feedStyles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
+  composerPlusLight: {
+    borderColor: "rgba(148,163,184,0.26)",
+    backgroundColor: "rgba(255,255,255,0.64)",
+  },
   composerText: {
     flex: 1,
     color: "#AAB4C3",
     fontFamily: fontFamily.uiMedium,
     fontSize: 16,
+  },
+  composerTextLight: {
+    color: "#475569",
   },
   manualModalRoot: {
     flex: 1,
@@ -2212,12 +2498,17 @@ const feedStyles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.58)",
   },
   manualModalCard: {
+    maxHeight: "88%",
     margin: 14,
     padding: 18,
     borderRadius: 24,
     backgroundColor: "#111F33",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.18)",
+  },
+  manualModalCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
   },
   manualModalHeader: {
     flexDirection: "row",
@@ -2231,6 +2522,9 @@ const feedStyles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
   },
+  manualModalTitleLight: {
+    color: "#0F172A",
+  },
   manualLabel: {
     color: "#94A3B8",
     fontFamily: fontFamily.uiSemi,
@@ -2238,6 +2532,9 @@ const feedStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.7,
     marginBottom: 8,
+  },
+  manualLabelLight: {
+    color: "#64748B",
   },
   manualChipRow: {
     flexDirection: "row",
@@ -2256,6 +2553,10 @@ const feedStyles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: "rgba(16,31,53,0.72)",
   },
+  manualChipLight: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#CBD5E1",
+  },
   manualChipActive: {
     backgroundColor: "#E8FFF4",
     borderColor: "#E8FFF4",
@@ -2264,6 +2565,9 @@ const feedStyles = StyleSheet.create({
     color: "#CBD5E1",
     fontFamily: fontFamily.uiSemi,
     fontSize: 13,
+  },
+  manualChipTextLight: {
+    color: "#475569",
   },
   manualChipTextActive: {
     color: "#07111F",
@@ -2286,6 +2590,16 @@ const feedStyles = StyleSheet.create({
     backgroundColor: "#101F35",
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.16)",
+  },
+  manualInputLight: {
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+    borderColor: "#CBD5E1",
+  },
+  manualNotesInput: {
+    minHeight: 74,
+    paddingTop: 12,
+    textAlignVertical: "top",
   },
   manualError: {
     marginTop: 12,
@@ -2546,7 +2860,7 @@ const feedStyles = StyleSheet.create({
     backgroundColor: "#0B1626",
   },
   commentSheetLight: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.9)",
   },
   commentHeader: {
     minHeight: 44,
@@ -2767,12 +3081,18 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiBold,
     fontSize: 16,
   },
+  emptyFeedTitleLight: {
+    color: "#1F1F1F",
+  },
   emptyFeedBody: {
     marginTop: 5,
     color: "#8EA0B8",
     fontFamily: fontFamily.uiMedium,
     fontSize: 13,
     textAlign: "center",
+  },
+  emptyFeedBodyLight: {
+    color: "#475569",
   },
   errorText: {
     color: "#FCA5A5",
@@ -2802,6 +3122,7 @@ const feedStyles = StyleSheet.create({
   },
   cardLight: {
     backgroundColor: "transparent",
+    borderBottomColor: "rgba(148,163,184,0.12)",
   },
   cardHeader: {
     flexDirection: "row",
@@ -2818,8 +3139,13 @@ const feedStyles = StyleSheet.create({
     borderWidth: 0,
   },
   avatarLight: {
-    backgroundColor: "#101F35",
-    borderColor: "rgba(148,163,184,0.12)",
+    backgroundColor: "#EEF6FF",
+    borderColor: "#D5E9FF",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 20,
   },
   avatarText: {
     color: "#F8FAFC",
@@ -2827,7 +3153,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 13,
   },
   avatarTextLight: {
-    color: "#F8FAFC",
+    color: "#0068BD",
   },
   cardHeaderText: {
     flex: 1,
@@ -2839,7 +3165,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 15,
   },
   userNameLight: {
-    color: "#F8FAFC",
+    color: "#1F1F1F",
   },
   metaText: {
     marginTop: 3,
@@ -2848,7 +3174,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 13,
   },
   metaTextLight: {
-    color: "#94A3B8",
+    color: "#64748B",
   },
   iconPill: {
     width: 30,
@@ -2878,8 +3204,17 @@ const feedStyles = StyleSheet.create({
     backgroundColor: "rgba(16,185,129,0.14)",
     marginBottom: 12,
   },
+  statusBadgeLight: {
+    backgroundColor: "#DCFCE7",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
   statusBadgeChallenge: {
     backgroundColor: "rgba(99,102,241,0.16)",
+  },
+  statusBadgeChallengeLight: {
+    backgroundColor: "#EEF2FF",
+    borderColor: "#C7D2FE",
   },
   statusBadgeText: {
     marginLeft: 6,
@@ -2888,8 +3223,14 @@ const feedStyles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
   },
+  statusBadgeTextLight: {
+    color: "#047857",
+  },
   statusBadgeTextChallenge: {
     color: "#C7D2FE",
+  },
+  statusBadgeTextChallengeLight: {
+    color: "#4338CA",
   },
   prBadge: {
     alignSelf: "flex-start",
@@ -2945,7 +3286,7 @@ const feedStyles = StyleSheet.create({
     flexShrink: 1,
   },
   cardTitleLight: {
-    color: "#F8FAFC",
+    color: "#1F1F1F",
   },
   cardBody: {
     marginTop: 8,
@@ -2962,6 +3303,9 @@ const feedStyles = StyleSheet.create({
     lineHeight: 20,
     flexShrink: 1,
   },
+  workoutSubtitleLight: {
+    color: "#475569",
+  },
   activityCaption: {
     marginTop: 4,
     marginBottom: 12,
@@ -2969,6 +3313,9 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiMedium,
     fontSize: 14,
     lineHeight: 20,
+  },
+  activityCaptionLight: {
+    color: "#1F1F1F",
   },
   activityImage: {
     width: "100%",
@@ -2986,6 +3333,10 @@ const feedStyles = StyleSheet.create({
     backgroundColor: "rgba(7,16,29,0.92)",
     borderWidth: 1,
     borderColor: "rgba(96,165,250,0.12)",
+  },
+  mediaCarouselFrameLight: {
+    backgroundColor: "rgba(255,255,255,0.58)",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   mediaSlide: {
     height: 292,
@@ -3013,7 +3364,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 12,
   },
   cardBodyLight: {
-    color: "#CBD5E1",
+    color: "#475569",
   },
   activityBody: {
     marginTop: 2,
@@ -3036,6 +3387,10 @@ const feedStyles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  bodyMapPreviewLight: {
+    backgroundColor: "rgba(255,255,255,0.58)",
+    borderTopColor: "rgba(148,163,184,0.22)",
+  },
   mapCorner: {
     position: "absolute",
     width: 18,
@@ -3046,6 +3401,9 @@ const feedStyles = StyleSheet.create({
   mapGridLine: {
     position: "absolute",
     backgroundColor: "rgba(96,165,250,0.055)",
+  },
+  mapGridLineLight: {
+    backgroundColor: "rgba(0,112,204,0.08)",
   },
   mapGridLineHorizontal: {
     left: 0,
@@ -3134,7 +3492,7 @@ const feedStyles = StyleSheet.create({
     textAlign: "center",
   },
   statValueLight: {
-    color: "#F8FAFC",
+    color: "#1F1F1F",
   },
   statLabel: {
     marginTop: 3,
@@ -3144,7 +3502,7 @@ const feedStyles = StyleSheet.create({
     textAlign: "center",
   },
   statLabelLight: {
-    color: "#94A3B8",
+    color: "#64748B",
   },
   challengePanel: {
     marginTop: 14,
@@ -3168,11 +3526,17 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiBold,
     fontSize: 15,
   },
+  challengePanelTitleLight: {
+    color: "#1F1F1F",
+  },
   challengePanelBody: {
     marginTop: 4,
     color: "#CBD5E1",
     fontFamily: fontFamily.uiMedium,
     fontSize: 13,
+  },
+  challengePanelBodyLight: {
+    color: "#475569",
   },
   highlightRow: {
     flexDirection: "row",
@@ -3196,7 +3560,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 12,
   },
   highlightTextLight: {
-    color: "#BFDBFE",
+    color: "#0068BD",
   },
   activityChipRow: {
     flexDirection: "row",
@@ -3223,6 +3587,9 @@ const feedStyles = StyleSheet.create({
     fontSize: 12,
     flexShrink: 1,
     minWidth: 0,
+  },
+  activityChipTextLight: {
+    color: "#1F1F1F",
   },
   takeawayCard: {
     marginTop: 16,
@@ -3256,12 +3623,18 @@ const feedStyles = StyleSheet.create({
     fontSize: 15,
     flexShrink: 1,
   },
+  takeawayTitleLight: {
+    color: "#1F1F1F",
+  },
   takeawayBody: {
     marginTop: 3,
     color: "#B8C2D4",
     fontFamily: fontFamily.uiMedium,
     fontSize: 12,
     lineHeight: 17,
+  },
+  takeawayBodyLight: {
+    color: "#475569",
   },
   takeawayScoreBlock: {
     alignItems: "flex-end",
@@ -3276,6 +3649,9 @@ const feedStyles = StyleSheet.create({
     color: "#B8C2D4",
     fontFamily: fontFamily.uiMedium,
     fontSize: 11,
+  },
+  takeawayLabelLight: {
+    color: "#64748B",
   },
   competitionRow: {
     marginTop: 12,
@@ -3298,6 +3674,9 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiSemi,
     fontSize: 12,
   },
+  competitionTextLight: {
+    color: "#475569",
+  },
   socialProofRow: {
     marginTop: 18,
     flexDirection: "row",
@@ -3313,6 +3692,9 @@ const feedStyles = StyleSheet.create({
     color: "#D9E2F1",
     fontFamily: fontFamily.uiSemi,
     fontSize: 15,
+  },
+  socialMetricTextLight: {
+    color: "#475569",
   },
   socialSpacer: {
     flex: 1,
@@ -3356,6 +3738,9 @@ const feedStyles = StyleSheet.create({
     fontFamily: fontFamily.uiMedium,
     fontSize: 13,
   },
+  likedByTextLight: {
+    color: "#64748B",
+  },
   cardFooter: {
     marginTop: 14,
     paddingTop: 16,
@@ -3379,7 +3764,7 @@ const feedStyles = StyleSheet.create({
     fontSize: 15,
   },
   footerTextLight: {
-    color: "#E5E7EB",
+    color: "#475569",
   },
 });
 

@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import { Image, Modal, Text, TouchableOpacity, View } from "react-native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { API_BASE_URL } from "../api/client";
 import { styles } from "../styles/appStyles";
 
 type RootTabParamList = {
@@ -11,7 +12,7 @@ type RootTabParamList = {
   Record: undefined;
   Plans: undefined;
   Exercises: undefined;
-  Challenges: undefined;
+  Challenges: { fromPremium?: boolean } | undefined;
   Community: undefined;
   Insights: undefined;
   Friends: undefined;
@@ -25,6 +26,7 @@ type AppHeaderProps = {
   isLight: boolean;
   title: string;
   userName?: string | null;
+  avatarUrl?: string | null;
   greetingName?: string | null;
   greetingText?: string;
   subtitle?: string;
@@ -32,6 +34,7 @@ type AppHeaderProps = {
   rightContent?: React.ReactNode;
   topContent?: React.ReactNode;
   titleNumberOfLines?: number;
+  onBack?: () => void;
 };
 
 const getInitials = (name?: string | null) => {
@@ -49,8 +52,14 @@ const getInitials = (name?: string | null) => {
 const HeaderAvatar: React.FC<{
   isLight: boolean;
   name?: string | null;
-}> = ({ isLight, name }) => {
+  avatarUrl?: string | null;
+}> = ({ isLight, name, avatarUrl }) => {
   const navigation = useNavigation<RootTabNavigation>();
+  const resolvedAvatarUrl = avatarUrl
+    ? /^https?:\/\//i.test(avatarUrl)
+      ? avatarUrl
+      : `${API_BASE_URL.replace(/\/api\/v1\/?$/, "")}${avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`}`
+    : "";
 
   return (
     <TouchableOpacity
@@ -68,14 +77,22 @@ const HeaderAvatar: React.FC<{
           isLight && styles.homeAvatarStatusDotLight,
         ]}
       />
-      <Text
-        style={[
-          styles.homeAvatarInitials,
-          isLight && styles.homeAvatarInitialsLight,
-        ]}
-      >
-        {getInitials(name)}
-      </Text>
+      {resolvedAvatarUrl ? (
+        <Image
+          source={{ uri: resolvedAvatarUrl }}
+          style={styles.compactHeaderAvatarImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text
+          style={[
+            styles.homeAvatarInitials,
+            isLight && styles.homeAvatarInitialsLight,
+          ]}
+        >
+          {getInitials(name)}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -84,11 +101,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   isLight,
   title,
   userName,
+  avatarUrl,
   subtitle,
   onThemeToggle,
   rightContent,
   topContent,
   titleNumberOfLines = 2,
+  onBack,
 }) => {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const navigation = useNavigation<RootTabNavigation>();
@@ -104,9 +123,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     { label: "Plans", icon: "calendar-outline", route: "Plans" },
     { label: "Community", icon: "people-outline", route: "Community" },
     { label: "Insights", icon: "analytics-outline", route: "Insights" },
-    { label: "Exercises", icon: "barbell-outline", route: "Exercises" },
-    { label: "Challenges", icon: "trophy-outline", route: "Challenges" },
-    { label: "Friends", icon: "people-circle-outline", route: "Friends" },
     { label: "Consistency", icon: "grid-outline", route: "Consistency" },
   ];
 
@@ -117,16 +133,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       >
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={() => setIsMenuVisible(true)}
+          onPress={onBack ?? (() => setIsMenuVisible(true))}
           style={[
             styles.compactHeaderIconButton,
             isLight && styles.compactHeaderIconButtonLight,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Open menu"
+          accessibilityLabel={onBack ? "Go back" : "Open menu"}
         >
           <Ionicons
-            name="menu-outline"
+            name={onBack ? "chevron-back" : "menu-outline"}
             size={24}
             color={isLight ? "#0F172A" : "#F8FAFC"}
           />
@@ -148,8 +164,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <Text
               style={[
                 styles.metricCaption,
-                isLight && styles.metricCaptionLight,
                 styles.compactHeaderSubtitle,
+                isLight && styles.compactHeaderSubtitleLight,
               ]}
               numberOfLines={2}
               ellipsizeMode="tail"
@@ -160,7 +176,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </View>
 
         <View style={styles.homeHeaderRightRow}>
-          {rightContent ?? <HeaderAvatar isLight={isLight} name={userName} />}
+          {rightContent ?? (
+            <HeaderAvatar isLight={isLight} name={userName} avatarUrl={avatarUrl} />
+          )}
         </View>
       </View>
 
@@ -242,6 +260,35 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 </Text>
               </TouchableOpacity>
             ))}
+            {!!onThemeToggle && (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[
+                  styles.headerMenuItem,
+                  isLight && styles.headerMenuItemLight,
+                ]}
+                onPress={() => {
+                  setIsMenuVisible(false);
+                  onThemeToggle();
+                }}
+              >
+                <Ionicons
+                  name={isLight ? "moon-outline" : "sunny-outline"}
+                  size={19}
+                  color={isLight ? "#0068BD" : "#53B1FF"}
+                />
+                <Text
+                  style={[
+                    styles.headerMenuItemText,
+                    isLight && styles.headerMenuItemTextLight,
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {isLight ? "Dark mode" : "Light mode"}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

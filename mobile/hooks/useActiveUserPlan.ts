@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import { apiCacheKey, cachedApiQuery, fetchRequiredAuth } from "../api/client";
+import type { ApiAuthSession } from "../api/client";
 import { useAuth } from "../App";
 
 export type ActiveScheduledWorkout = {
@@ -38,6 +39,7 @@ export type ActiveUserPlan = {
 	id: number;
 	status: string;
 	sessions_per_week: number;
+	training_days_pattern: string[];
 	start_date: string | null;
 	end_date: string | null;
 	original_end_date: string | null;
@@ -60,53 +62,53 @@ export type ActiveUserPlan = {
 	scheduled_workouts: ActiveScheduledWorkout[];
 };
 
+const fetchActiveUserPlan = async (
+	auth: ApiAuthSession,
+	force: boolean,
+): Promise<ActiveUserPlan | null> => {
+	if (!auth.accessToken) return null;
+	return cachedApiQuery(
+		apiCacheKey("/user-plans/active/", auth),
+		async () => {
+			const response = await fetchRequiredAuth("/user-plans/active/", auth);
+			if (response.status === 404) return null;
+			if (!response.ok) {
+				throw new Error(`Failed to load active plan (${response.status})`);
+			}
+			return (await response.json()) as ActiveUserPlan;
+		},
+		{ force, tags: ["active-plan"], ttlMs: 15_000 },
+	);
+};
+
 export function useActiveUserPlan() {
-	const { accessToken } = useAuth();
+	const { accessToken, refreshAccessToken, signOut } = useAuth();
 	const [activeUserPlan, setActiveUserPlan] = useState<ActiveUserPlan | null>(
 		null,
 	);
 	const [loading, setLoading] = useState<boolean>(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const reload = useCallback(async () => {
+	const reload = useCallback(async (force = true) => {
 		if (!accessToken) {
 			setActiveUserPlan(null);
+			setLoading(false);
 			return;
 		}
 		try {
 			setLoading(true);
 			setError(null);
-			const response = await fetch(`${API_BASE_URL}/user-plans/active`, {
-				headers: { Authorization: `Bearer ${accessToken}` },
-			});
-			if (response.status === 404) {
-				setActiveUserPlan(null);
-				return;
-			}
-			if (!response.ok) {
-				throw new Error(`Failed to load active plan (${response.status})`);
-			}
-			let json = (await response.json()) as ActiveUserPlan;
-			const missedResponse = await fetch(
-				`${API_BASE_URL}/user-plans/${json.id}/check-missed`,
-				{
-					method: "POST",
-					headers: { Authorization: `Bearer ${accessToken}` },
-				},
-			);
-			if (missedResponse.ok) {
-				json = (await missedResponse.json()) as ActiveUserPlan;
-			}
-			setActiveUserPlan(json);
+			const auth = { accessToken, refreshAccessToken, signOut };
+			setActiveUserPlan(await fetchActiveUserPlan(auth, force));
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Error loading active plan");
 		} finally {
 			setLoading(false);
 		}
-	}, [accessToken]);
+	}, [accessToken, refreshAccessToken, signOut]);
 
 	useEffect(() => {
-		void reload();
+		void reload(false);
 	}, [reload]);
 
 	return { activeUserPlan, loading, error, reload };

@@ -52,6 +52,7 @@ export type DashboardTrainingProfileMetric = {
   body_focus: Array<{
     key: string;
     label: string;
+    metric_type?: "body_part";
     xp: number;
     target_xp: number;
     percent: number;
@@ -63,6 +64,7 @@ export type DashboardTrainingProfileMetric = {
   category_levels: Array<{
     key: string;
     label: string;
+    metric_type?: "training_category";
     xp: number;
     target_xp: number;
     percent: number;
@@ -74,6 +76,7 @@ export type DashboardTrainingProfileMetric = {
   monthly_xp: number;
   performance_score: number;
   training_balance_score: number;
+  updated_at?: string | null;
   comparison_metrics?: {
     default_metric: string;
     metrics: Array<{

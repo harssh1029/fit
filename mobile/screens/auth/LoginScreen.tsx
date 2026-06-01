@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -33,7 +41,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <View style={[authStyles.onboardingRoot, isLight && authStyles.containerLight]}>
+    <KeyboardAvoidingView
+      style={[authStyles.onboardingRoot, isLight && authStyles.containerLight]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+    >
       <View style={authStyles.onboardingTopBar}>
         <View
           style={[
@@ -58,49 +70,58 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         <ThemeToggle isLight={isLight} onToggle={toggle} />
       </View>
 
-      <View style={authStyles.onboardingHeader}>
-        <Text
-          style={[authStyles.onboardingTitle, isLight && authStyles.titleLight]}
-        >
-          Welcome back
-        </Text>
-        <Text
+      <ScrollView
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={authStyles.onboardingContent}
+      >
+        <View style={authStyles.onboardingHeader}>
+          <Text
+            style={[authStyles.onboardingTitle, isLight && authStyles.titleLight]}
+          >
+            Welcome back
+          </Text>
+          <Text
+            style={[
+              authStyles.onboardingSubtitle,
+              isLight && authStyles.subtitleLight,
+            ]}
+          >
+            Sign in and jump straight into your training.
+          </Text>
+        </View>
+
+        <View
           style={[
-            authStyles.onboardingSubtitle,
-            isLight && authStyles.subtitleLight,
+            authStyles.authCard,
+            authStyles.authCardShadow,
+            isLight && authStyles.authCardLight,
           ]}
         >
-          Sign in and jump straight into your training.
-        </Text>
-      </View>
-
-      <View
-        style={[
-          authStyles.authCard,
-          authStyles.authCardShadow,
-          isLight && authStyles.authCardLight,
-        ]}
-      >
-        <View style={authStyles.segmentContainer}>
-          <View
-            style={[authStyles.segmentButton, authStyles.segmentButtonActive]}
-          >
-            <Text
+          <View style={authStyles.segmentContainer}>
+            <View
               style={[
-                authStyles.segmentButtonText,
-                authStyles.segmentButtonTextActive,
+                authStyles.segmentButton,
+                authStyles.segmentButtonActive,
               ]}
             >
-              Login
-            </Text>
+              <Text
+                style={[
+                  authStyles.segmentButtonText,
+                  authStyles.segmentButtonTextActive,
+                ]}
+              >
+                Login
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={authStyles.segmentButton}
+              onPress={() => navigation.navigate("Register")}
+            >
+              <Text style={authStyles.segmentButtonText}>Register</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={authStyles.segmentButton}
-            onPress={() => navigation.navigate("Register")}
-          >
-            <Text style={authStyles.segmentButtonText}>Register</Text>
-          </TouchableOpacity>
-        </View>
 
         <View style={[authStyles.inputRow, isLight && authStyles.inputRowLight]}>
           <Ionicons
@@ -233,14 +254,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
 
-      <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-        <Text style={[authStyles.linkText, isLight && authStyles.linkTextLight]}>
-          New here? Create your training profile
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+          <Text
+            style={[authStyles.linkText, isLight && authStyles.linkTextLight]}
+          >
+            New here? Create your training profile
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

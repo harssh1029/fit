@@ -100,6 +100,7 @@ const CommunityScreen: React.FC = () => {
           title="Community"
           subtitle="Friends and leaderboards"
           userName={me?.name ?? null}
+          avatarUrl={me?.avatarUrl}
           onThemeToggle={toggle}
         />
 

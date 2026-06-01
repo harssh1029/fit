@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -10,11 +10,10 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 
 import {
   GLASS_ACCENT_GREEN,
-  GLASS_BORDER_DARK,
-  DARK_CARD,
   DARK_TEXT_PRIMARY,
   DARK_TEXT_MUTED,
   LIGHT_TEXT_PRIMARY,
@@ -28,20 +27,22 @@ import {
 } from "../../components/FitnessIcon3D";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useChallenges } from "../../hooks/useChallenges";
-import { useCommunity } from "../../hooks/useCommunity";
 import type { ApiChallenge, ChallengeStatus } from "../../types/challenges";
-import type { PremiumChallengeCard, PremiumChallengeSections } from "../../types/community";
 import {
   useThemeMode,
   styles,
   type ViewWorkoutWeek,
   type ViewWorkoutDay,
 } from "../../App";
-import ChallengeDetailModal from "./ChallengeDetailModal";
 
 type ChallengeDifficulty = "Beginner" | "Intermediate" | "Advanced";
+type ChallengeDetailTab = "about" | "rules" | "athletes" | "completed" | "reward";
 
 type Challenge = ApiChallenge;
+type ChallengesRoute = RouteProp<
+  { Challenges: { fromPremium?: boolean } | undefined },
+  "Challenges"
+>;
 
 const iconForChallenge = (
   difficulty: ChallengeDifficulty,
@@ -142,29 +143,6 @@ const mapChallengeToViewWorkoutWeek = (
   };
 };
 
-const buildChallengeBodyText = (challenge: Challenge): string => {
-  const { detail } = challenge;
-  const lines: string[] = [];
-
-  // Prefer a descriptive note from the first day.
-  const firstDay = detail.days && detail.days.length ? detail.days[0] : null;
-  if (firstDay?.day_note) {
-    lines.push(firstDay.day_note);
-  }
-
-  if (detail.complete_condition) {
-    lines.push(`Complete when: ${detail.complete_condition}`);
-  }
-  if (detail.badge_name) {
-    lines.push(`Badge: ${detail.badge_name}`);
-  }
-
-  if (!lines.length && detail.quote) {
-    lines.push(detail.quote);
-  }
-  return lines.join("\n\n");
-};
-
 const buildChallengeUnlockBodyText = (challenge: Challenge): string | null => {
   const progress = challenge.unlockProgress;
   if (!progress && !challenge.unlock) return null;
@@ -239,50 +217,24 @@ const getLockedSummary = (challenge: Challenge): string | null => {
 const ChallengesScreen: React.FC = () => {
   const { mode, toggle } = useThemeMode();
   const isLight = mode === "light";
+  const navigation = useNavigation<any>();
+  const route = useRoute<ChallengesRoute>();
   const { profile } = useUserProfileBasic();
   const { challenges, loading, error, setChallengeCompleted } = useChallenges();
-  const { loadTrainingChallenges, joinTrainingChallenge } = useCommunity();
   const challengesUserName =
     profile?.profile.display_name || profile?.username || null;
 
   const [selected, setSelected] = useState<Challenge | null>(null);
   const [activeDifficulty, setActiveDifficulty] =
     useState<ChallengeDifficulty>("Beginner");
-  const [premiumSections, setPremiumSections] = useState<PremiumChallengeSections>({
-    active: [],
-    trending: [],
-    official: [],
-    community: [],
-    completed: [],
-  });
-
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const sections = await loadTrainingChallenges();
-        if (mounted) setPremiumSections(sections);
-      } catch {
-        // Body Battle remains available if the new challenge endpoint is unavailable.
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [loadTrainingChallenges]);
+  const openedFromPremium = Boolean(route.params?.fromPremium);
 
   const openChallenge = (challenge: Challenge) => {
     setSelected(challenge);
   };
 
-  const joinPremiumChallenge = async (challenge: PremiumChallengeCard) => {
-    await joinTrainingChallenge(challenge.id);
-    setPremiumSections(await loadTrainingChallenges());
-  };
-
-  const closeModal = () => {
-    setSelected(null);
+  const goBackFromPremium = () => {
+    navigation.navigate("Community");
   };
 
   const renderSection = (difficulty: ChallengeDifficulty) => {
@@ -610,121 +562,6 @@ const ChallengesScreen: React.FC = () => {
     );
   };
 
-  const renderPremiumChallenge = (challenge: PremiumChallengeCard) => (
-    <View
-      key={challenge.id}
-      style={[
-        styles.viewWorkoutCard,
-        isLight ? styles.viewWorkoutCardLight : styles.viewWorkoutCardDark,
-        challengeStyles.challengeCardBase,
-        isLight && challengeStyles.challengeCardBaseLight,
-      ]}
-    >
-      <View style={challengeStyles.cardTopRow}>
-        <View style={styles.viewWorkoutIconCircleStrength}>
-          <FitnessIcon3D
-            name={challenge.completed ? "progress" : "trophy"}
-            size={30}
-            active
-          />
-        </View>
-        <View style={challengeStyles.cardTitleBlock}>
-          <Text
-            style={[
-              styles.viewWorkoutHeaderTitle,
-              isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
-            ]}
-            numberOfLines={2}
-          >
-            {challenge.name}
-          </Text>
-          <Text
-            style={[
-              challengeStyles.cardRoleLabel,
-              isLight ? challengeStyles.headerSubtitleLight : challengeStyles.headerSubtitleDark,
-            ]}
-            numberOfLines={1}
-          >
-            {challenge.participants} participants / {challenge.daysLeft}d left
-          </Text>
-        </View>
-      </View>
-      <Text
-        style={[
-          styles.viewWorkoutHeaderSubtitle,
-          isLight ? challengeStyles.cardSubtitleLight : challengeStyles.cardSubtitleDark,
-        ]}
-        numberOfLines={2}
-      >
-        {challenge.requirement}
-      </Text>
-      <View
-        style={[
-          challengeStyles.progressCardMeterBarTrack,
-          isLight && challengeStyles.progressCardMeterBarTrackLight,
-          { marginTop: 12 },
-        ]}
-      >
-        <View
-          style={[
-            challengeStyles.progressCardMeterBarFill,
-            { width: `${Math.max(4, challenge.progress.percent)}%` as any },
-          ]}
-        />
-      </View>
-      <View style={challengeStyles.cardBottomRow}>
-        <Text
-          style={[
-            challengeStyles.cardMetaPrimaryText,
-            isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
-          ]}
-          numberOfLines={1}
-        >
-          Reward: {challenge.badgeRewardPreview || "Badge"} +{challenge.xpReward} XP
-        </Text>
-        <TouchableOpacity
-          activeOpacity={0.86}
-          disabled={challenge.joined || challenge.completed}
-          onPress={() => void joinPremiumChallenge(challenge)}
-          style={[
-            challengeStyles.cardArrowCircle,
-            isLight ? challengeStyles.cardArrowCircleLight : challengeStyles.cardArrowCircleDark,
-          ]}
-        >
-          <Ionicons
-            name={challenge.completed ? "checkmark" : challenge.joined ? "pulse-outline" : "add"}
-            size={18}
-            color={isLight ? "#111827" : "#E5E7EB"}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderPremiumSection = (title: string, items: PremiumChallengeCard[]) => {
-    if (!items.length) return null;
-    return (
-      <View style={[styles.planSection, challengeStyles.difficultySection]}>
-        <Text
-          style={[
-            styles.planSectionTitle,
-            isLight ? challengeStyles.headerTitleLight : challengeStyles.headerTitleDark,
-            { marginBottom: 10 },
-          ]}
-        >
-          {title}
-        </Text>
-        <View style={challengeStyles.cardsGrid}>
-          {items.slice(0, 6).map((challenge) => (
-            <View key={challenge.id} style={challengeStyles.cardGridItem}>
-              {renderPremiumChallenge(challenge)}
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  };
-
   const getUnlockHint = (difficulty: ChallengeDifficulty) => {
     switch (difficulty) {
       case "Beginner":
@@ -771,6 +608,7 @@ const ChallengesScreen: React.FC = () => {
           isLight={isLight}
           title="Body Battle challenges"
           userName={challengesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <View style={styles.loadingContainer}>
@@ -790,6 +628,7 @@ const ChallengesScreen: React.FC = () => {
           isLight={isLight}
           title="Body Battle challenges"
           userName={challengesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={styles.errorText}>{error}</Text>
@@ -806,6 +645,7 @@ const ChallengesScreen: React.FC = () => {
           isLight={isLight}
           title="Body Battle challenges"
           userName={challengesUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
@@ -827,12 +667,21 @@ const ChallengesScreen: React.FC = () => {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <AppHeader
-          isLight={isLight}
-          title="Your challenges"
-          userName={challengesUserName}
-          onThemeToggle={toggle}
-        />
+        {openedFromPremium ? (
+          <ChallengeListBackHeader
+            isLight={isLight}
+            title="Premium challenges"
+            onBack={goBackFromPremium}
+          />
+        ) : (
+          <AppHeader
+            isLight={isLight}
+            title="Your challenges"
+            userName={challengesUserName}
+            avatarUrl={profile?.profile.avatar_url}
+            onThemeToggle={toggle}
+          />
+        )}
 
         <View
           style={[
@@ -959,12 +808,6 @@ const ChallengesScreen: React.FC = () => {
           </View>
         </View>
 
-        {renderPremiumSection("Active", premiumSections.active)}
-        {renderPremiumSection("Trending", premiumSections.trending)}
-        {renderPremiumSection("Official", premiumSections.official)}
-        {renderPremiumSection("Created by Community", premiumSections.community)}
-        {renderPremiumSection("Completed", premiumSections.completed)}
-
         <View
           style={[
             challengeStyles.filterRow,
@@ -1007,16 +850,38 @@ const ChallengesScreen: React.FC = () => {
         {renderSection(activeDifficulty)}
       </ScrollView>
 
-      <ChallengeDetailModal
-        week={selected ? mapChallengeToViewWorkoutWeek(selected) : null}
-        isLight={isLight}
-        onClose={closeModal}
-        isLocked={selectedIsLocked}
-        unlockBody={selectedUnlockBody || undefined}
-      />
+      <Modal
+        visible={!!selected}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setSelected(null)}
+      >
+        {selected ? (
+          <ChallengeDetailPage
+            challenge={selected}
+            isLight={isLight}
+            isLocked={selectedIsLocked}
+            unlockBody={selectedUnlockBody}
+            onBack={() => setSelected(null)}
+          />
+        ) : null}
+      </Modal>
     </SafeAreaView>
   );
 };
+
+const ChallengeListBackHeader: React.FC<{
+  isLight: boolean;
+  title: string;
+  onBack: () => void;
+}> = ({ isLight, title, onBack }) => (
+  <AppHeader
+    isLight={isLight}
+    title={title}
+    onBack={onBack}
+    rightContent={<View style={styles.compactHeaderIconButton} />}
+  />
+);
 
 const ChallengeStatPill: React.FC<{
   isLight: boolean;
@@ -1063,6 +928,552 @@ const ChallengeStatPill: React.FC<{
   </View>
 );
 
+const ChallengeDetailPage: React.FC<{
+  challenge: Challenge;
+  isLight: boolean;
+  isLocked: boolean;
+  unlockBody?: string | null;
+  onBack: () => void;
+}> = ({ challenge, isLight, isLocked, unlockBody, onBack }) => {
+  const week = mapChallengeToViewWorkoutWeek(challenge);
+  const [expandedDayId, setExpandedDayId] = useState<string | null>(
+    week.days[0]?.id ?? null,
+  );
+  const [activeTab, setActiveTab] = useState<ChallengeDetailTab>("about");
+  const unlockLines = (unlockBody || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const status = (challenge.card.status || "locked") as ChallengeStatus;
+  const workoutDays = week.days.filter((day) => day.type !== "rest");
+  const completeCondition =
+    challenge.detail.complete_condition ||
+    `Complete ${workoutDays.length || week.days.length} scheduled sessions`;
+  const bodyTags = challenge.card.body_map_tags ?? [];
+
+  const renderInfoRow = (
+    icon: React.ComponentProps<typeof Ionicons>["name"],
+    title: string,
+    body: string,
+  ) => (
+    <View
+      key={`${title}-${body}`}
+      style={[
+        challengeStyles.detailInfoRow,
+        isLight && challengeStyles.detailInfoRowLight,
+      ]}
+    >
+      <View
+        style={[
+          challengeStyles.detailInfoIcon,
+          isLight && challengeStyles.detailInfoIconLight,
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={17}
+          color={isLight ? PS_BLUE : "#7DD3FC"}
+        />
+      </View>
+      <View style={challengeStyles.detailInfoCopy}>
+        <Text
+          style={[
+            challengeStyles.detailInfoTitle,
+            isLight
+              ? challengeStyles.headerTitleLight
+              : challengeStyles.headerTitleDark,
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            challengeStyles.detailInfoBody,
+            isLight
+              ? challengeStyles.headerSubtitleLight
+              : challengeStyles.headerSubtitleDark,
+          ]}
+        >
+          {body}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderDay = (day: ViewWorkoutDay) => {
+    const isExpanded = expandedDayId === day.id;
+    const circleStyle =
+      day.type === "strength"
+        ? styles.viewWorkoutIconCircleStrength
+        : day.type === "rest"
+          ? styles.viewWorkoutIconCircleRest
+          : styles.viewWorkoutIconCircleRun;
+
+    return (
+      <TouchableOpacity
+        key={day.id}
+        activeOpacity={0.9}
+        onPress={() => setExpandedDayId(isExpanded ? null : day.id)}
+        style={[
+          styles.viewWorkoutCard,
+          isLight ? styles.viewWorkoutCardLight : styles.viewWorkoutCardDark,
+          challengeStyles.detailDayCard,
+          isLight && challengeStyles.detailDayCardLight,
+        ]}
+      >
+        <View style={styles.viewWorkoutCardHeaderRow}>
+          <View style={[styles.viewWorkoutIconCircleRun, circleStyle]}>
+            <Ionicons
+              name={day.type === "rest" ? "leaf-outline" : "barbell-outline"}
+              size={20}
+              color={isLight ? "#111827" : "#F8FAFC"}
+            />
+          </View>
+          <View style={styles.viewWorkoutHeaderTextBlock}>
+            <Text
+              style={[
+                styles.viewWorkoutDayName,
+                isLight
+                  ? styles.viewWorkoutDayNameLight
+                  : styles.viewWorkoutDayNameDark,
+              ]}
+              numberOfLines={1}
+            >
+              {day.weekdayLabel} / {day.dateLabel}
+            </Text>
+            <Text
+              style={[
+                styles.viewWorkoutHeaderTitle,
+                isLight
+                  ? styles.viewWorkoutHeaderTitleLight
+                  : styles.viewWorkoutHeaderTitleDark,
+              ]}
+              numberOfLines={2}
+            >
+              {day.title}
+            </Text>
+            {!!day.subtitle && (
+              <Text
+                style={[
+                  styles.viewWorkoutHeaderSubtitle,
+                  isLight
+                    ? styles.viewWorkoutHeaderSubtitleLight
+                    : styles.viewWorkoutHeaderSubtitleDark,
+                ]}
+                numberOfLines={isExpanded ? 3 : 1}
+              >
+                {day.subtitle}
+              </Text>
+            )}
+          </View>
+          <Ionicons
+            name={isExpanded ? "chevron-up-outline" : "chevron-down-outline"}
+            size={18}
+            color={isLight ? "#4B5563" : "#E5E7EB"}
+          />
+        </View>
+
+        {isExpanded ? (
+          <View style={challengeStyles.detailDayExpanded}>
+            {day.segments && day.segments.length > 0 ? (
+              <View style={styles.viewWorkoutSegmentsGroup}>
+                {day.segments.map((segment) => (
+                  <View key={segment.id} style={styles.viewWorkoutSegmentRow}>
+                    <View style={styles.viewWorkoutSegmentColLabel}>
+                      <Text
+                        style={[
+                          styles.viewWorkoutSegmentLabel,
+                          isLight && styles.viewWorkoutSegmentLabelLight,
+                        ]}
+                      >
+                        {segment.label}
+                      </Text>
+                    </View>
+                    <View style={styles.viewWorkoutSegmentColPrimary}>
+                      <Text
+                        style={[
+                          styles.viewWorkoutSegmentPrimary,
+                          isLight && styles.viewWorkoutSegmentPrimaryLight,
+                        ]}
+                      >
+                        {segment.primary}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {!!day.notes && (
+              <Text
+                style={[
+                  styles.viewWorkoutNotes,
+                  isLight && styles.viewWorkoutNotesLight,
+                ]}
+              >
+                {day.notes}
+              </Text>
+            )}
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <SafeAreaView
+      style={[styles.screenContainer, isLight && styles.screenContainerLight]}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.homeScrollContent,
+          challengeStyles.scrollContent,
+          challengeStyles.detailScrollContent,
+        ]}
+      >
+        <ChallengeListBackHeader
+          isLight={isLight}
+          title="Challenge details"
+          onBack={onBack}
+        />
+
+        <View
+          style={[
+            challengeStyles.detailHero,
+            isLight && challengeStyles.detailHeroLight,
+          ]}
+        >
+          <View style={challengeStyles.detailHeroTopRow}>
+            <View style={styles.viewWorkoutIconCircleStrength}>
+              <FitnessIcon3D
+                name={iconForChallenge(
+                  titleCase(challenge.card.level) as ChallengeDifficulty,
+                  challenge.card.body_map_tags,
+                )}
+                size={34}
+                active
+              />
+            </View>
+            <View style={challengeStyles.detailHeroCopy}>
+              <Text
+                style={[
+                  challengeStyles.progressCardLabel,
+                  isLight
+                    ? challengeStyles.headerSubtitleLight
+                    : challengeStyles.headerSubtitleDark,
+                ]}
+              >
+                {titleCase(challenge.card.level)}
+              </Text>
+              <Text
+                style={[
+                  challengeStyles.detailHeroTitle,
+                  isLight
+                    ? challengeStyles.headerTitleLight
+                    : challengeStyles.headerTitleDark,
+                ]}
+                numberOfLines={3}
+              >
+                {challenge.card.name}
+              </Text>
+            </View>
+          </View>
+          {!!challenge.card.short_description && (
+            <Text
+              style={[
+                challengeStyles.detailHeroBody,
+                isLight
+                  ? challengeStyles.headerSubtitleLight
+                  : challengeStyles.headerSubtitleDark,
+              ]}
+            >
+              {challenge.card.short_description}
+            </Text>
+          )}
+          <View style={challengeStyles.detailStatsRow}>
+            <ChallengeStatPill
+              isLight={isLight}
+              icon="calendar-outline"
+              label="Days"
+              value={challenge.detail.duration_days || week.days.length}
+            />
+            <ChallengeStatPill
+              isLight={isLight}
+              icon="list-outline"
+              label="Sessions"
+              value={week.days.filter((day) => day.type !== "rest").length}
+            />
+            <ChallengeStatPill
+              isLight={isLight}
+              icon={isLocked ? "lock-closed-outline" : "flash-outline"}
+              label={isLocked ? "Locked" : "Open"}
+              value={challenge.card.level_index}
+              isLast
+            />
+          </View>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={challengeStyles.detailTabs}
+          contentContainerStyle={challengeStyles.detailTabsContent}
+        >
+          {(
+            [
+              ["about", "About", "information-circle-outline"],
+              ["rules", "Rules", "shield-checkmark-outline"],
+              ["athletes", "Athletes", "people-outline"],
+              ["completed", "Completed", "checkmark-circle-outline"],
+              ["reward", "Reward", "ribbon-outline"],
+            ] as Array<
+              [
+                ChallengeDetailTab,
+                string,
+                React.ComponentProps<typeof Ionicons>["name"],
+              ]
+            >
+          ).map(([tab, label, icon]) => {
+            const selected = activeTab === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                activeOpacity={0.84}
+                onPress={() => setActiveTab(tab)}
+                style={[
+                  challengeStyles.detailTab,
+                  isLight && challengeStyles.detailTabLight,
+                  selected && challengeStyles.detailTabSelected,
+                ]}
+              >
+                <Ionicons
+                  name={icon}
+                  size={14}
+                  color={selected ? "#FFFFFF" : isLight ? "#64748B" : "#A1A7B8"}
+                />
+                <Text
+                  style={[
+                    challengeStyles.detailTabText,
+                    isLight && challengeStyles.detailTabTextLight,
+                    selected && challengeStyles.detailTabTextSelected,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {activeTab === "about" ? (
+          <>
+            <View
+              style={[
+                challengeStyles.detailPanel,
+                isLight && challengeStyles.detailPanelLight,
+              ]}
+            >
+              <Text
+                style={[
+                  challengeStyles.detailPanelTitle,
+                  isLight
+                    ? challengeStyles.headerTitleLight
+                    : challengeStyles.headerTitleDark,
+                ]}
+              >
+                About this challenge
+              </Text>
+              <Text
+                style={[
+                  challengeStyles.detailPanelBody,
+                  isLight
+                    ? challengeStyles.headerSubtitleLight
+                    : challengeStyles.headerSubtitleDark,
+                ]}
+              >
+                {challenge.detail.quote ||
+                  challenge.card.short_description ||
+                  "Complete the challenge structure and track every qualifying workout."}
+              </Text>
+            </View>
+            {week.days.map(renderDay)}
+          </>
+        ) : null}
+
+        {activeTab === "rules" ? (
+          <View
+            style={[
+              challengeStyles.detailPanel,
+              isLight && challengeStyles.detailPanelLight,
+            ]}
+          >
+            <Text
+              style={[
+                challengeStyles.detailPanelTitle,
+                isLight
+                  ? challengeStyles.headerTitleLight
+                  : challengeStyles.headerTitleDark,
+              ]}
+            >
+              What counts
+            </Text>
+            {renderInfoRow("flag-outline", "Complete when", completeCondition)}
+            {renderInfoRow(
+              "calendar-outline",
+              "Duration",
+              `${challenge.detail.duration_days || week.days.length} days / ${workoutDays.length} workout sessions`,
+            )}
+            {challenge.detail.format
+              ? renderInfoRow("layers-outline", "Format", challenge.detail.format)
+              : null}
+            {isLocked && unlockLines.length
+              ? renderInfoRow("lock-closed-outline", "Unlock", unlockLines.join("\n"))
+              : null}
+            {bodyTags.length ? (
+              <View style={challengeStyles.detailPillWrap}>
+                {bodyTags.map((tag) => (
+                  <View
+                    key={tag}
+                    style={[
+                      challengeStyles.detailTagPill,
+                      isLight && challengeStyles.detailTagPillLight,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        challengeStyles.detailTagPillText,
+                        isLight && challengeStyles.detailTagPillTextLight,
+                      ]}
+                    >
+                      {tag}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {activeTab === "athletes" ? (
+          <View
+            style={[
+              challengeStyles.detailPanel,
+              isLight && challengeStyles.detailPanelLight,
+            ]}
+          >
+            <Text
+              style={[
+                challengeStyles.detailPanelTitle,
+                isLight
+                  ? challengeStyles.headerTitleLight
+                  : challengeStyles.headerTitleDark,
+              ]}
+            >
+              Athletes
+            </Text>
+            {renderInfoRow(
+              "person-circle-outline",
+              "Your status",
+              status === "done"
+                ? "Completed"
+                : status === "locked"
+                  ? "Locked"
+                  : "Open",
+            )}
+            {(challenge.unlockProgress?.conditions ?? []).flatMap((condition) =>
+              condition.groups.map((group) =>
+                renderInfoRow(
+                  group.isMet ? "checkmark-circle-outline" : "pulse-outline",
+                  group.label,
+                  `${group.sessions}/${condition.minWorkouts} workouts / ${group.rank}`,
+                ),
+              ),
+            )}
+            {!challenge.unlockProgress?.conditions?.length ? (
+              <Text
+                style={[
+                  challengeStyles.detailPanelBody,
+                  isLight
+                    ? challengeStyles.headerSubtitleLight
+                    : challengeStyles.headerSubtitleDark,
+                ]}
+              >
+                Participant progress will appear here as athletes join and log
+                qualifying sessions.
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {activeTab === "completed" ? (
+          <View
+            style={[
+              challengeStyles.detailPanel,
+              isLight && challengeStyles.detailPanelLight,
+            ]}
+          >
+            <Text
+              style={[
+                challengeStyles.detailPanelTitle,
+                isLight
+                  ? challengeStyles.headerTitleLight
+                  : challengeStyles.headerTitleDark,
+              ]}
+            >
+              Completed
+            </Text>
+            {status === "done"
+              ? renderInfoRow(
+                  "checkmark-circle-outline",
+                  "You completed this challenge",
+                  challenge.detail.badge_name || "Challenge badge earned",
+                )
+              : renderInfoRow(
+                  "time-outline",
+                  "No completion yet",
+                  "Finish the required sessions to move this challenge into completed.",
+                )}
+          </View>
+        ) : null}
+
+        {activeTab === "reward" ? (
+          <View
+            style={[
+              challengeStyles.detailPanel,
+              isLight && challengeStyles.detailPanelLight,
+            ]}
+          >
+            <Text
+              style={[
+                challengeStyles.detailPanelTitle,
+                isLight
+                  ? challengeStyles.headerTitleLight
+                  : challengeStyles.headerTitleDark,
+              ]}
+            >
+              Reward
+            </Text>
+            {renderInfoRow(
+              "ribbon-outline",
+              "Badge",
+              challenge.detail.badge_name || "Challenge completion badge",
+            )}
+            {challenge.detail.bonus
+              ? renderInfoRow("sparkles-outline", "Bonus", challenge.detail.bonus)
+              : null}
+            {renderInfoRow(
+              "trophy-outline",
+              "Difficulty",
+              `${challenge.detail.difficulty || challenge.card.level_index}/5 challenge difficulty`,
+            )}
+          </View>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
 const challengeStyles = StyleSheet.create({
   modalHeaderRow: {
     flexDirection: "row",
@@ -1093,8 +1504,8 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   progressCardLight: {
-    backgroundColor: "transparent",
-    borderColor: "#CFE3F7",
+    backgroundColor: "rgba(255,255,255,0.68)",
+    borderColor: "rgba(148,163,184,0.22)",
     shadowOpacity: 0.12,
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },
@@ -1168,8 +1579,8 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   progressStatPillLight: {
-    backgroundColor: "transparent",
-    borderColor: "#CFE3F7",
+    backgroundColor: "rgba(255,255,255,0.42)",
+    borderColor: "rgba(148,163,184,0.2)",
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },
   progressStatValue: {
@@ -1409,8 +1820,8 @@ const challengeStyles = StyleSheet.create({
     ...CHALLENGE_GLASS_CARD_DARK,
   },
   challengeCardBaseLight: {
-    backgroundColor: "transparent",
-    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.58)",
+    borderColor: "rgba(148,163,184,0.22)",
     shadowOpacity: 0.1,
     ...CHALLENGE_GLASS_CARD_LIGHT,
   },
@@ -1627,6 +2038,217 @@ const challengeStyles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: PS_BLUE,
+  },
+  detailScrollContent: {
+    paddingBottom: 36,
+  },
+  detailHeaderRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  detailBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.78)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  detailBackButtonLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E7EB",
+  },
+  detailHeaderTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 17,
+    fontWeight: "700",
+    paddingHorizontal: 12,
+  },
+  detailHeaderSpacer: {
+    width: 40,
+    height: 40,
+  },
+  detailHero: {
+    borderRadius: 0,
+    paddingVertical: 18,
+    paddingHorizontal: 2,
+    borderBottomWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+    backgroundColor: "transparent",
+  },
+  detailHeroLight: {
+    borderColor: "#CFE3F7",
+  },
+  detailHeroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  detailHeroCopy: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 12,
+  },
+  detailHeroTitle: {
+    marginTop: 4,
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: "700",
+  },
+  detailHeroBody: {
+    marginTop: 14,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  detailStatsRow: {
+    flexDirection: "row",
+    marginTop: 16,
+  },
+  detailTabs: {
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  detailTabsContent: {
+    paddingRight: 16,
+  },
+  detailTab: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    backgroundColor: "rgba(15,23,42,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.16)",
+  },
+  detailTabLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E7EB",
+  },
+  detailTabSelected: {
+    backgroundColor: PS_BLUE,
+    borderColor: PS_BLUE,
+  },
+  detailTabText: {
+    marginLeft: 6,
+    color: "#A1A7B8",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  detailTabTextLight: {
+    color: "#64748B",
+  },
+  detailTabTextSelected: {
+    color: "#FFFFFF",
+  },
+  detailPanel: {
+    marginTop: 4,
+    borderRadius: 0,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "transparent",
+  },
+  detailPanelLight: {
+    borderColor: "#E5E7EB",
+  },
+  detailPanelTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  detailPanelBody: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  detailInfoRow: {
+    marginTop: 12,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  detailInfoRowLight: {
+    borderColor: "#EEF2F7",
+  },
+  detailInfoIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(36,84,244,0.14)",
+    marginRight: 12,
+  },
+  detailInfoIconLight: {
+    backgroundColor: "#EEF2FF",
+  },
+  detailInfoCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  detailInfoTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  detailInfoBody: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  detailPillWrap: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  detailTagPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: "rgba(125,211,252,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(125,211,252,0.18)",
+  },
+  detailTagPillLight: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#DBEAFE",
+  },
+  detailTagPillText: {
+    color: "#BAE6FD",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  detailTagPillTextLight: {
+    color: "#2563EB",
+  },
+  detailDayCard: {
+    marginTop: 12,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "transparent",
+    ...CHALLENGE_GLASS_CARD_DARK,
+  },
+  detailDayCardLight: {
+    backgroundColor: "transparent",
+    borderColor: "#E5E7EB",
+    ...CHALLENGE_GLASS_CARD_LIGHT,
+  },
+  detailDayExpanded: {
+    marginTop: 10,
   },
 });
 

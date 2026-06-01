@@ -135,6 +135,50 @@ BADGE_SEEDS: list[BadgeSeed] = [
 
 
 def ensure_badge_catalog() -> None:
+	expected_badges = {
+		seed.id: {
+			'name': seed.name,
+			'description': seed.description,
+			'category': seed.category,
+			'tier': seed.tier,
+			'icon': seed.icon,
+			'rarity': seed.rarity,
+			'unlock_description': seed.description,
+			'is_repeatable': seed.is_repeatable,
+			'is_periodic': seed.is_periodic,
+			'display_priority': seed.priority,
+			'shareable_card_enabled': True,
+		}
+		for seed in BADGE_SEEDS
+	}
+	existing_badges = {
+		badge.id: badge
+		for badge in Badge.objects.filter(id__in=expected_badges)
+	}
+	badges_are_current = len(existing_badges) == len(expected_badges) and all(
+		all(getattr(existing_badges[badge_id], field) == value for field, value in values.items())
+		for badge_id, values in expected_badges.items()
+	)
+	if badges_are_current:
+		expected_rules = {
+			(seed.id, seed.trigger, seed.condition, seed.period): {
+				'threshold': float(seed.threshold),
+				'metadata': seed.metadata or {},
+			}
+			for seed in BADGE_SEEDS
+		}
+		existing_rules = {
+			(rule.badge_id, rule.trigger_type, rule.condition_type, rule.period): rule
+			for rule in BadgeRule.objects.filter(badge_id__in=expected_badges)
+		}
+		if len(existing_rules) >= len(expected_rules) and all(
+			key in existing_rules
+			and float(existing_rules[key].threshold) == values['threshold']
+			and existing_rules[key].metadata == values['metadata']
+			for key, values in expected_rules.items()
+		):
+			return
+
 	for seed in BADGE_SEEDS:
 		badge, _ = Badge.objects.update_or_create(
 			id=seed.id,
@@ -442,7 +486,7 @@ def _meaningful_for_feed(badge: Badge) -> bool:
 
 
 def _create_badge_activity(user: User, user_badge: UserBadge) -> None:
-	if user_badge.source_type == 'workout':
+	if user_badge.source_type in {'workout', 'challenge'}:
 		return
 	if not _meaningful_for_feed(user_badge.badge):
 		return
@@ -510,6 +554,19 @@ def award_badge(
 	if create_feed_activity:
 		_create_badge_activity(user, user_badge)
 	return user_badge
+
+
+def earned_badge_summaries(user_badges: list[UserBadge]) -> list[dict[str, str]]:
+	return [
+		{
+			'id': item.badge_id,
+			'name': item.badge.name,
+			'rarity': item.badge.rarity,
+			'tier': item.badge.tier,
+			'reason': item.badge.description,
+		}
+		for item in user_badges
+	]
 
 
 def evaluate_badges(
@@ -610,12 +667,25 @@ def evaluate_plan_completion(user_plan, *, create_feed_activity: bool = True) ->
 	)
 
 
-def evaluate_challenge_completion(user: User, *, challenge=None, context: dict[str, Any] | None = None) -> list[UserBadge]:
+def evaluate_challenge_completion(
+	user: User,
+	*,
+	challenge=None,
+	context: dict[str, Any] | None = None,
+	create_feed_activity: bool = True,
+) -> list[UserBadge]:
 	context = context or {}
 	if challenge is not None:
 		context.setdefault('challenge_visibility', 'official' if getattr(challenge, 'is_official', False) else 'community')
 		context.setdefault('challenge_name', getattr(challenge, 'name', None) or getattr(challenge, 'title', None))
-	return evaluate_badges(user, 'challenge_completed', context=context, source_type='challenge', source_id=str(getattr(challenge, 'id', context.get('challenge_id', ''))))
+	return evaluate_badges(
+		user,
+		'challenge_completed',
+		context=context,
+		source_type='challenge',
+		source_id=str(getattr(challenge, 'id', context.get('challenge_id', ''))),
+		create_feed_activity=create_feed_activity,
+	)
 
 
 @transaction.atomic
@@ -693,13 +763,16 @@ def achievement_summary(user: User) -> dict[str, Any]:
 		score_summary = user.score_summary
 	except ObjectDoesNotExist:
 		score_summary = None
-	level = sync_user_levels(user, score_summary=score_summary)
+	level = UserLevel.objects.filter(user=user).first()
+	categories = list(CategoryLevel.objects.filter(user=user))
+	if level is None or (score_summary is not None and not categories):
+		level = sync_user_levels(user, score_summary=score_summary)
+		categories = list(CategoryLevel.objects.filter(user=user))
 	featured = FeaturedBadge.objects.filter(user=user).select_related('user_badge__badge')
 	recent = UserBadge.objects.filter(user=user).select_related('badge')[:12]
-	categories = CategoryLevel.objects.filter(user=user)
 	return {
 		'level': level,
 		'featured_badges': [row.user_badge for row in featured],
 		'recent_badges': list(recent),
-		'category_levels': list(categories),
+		'category_levels': categories,
 	}

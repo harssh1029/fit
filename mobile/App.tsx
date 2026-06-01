@@ -39,6 +39,9 @@ import {
   API_BASE_URL,
   ACCESS_TOKEN_KEY,
   REFRESH_TOKEN_KEY,
+  fetchCachedJson,
+  fetchWithAuth,
+  invalidateApiCache,
 } from "./api/client";
 import {
   DARK_BG,
@@ -98,6 +101,7 @@ import FitnessAgeDetailScreen from "./screens/home/components/FitnessAgeDetailSc
 import RaceReadinessDetailScreen from "./screens/home/components/RaceReadinessDetailScreen";
 import PercentileDetailScreen from "./screens/home/components/PercentileDetailScreen";
 import AccountScreen from "./screens/profile/AccountScreen";
+import ProfileActivityScreen from "./screens/profile/ProfileActivityScreen";
 
 // Backwards-compat export for older imports that referenced HomeScreenInner
 // from App.tsx. The real implementation now lives in the Home feature file.
@@ -736,6 +740,7 @@ export type UserProfile = {
   email: string;
   profile: {
     display_name: string;
+    avatar_url?: string;
     height_cm: number | null;
     weight_kg: number | null;
     timezone: string;
@@ -780,9 +785,9 @@ export const BODY_BATTLE_GROUP_ORDER: string[] = [
 export const BODY_BATTLE_RANK_COLORS: Record<string, string> = {
   Legend: "#EF4444",
   Beast: "#FB923C",
-  Warrior: "#FACC15",
+  Warrior: "#F5B544",
   Soldier: "#94A3B8",
-  Recruit: "#64748B",
+  Recruit: "#8B6CF6",
 };
 
 // Map tapped body‑map muscles to the coarser Body Battle Map groups used
@@ -1019,58 +1024,6 @@ export function mapApiPlan(api: ApiPlan): Plan {
   };
 }
 
-function usePlans() {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadPlans = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch(`${API_BASE_URL}/plans/`);
-        if (!response.ok) {
-          throw new Error(`Failed to load plans (${response.status})`);
-        }
-
-        const json = (await response.json()) as
-          | ApiPlan[]
-          | { results: ApiPlan[] };
-        let apiPlans: ApiPlan[] = [];
-        if (Array.isArray(json)) {
-          apiPlans = json as ApiPlan[];
-        } else if (json && Array.isArray((json as any).results)) {
-          apiPlans = (json as any).results as ApiPlan[];
-        }
-
-        if (isMounted) {
-          setPlans(apiPlans.map(mapApiPlan));
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : "Error loading plans");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadPlans();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  return { plans, loading, error };
-}
-
 export type PlanDetail = {
   id: string;
   name: string;
@@ -1208,56 +1161,6 @@ export function mapApiPlanDetail(api: ApiPlan): PlanDetail {
     })),
     longDescription: api.long_description ?? null,
   };
-}
-
-function usePlanDetail(planId: string | null) {
-  const [plan, setPlan] = useState<PlanDetail | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!planId) {
-      setPlan(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadPlan = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch(`${API_BASE_URL}/plans/${planId}/`);
-        if (!response.ok) {
-          throw new Error(`Failed to load plan (${response.status})`);
-        }
-
-        const json = (await response.json()) as ApiPlan;
-        if (isMounted) {
-          setPlan(mapApiPlanDetail(json));
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : "Error loading plan");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadPlan();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [planId]);
-
-  return { plan, loading, error };
 }
 
 export function buildActiveWorkoutsFromPlan(
@@ -1701,12 +1604,44 @@ type AuthContextValue = {
   accessToken: string | null;
   refreshToken: string | null;
   signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, email: string, password: string) => Promise<void>;
+  signUp: (
+    username: string,
+    email: string,
+    password: string,
+    onboarding?: RegistrationOnboardingPayload,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export type RegistrationOnboardingPayload = {
+  version: number;
+  ageYears: number;
+  gender: "male" | "female" | "other" | "prefer_not_to_say";
+  heightCm: number;
+  weightKg: number;
+  waistCm?: number | null;
+  fitnessLevel: "beginner" | "consistent" | "advanced";
+  workoutsPerWeek: number;
+  maxPushups: number;
+  runMinutes: number;
+  restingHeartRate: number;
+  canTouchToes: "yes" | "almost" | "no";
+  sleepHours: number;
+  goals: Array<
+    "cardio" | "weight_loss" | "strength" | "stress" | "stay_fit" | "mobility"
+  >;
+  trainingPreferences: {
+    preferredDaysPerWeek: number;
+    sessionLengthMinutes: number;
+    equipment: string[];
+  };
+  restrictions: {
+    avoidMovements: string[];
+  };
+};
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
@@ -1723,6 +1658,7 @@ type AuthState = {
 };
 
 type ThemeMode = "dark" | "light";
+const THEME_MODE_KEY = "fit.themeMode";
 
 type ThemeContextValue = {
   mode: ThemeMode;
@@ -1738,6 +1674,25 @@ export function useThemeMode(): ThemeContextValue {
   }
   return ctx;
 }
+
+const AppAmbientBackground: React.FC<{ isLight: boolean }> = ({ isLight }) => (
+  <View pointerEvents="none" style={styles.appAmbient}>
+    <View
+      style={isLight ? styles.appAmbientBaseLight : styles.appAmbientBaseDark}
+    />
+    <View
+      style={isLight ? styles.appAmbientTopLight : styles.appAmbientTopDark}
+    />
+    <View
+      style={isLight ? styles.appAmbientMidLight : styles.appAmbientMidDark}
+    />
+    <View
+      style={
+        isLight ? styles.appAmbientBottomLight : styles.appAmbientBottomDark
+      }
+    />
+  </View>
+);
 
 type ExercisePrRecord = {
   segmentId: string;
@@ -1799,8 +1754,8 @@ type MainTabParamList = {
     | undefined;
   Plans: undefined;
   Exercises: undefined;
-  Challenges: undefined;
-  Community: { groupId?: string; invite?: string } | undefined;
+  Challenges: { fromPremium?: boolean } | undefined;
+  Community: { groupId?: string; invite?: string; challengeId?: string } | undefined;
   Insights: undefined;
   Friends: undefined;
   Consistency: undefined;
@@ -1824,11 +1779,17 @@ export type PlansStackParamList = {
   PlanDetail: { planId: string };
 };
 
+export type ProfileStackParamList = {
+  ProfileHome: undefined;
+  ProfileActivity: { mode: "posts" | "saved" };
+};
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const MainTabs = createBottomTabNavigator<MainTabParamList>();
 const PlansStack = createNativeStackNavigator<PlansStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const InsightsStack = createNativeStackNavigator<HomeStackParamList>();
+const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
 const App: React.FC = () => {
   const [fontsLoaded] = useFonts({
@@ -1842,7 +1803,7 @@ const App: React.FC = () => {
     accessToken: null,
     refreshToken: null,
   });
-  const [themeMode] = useState<ThemeMode>("dark");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [exercisePrs, setExercisePrs] = useState<ExercisePrRecord[]>([]);
 
   useEffect(() => {
@@ -1865,66 +1826,86 @@ const App: React.FC = () => {
     void loadTokens();
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadThemeMode = async () => {
+      const saved = await storage.getItem(THEME_MODE_KEY).catch(() => null);
+      if (!isMounted) return;
+      if (saved === "dark" || saved === "light") {
+        setThemeMode(saved);
+      }
+    };
+
+    void loadThemeMode();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const clearAuthSession = useCallback(async () => {
+    await storage.deleteItem(ACCESS_TOKEN_KEY);
+    await storage.deleteItem(REFRESH_TOKEN_KEY);
+    invalidateApiCache();
+    setState({ loading: false, accessToken: null, refreshToken: null });
+  }, []);
+
+  const refreshSessionAccessToken = useCallback(async () => {
+    if (!state.refreshToken) return null;
+    const response = await fetch(`${API_BASE_URL}/auth/jwt/refresh/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: state.refreshToken }),
+    });
+    if (!response.ok) {
+      await clearAuthSession();
+      return null;
+    }
+    const json = (await response.json()) as { access: string };
+    await storage.setItem(ACCESS_TOKEN_KEY, json.access);
+    invalidateApiCache();
+    setState((prev) => ({ ...prev, accessToken: json.access }));
+    return json.access;
+  }, [clearAuthSession, state.refreshToken]);
+
   // Load personal bests from backend when user is authenticated
   useEffect(() => {
     const loadPersonalBests = async () => {
       if (!state.accessToken) return;
 
       try {
-        let response = await fetch(`${API_BASE_URL}/me/`, {
-          headers: { Authorization: `Bearer ${state.accessToken}` },
-        });
+        const json = await fetchCachedJson<UserProfile>(
+          "/me/",
+          {
+            accessToken: state.accessToken,
+            refreshAccessToken: refreshSessionAccessToken,
+            signOut: clearAuthSession,
+          },
+          { requiredAuth: true, tags: ["profile"] },
+        );
+        const personalBests = json.profile.personal_bests || {};
 
-        if (response.status === 401 && state.refreshToken) {
-          // Try to refresh token
-          const refreshResponse = await fetch(
-            `${API_BASE_URL}/auth/jwt/refresh/`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ refresh: state.refreshToken }),
-            },
-          );
-          if (refreshResponse.ok) {
-            const refreshJson = (await refreshResponse.json()) as {
-              access: string;
-            };
-            await storage.setItem(ACCESS_TOKEN_KEY, refreshJson.access);
-            setState((prev) => ({ ...prev, accessToken: refreshJson.access }));
+        // Convert backend format to ExercisePrRecord array
+        const prs: ExercisePrRecord[] = Object.entries(personalBests).map(
+          ([segmentId, data]: [string, any]) => ({
+            segmentId,
+            exerciseLabel: data.exerciseLabel || "",
+            workoutTitle: data.workoutTitle,
+            basePrimary: data.basePrimary || "",
+            baseSecondary: data.baseSecondary,
+            prWeight: data.weight || "",
+            prSets: data.sets || "",
+            savedAt: data.savedAt || Date.now(),
+          }),
+        );
 
-            response = await fetch(`${API_BASE_URL}/me/`, {
-              headers: { Authorization: `Bearer ${refreshJson.access}` },
-            });
-          }
-        }
-
-        if (response.ok) {
-          const json = (await response.json()) as UserProfile;
-          const personalBests = json.profile.personal_bests || {};
-
-          // Convert backend format to ExercisePrRecord array
-          const prs: ExercisePrRecord[] = Object.entries(personalBests).map(
-            ([segmentId, data]: [string, any]) => ({
-              segmentId,
-              exerciseLabel: data.exerciseLabel || "",
-              workoutTitle: data.workoutTitle,
-              basePrimary: data.basePrimary || "",
-              baseSecondary: data.baseSecondary,
-              prWeight: data.weight || "",
-              prSets: data.sets || "",
-              savedAt: data.savedAt || Date.now(),
-            }),
-          );
-
-          setExercisePrs(prs);
-        }
+        setExercisePrs(prs);
       } catch (error) {
         console.error("Error loading personal bests:", error);
       }
     };
 
     void loadPersonalBests();
-  }, [state.accessToken, state.refreshToken]);
+  }, [clearAuthSession, refreshSessionAccessToken, state.accessToken]);
 
   const authContext = useMemo<AuthContextValue>(
     () => ({
@@ -1948,17 +1929,23 @@ const App: React.FC = () => {
 
         await storage.setItem(ACCESS_TOKEN_KEY, json.access);
         await storage.setItem(REFRESH_TOKEN_KEY, json.refresh);
+        invalidateApiCache();
         setState({
           loading: false,
           accessToken: json.access,
           refreshToken: json.refresh,
         });
       },
-      signUp: async (username, email, password) => {
+      signUp: async (username, email, password, onboarding) => {
         const response = await fetch(`${API_BASE_URL}/auth/register/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({
+            username,
+            email,
+            password,
+            ...(onboarding ? { onboarding } : {}),
+          }),
         });
 
         if (!response.ok) {
@@ -1993,43 +1980,34 @@ const App: React.FC = () => {
 
         await storage.setItem(ACCESS_TOKEN_KEY, json.access);
         await storage.setItem(REFRESH_TOKEN_KEY, json.refresh);
+        invalidateApiCache();
         setState({
           loading: false,
           accessToken: json.access,
           refreshToken: json.refresh,
         });
       },
-      signOut: async () => {
-        await storage.deleteItem(ACCESS_TOKEN_KEY);
-        await storage.deleteItem(REFRESH_TOKEN_KEY);
-        setState({ loading: false, accessToken: null, refreshToken: null });
-      },
-      refreshAccessToken: async () => {
-        if (!state.refreshToken) return null;
-        const response = await fetch(`${API_BASE_URL}/auth/jwt/refresh/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh: state.refreshToken }),
-        });
-        if (!response.ok) {
-          await storage.deleteItem(ACCESS_TOKEN_KEY);
-          await storage.deleteItem(REFRESH_TOKEN_KEY);
-          setState({ loading: false, accessToken: null, refreshToken: null });
-          return null;
-        }
-        const json = (await response.json()) as { access: string };
-        await storage.setItem(ACCESS_TOKEN_KEY, json.access);
-        setState((prev) => ({ ...prev, accessToken: json.access }));
-        return json.access;
-      },
+      signOut: clearAuthSession,
+      refreshAccessToken: refreshSessionAccessToken,
     }),
-    [state.accessToken, state.refreshToken],
+    [
+      clearAuthSession,
+      refreshSessionAccessToken,
+      state.accessToken,
+      state.refreshToken,
+    ],
   );
 
   const themeContext = useMemo<ThemeContextValue>(
     () => ({
       mode: themeMode,
-      toggle: () => {},
+      toggle: () => {
+        setThemeMode((current) => {
+          const next = current === "light" ? "dark" : "light";
+          void storage.setItem(THEME_MODE_KEY, next);
+          return next;
+        });
+      },
     }),
     [themeMode],
   );
@@ -2037,8 +2015,7 @@ const App: React.FC = () => {
   const savePrToBackend = useCallback(
     async (record: ExercisePrRecord, allPrs: ExercisePrRecord[]) => {
       try {
-        let tokenToUse = state.accessToken;
-        if (!tokenToUse) return;
+        if (!state.accessToken) return;
 
         // Build the personal_bests object
         const updatedPrs = [...allPrs];
@@ -2065,52 +2042,28 @@ const App: React.FC = () => {
           };
         });
 
-        let response = await fetch(`${API_BASE_URL}/me/`, {
+        const response = await fetchWithAuth("/me/", {
+          accessToken: state.accessToken,
+          refreshAccessToken: refreshSessionAccessToken,
+          signOut: clearAuthSession,
+        }, {
           method: "PATCH",
           headers: {
-            Authorization: `Bearer ${tokenToUse}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ personal_bests: personalBests }),
         });
 
-        if (response.status === 401) {
-          // Try to refresh the token
-          const refreshResponse = await fetch(
-            `${API_BASE_URL}/auth/jwt/refresh/`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ refresh: state.refreshToken }),
-            },
-          );
-          if (!refreshResponse.ok) {
-            return;
-          }
-          const refreshJson = (await refreshResponse.json()) as {
-            access: string;
-          };
-          await storage.setItem(ACCESS_TOKEN_KEY, refreshJson.access);
-          setState((prev) => ({ ...prev, accessToken: refreshJson.access }));
-
-          response = await fetch(`${API_BASE_URL}/me/`, {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${refreshJson.access}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ personal_bests: personalBests }),
-          });
-        }
-
         if (!response.ok) {
           console.error("Failed to save PR to backend");
+          return;
         }
+        invalidateApiCache("profile", "profile-summary");
       } catch (error) {
         console.error("Error saving PR:", error);
       }
     },
-    [state.accessToken, state.refreshToken],
+    [clearAuthSession, refreshSessionAccessToken, state.accessToken],
   );
 
   const exercisePrContext = useMemo<ExercisePrContextValue>(
@@ -2136,8 +2089,22 @@ const App: React.FC = () => {
     [exercisePrs, savePrToBackend],
   );
 
-  const navigationTheme =
-    themeMode === "dark" ? NavigationDarkTheme : NavigationLightTheme;
+  const navigationTheme = useMemo(() => {
+    const baseTheme =
+      themeMode === "dark" ? NavigationDarkTheme : NavigationLightTheme;
+
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        background: themeMode === "dark" ? DARK_BG : LIGHT_BG,
+        card:
+          themeMode === "dark"
+            ? DARK_BG
+            : LIGHT_BG,
+      },
+    };
+  }, [themeMode]);
 
   if (state.loading || !fontsLoaded) {
     return (
@@ -2158,7 +2125,7 @@ const App: React.FC = () => {
               prefixes: ["fit://", "https://fit.local"],
               config: {
                 screens: {
-                  Community: "groups/:groupId",
+                  Community: "groups/:groupId?",
                 },
               },
             }}
@@ -2166,6 +2133,7 @@ const App: React.FC = () => {
             <SafeAreaView
               style={[styles.root, themeMode === "light" && styles.rootLight]}
             >
+              <AppAmbientBackground isLight={themeMode === "light"} />
               <StatusBar style={themeMode === "dark" ? "light" : "dark"} />
               {state.accessToken ? (
                 <MainTabsNavigator />
@@ -2256,6 +2224,18 @@ const InsightsStackNavigator: React.FC = () => (
       component={PercentileDetailScreen}
     />
   </InsightsStack.Navigator>
+);
+
+const ProfileStackNavigator: React.FC = () => (
+  <ProfileStack.Navigator
+    screenOptions={{
+      headerShown: false,
+      contentStyle: styles.root,
+    }}
+  >
+    <ProfileStack.Screen name="ProfileHome" component={AccountScreen} />
+    <ProfileStack.Screen name="ProfileActivity" component={ProfileActivityScreen} />
+  </ProfileStack.Navigator>
 );
 
 type TabBarIconProps = {
@@ -2394,11 +2374,11 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
             width: 66,
             height: 66,
             borderRadius: 33,
-            backgroundColor: "#111827",
-            borderColor: "#EEF2FF",
+            backgroundColor: isLight ? PS_BLUE : "#111827",
+            borderColor: isLight ? "#FFFFFF" : "#EEF2FF",
             borderWidth: 9,
-            shadowColor: "#6366F1",
-            shadowOpacity: 0.28,
+            shadowColor: isLight ? "#0070CC" : "#6366F1",
+            shadowOpacity: isLight ? 0.18 : 0.28,
             shadowRadius: 16,
             shadowOffset: { width: 0, height: 10 },
             elevation: 10,
@@ -2411,11 +2391,14 @@ const AppTabBarItem: React.FC<TabBarIconProps> = ({
           size={isRecordTab ? 44 : 30}
           active={focused || isRecordTab}
           muted={!focused && !isRecordTab}
+          color={isRecordTab && isLight ? "#FFFFFF" : undefined}
+          accentColor={isRecordTab && isLight ? "#FFFFFF" : undefined}
         />
         {!isRecordTab && (
           <Text
             style={[
               styles.tabBarActiveLabel,
+              focused && isLight && { color: "#1F1F1F" },
               !focused && { color: isLight ? "#4B5563" : "#CBD5E1", fontWeight: "500" },
             ]}
             numberOfLines={1}
@@ -2509,8 +2492,16 @@ const MainTabsNavigator: React.FC = () => {
         name="Insights"
         component={InsightsStackNavigator}
       />
-      <MainTabs.Screen name="Exercises" component={ExercisesFeatureScreen} />
-      <MainTabs.Screen name="Challenges" component={ChallengesScreen} />
+      <MainTabs.Screen
+        name="Exercises"
+        component={ExercisesFeatureScreen}
+        options={{ tabBarButton: () => null }}
+      />
+      <MainTabs.Screen
+        name="Challenges"
+        component={ChallengesScreen}
+        options={{ tabBarButton: () => null }}
+      />
       <MainTabs.Screen
         name="Friends"
         component={FriendsCommunityScreen}
@@ -2527,7 +2518,7 @@ const MainTabsNavigator: React.FC = () => {
       />
       <MainTabs.Screen
         name="Account"
-        component={AccountScreen}
+        component={ProfileStackNavigator}
         options={{
           tabBarButton: () => null,
         }}
@@ -2664,7 +2655,7 @@ export const MetricGauge: React.FC<MetricGaugeProps> = ({
     outputRange: [circumference, 0],
   });
 
-  const trackColor = isLight ? "#E5E7EB" : "#111827";
+  const trackColor = isLight ? "#D9E1EA" : "#263246";
   const fillColor = PS_BLUE;
 
   return (
@@ -2850,26 +2841,11 @@ const LegacyAccountScreen_REMOVED: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        let tokenToUse = accessToken;
-        let response = await fetch(`${API_BASE_URL}/me/`, {
-          headers: {
-            Authorization: `Bearer ${tokenToUse}`,
-          },
-        });
-        if (response.status === 401) {
-          const refreshed = await refreshAccessToken();
-          if (!refreshed) {
-            await signOut();
-            return;
-          }
-          response = await fetch(`${API_BASE_URL}/me/`, {
-            headers: { Authorization: `Bearer ${refreshed}` },
-          });
-        }
-        if (!response.ok) {
-          throw new Error("Failed to load profile");
-        }
-        const json = (await response.json()) as UserProfile;
+        const json = await fetchCachedJson<UserProfile>(
+          "/me/",
+          { accessToken, refreshAccessToken, signOut },
+          { requiredAuth: true, tags: ["profile"] },
+        );
         if (isMounted) setProfile(json);
       } catch (err) {
         if (isMounted) {

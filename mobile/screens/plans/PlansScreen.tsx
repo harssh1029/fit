@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,7 @@ import {
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { usePlans } from "../../hooks/usePlans";
 import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
-import { API_BASE_URL } from "../../api/client";
+import { fetchRequiredAuth, invalidatePlanData } from "../../api/client";
 import { useAuth, useThemeMode, styles } from "../../App";
 import type {
   Plan,
@@ -70,6 +70,9 @@ const isHyroxPlan = (plan: Pick<Plan, "name" | "goal" | "summary">) =>
 const getDisplayGoal = (plan: Plan) => {
   if (isHyroxPlan(plan)) return "Hyrox Race Prep";
   if (/busy professional/i.test(plan.name)) return "Sustainable Fitness";
+  if (/movement foundation/i.test(plan.name)) return "No-Gym Foundation";
+  if (/strength performance/i.test(plan.name)) return "Strength & Power";
+  if (/mobility|longevity/i.test(plan.name)) return "Mobility & Durability";
   if (/lean|muscle|hypertrophy/i.test(`${plan.name} ${plan.goal}`)) {
     return "Lean Muscle";
   }
@@ -82,6 +85,15 @@ const getDisplayFocus = (plan: Plan) => {
   if (text.includes("hyrox")) return "Race, Sled, Run, Functional Strength";
   if (text.includes("busy professional")) {
     return "Strength, Conditioning, Mobility";
+  }
+  if (text.includes("movement foundation")) {
+    return "Bodyweight Strength, Movement, Energy";
+  }
+  if (text.includes("strength performance")) {
+    return "Squat, Bench, Deadlift, Power";
+  }
+  if (text.includes("mobility") || text.includes("longevity")) {
+    return "Joint Strength, Posture, Balance";
   }
   if (text.includes("fat") || text.includes("shred")) {
     return "Metabolic Strength, Conditioning";
@@ -100,6 +112,15 @@ const getDisplayResult = (plan: Plan) => {
   }
   if (text.includes("busy professional")) {
     return "More energy, better consistency";
+  }
+  if (text.includes("movement foundation")) {
+    return "Stronger movement, confidence, energy";
+  }
+  if (text.includes("strength performance")) {
+    return "Stronger lifts, better technique, more power";
+  }
+  if (text.includes("mobility") || text.includes("longevity")) {
+    return "Better range, posture, and durability";
   }
   return plan.result || "Measurable progress and better training rhythm";
 };
@@ -322,7 +343,9 @@ const PlanCard: React.FC<PlanCardProps> = ({
             <Text
               style={[
                 styles.planCardMetaText,
-                isLight && styles.planCardMetaTextLight,
+                isLight
+                  ? styles.planCardMetaTextLight
+                  : styles.planCardMetaTextDark,
               ]}
             >
               {level}
@@ -352,7 +375,9 @@ const PlanCard: React.FC<PlanCardProps> = ({
             <Text
               style={[
                 styles.planCardGoalText,
-                isLight && styles.planCardGoalTextLight,
+                isLight
+                  ? styles.planCardGoalTextLight
+                  : styles.planCardGoalTextDark,
               ]}
               numberOfLines={1}
             >
@@ -480,7 +505,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
 
 const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
   const { mode, toggle } = useThemeMode();
-  const { accessToken } = useAuth();
+  const { accessToken, refreshAccessToken, signOut } = useAuth();
   const isLight = mode === "light";
 
   const { profile } = useUserProfileBasic();
@@ -498,6 +523,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
     loading: activeUserPlanLoading,
     reload: reloadActiveUserPlan,
   } = useActiveUserPlan();
+  const [isRecalibrating, setIsRecalibrating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -525,20 +551,8 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
     activeScheduled.filter((item) => item.status === "missed").length;
   const currentWeek =
     todayWorkout?.week_number ?? activeProgress?.currentWeekNumber ?? 1;
-  const isPremiumUser = Boolean(
-    (profile?.profile.personal_bests as any)?.is_premium ||
-    (profile?.profile.personal_bests as any)?.premium ||
-    (profile?.profile.personal_bests as any)?.subscription === "premium",
-  );
   const recalibratePlan = () => {
-    if (!activeUserPlan) return;
-    if (!isPremiumUser) {
-      Alert.alert(
-        "Premium required",
-        "Recalibration is available with Premium.",
-      );
-      return;
-    }
+    if (!activeUserPlan || isRecalibrating) return;
     Alert.alert(
       "Recalibrate plan?",
       "This will move your missed workouts forward and extend your plan end date. Completed workouts will stay unchanged.",
@@ -548,32 +562,32 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           text: "Recalibrate",
           onPress: async () => {
             if (!accessToken) return;
-            const response = await fetch(
-              `${API_BASE_URL}/user-plans/${activeUserPlan.id}/recalibrate`,
-              {
-                method: "POST",
-                headers: { Authorization: `Bearer ${accessToken}` },
-              },
-            );
-            if (response.status === 402) {
-              Alert.alert(
-                "Premium required",
-                "Recalibration is available with Premium.",
+            setIsRecalibrating(true);
+            try {
+              const response = await fetchRequiredAuth(
+                `/user-plans/${activeUserPlan.id}/recalibrate/`,
+                { accessToken, refreshAccessToken, signOut },
+                { method: "POST" },
               );
-              return;
-            }
-            if (!response.ok) {
+              if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                Alert.alert(
+                  "Could not recalibrate",
+                  data?.detail || `Server returned ${response.status}.`,
+                );
+                return;
+              }
+              invalidatePlanData();
+              await reloadActiveUserPlan();
               Alert.alert(
-                "Could not recalibrate",
-                `Server returned ${response.status}.`,
+                "Plan recalibrated",
+                "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
               );
-              return;
+            } catch {
+              Alert.alert("Could not recalibrate", "Please try again.");
+            } finally {
+              setIsRecalibrating(false);
             }
-            Alert.alert(
-              "Plan recalibrated",
-              "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
-            );
-            void reloadActiveUserPlan();
           },
         },
       ],
@@ -619,6 +633,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           isLight={isLight}
           title="Your plans"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <View style={styles.loadingContainer}>
@@ -638,6 +653,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           isLight={isLight}
           title="Your plans"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
@@ -657,6 +673,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           isLight={isLight}
           title="Your plans"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
         <Text style={[styles.screenTitle, isLight && styles.screenTitleLight]}>
@@ -688,6 +705,7 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
           isLight={isLight}
           title="Your plans"
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
       </View>
@@ -868,10 +886,11 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                   <TouchableOpacity
                     style={styles.plansNextButton}
                     activeOpacity={0.9}
+                    disabled={isRecalibrating}
                     onPress={recalibratePlan}
                   >
                     <Text style={styles.plansNextButtonLabel}>
-                      Recalibrate Plan
+                      {isRecalibrating ? "Updating..." : "Recalibrate Plan"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1016,17 +1035,35 @@ const PlansScreen: React.FC<PlansHomeProps> = ({ navigation }) => {
                 onPress={() =>
                   navigation.navigate("PlansCategory", { category: card.key })
                 }
-                style={[styles.plansDiscoveryCard]}
+                style={[
+                  styles.plansDiscoveryCard,
+                  isLight && styles.plansDiscoveryCardLight,
+                ]}
               >
                 <View style={styles.plansDiscoveryContent}>
-                  <View style={styles.plansDiscoveryIcon}>
+                  <View
+                    style={[
+                      styles.plansDiscoveryIcon,
+                      isLight && styles.plansDiscoveryIconLight,
+                    ]}
+                  >
                     <FitnessIcon3D name={card.icon} size={32} active />
                   </View>
                   <View>
-                    <Text style={styles.plansDiscoveryCardTitle}>
+                    <Text
+                      style={[
+                        styles.plansDiscoveryCardTitle,
+                        isLight && styles.plansDiscoveryCardTitleLight,
+                      ]}
+                    >
                       {card.title}
                     </Text>
-                    <Text style={styles.plansDiscoveryCardSubtitle}>
+                    <Text
+                      style={[
+                        styles.plansDiscoveryCardSubtitle,
+                        isLight && styles.plansDiscoveryCardSubtitleLight,
+                      ]}
+                    >
                       {card.subtitle}
                     </Text>
                   </View>
@@ -1083,6 +1120,8 @@ export const PlansCategoryScreen: React.FC<PlansCategoryProps> = ({
           isLight={isLight}
           title={discoveryLabel(category)}
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
+          onBack={() => navigation.goBack()}
           onThemeToggle={toggle}
         />
         <View style={styles.loadingContainer}>
@@ -1102,6 +1141,8 @@ export const PlansCategoryScreen: React.FC<PlansCategoryProps> = ({
           isLight={isLight}
           title={discoveryLabel(category)}
           userName={plansUserName}
+          avatarUrl={profile?.profile.avatar_url}
+          onBack={() => navigation.goBack()}
           onThemeToggle={toggle}
         />
         <Text style={styles.errorText}>{plansError}</Text>
@@ -1119,33 +1160,15 @@ export const PlansCategoryScreen: React.FC<PlansCategoryProps> = ({
       contentContainerStyle={styles.planCategoryScrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.planCategoryTopNav}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.goBack()}
-          style={[
-            styles.planCategoryBackButton,
-            isLight && styles.planCategoryBackButtonLight,
-          ]}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={isLight ? "#0F172A" : "#FFFFFF"}
-          />
-        </TouchableOpacity>
-        <Text
-          style={[
-            styles.planCategoryNavTitle,
-            isLight
-              ? styles.planCategoryNavTitleLight
-              : styles.planCategoryNavTitleDark,
-          ]}
-        >
-          Plans
-        </Text>
-        <View style={styles.planCategoryNavSpacer} />
-      </View>
+      <AppHeader
+        isLight={isLight}
+        title="Plans"
+        subtitle={discoveryLabel(category)}
+        userName={plansUserName}
+        avatarUrl={profile?.profile.avatar_url}
+        onBack={() => navigation.goBack()}
+        onThemeToggle={toggle}
+      />
 
       <View style={styles.planCategoryHero}>
         <Text
@@ -1223,18 +1246,13 @@ export const PlansCategoryScreen: React.FC<PlansCategoryProps> = ({
           activeOpacity={0.86}
           style={[
             styles.planCategoryFilterPill,
+            styles.planCategoryFilterIconOnly,
             isLight && styles.planCategoryFilterPillLight,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Filter plans"
         >
           <Ionicons name="options-outline" size={18} color={filterIconColor} />
-          <Text
-            style={[
-              styles.planCategoryFilterLabel,
-              !isLight && styles.planCategoryFilterLabelDark,
-            ]}
-          >
-            Filter
-          </Text>
         </TouchableOpacity>
       </ScrollView>
 

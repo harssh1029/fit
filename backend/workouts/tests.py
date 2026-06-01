@@ -8,9 +8,10 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from achievements.services import ensure_badge_catalog
-from community.models import CommunityActivity
+from community.models import CommunityActivity, UserPublicCard
+from insights.models import UserMetricsSnapshot
 from plans.models import Plan, PlanDay, PlanWeek, UserPlan, UserScheduledWorkout
-from .models import WorkoutSession
+from .models import SessionExercise, WorkoutSession
 from .services import log_workout
 
 
@@ -106,6 +107,26 @@ class WorkoutHistoryViewTests(APITestCase):
 		self.assertEqual(statuses_by_title.get("Day 1 Strength"), "completed")
 		self.assertEqual(statuses_by_title.get("Day 2 Cardio"), "missed")
 
+	def test_history_prefers_saved_schedule_dates(self) -> None:
+		saved_date = timezone.localdate() - timedelta(days=1)
+		UserScheduledWorkout.objects.create(
+			user_plan=self.user_plan,
+			plan_day=self.day1,
+			week_number=1,
+			day_index=1,
+			scheduled_date=saved_date,
+			original_scheduled_date=saved_date,
+			status="scheduled",
+			order_index=1,
+		)
+
+		self.client.force_authenticate(self.user)
+		response = self.client.get("/api/v1/workouts/history/?limit=10")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(len(response.json()["results"]), 1)
+		self.assertEqual(response.json()["results"][0]["date"], saved_date.isoformat())
+
 
 class WorkoutScoringTests(APITestCase):
 	def setUp(self) -> None:
@@ -180,6 +201,52 @@ class WorkoutScoringTests(APITestCase):
 			},
 		)
 		self.assertEqual(result.score.activity_xp, 109)
+		self.assertTrue(
+			SessionExercise.objects.filter(
+				session=result.session,
+				is_completed=True,
+				exercise__primary_muscles__canonical_group="back",
+			).exists()
+		)
+
+	def test_log_endpoint_creates_body_map_attribution_rows(self) -> None:
+		self.client.force_authenticate(self.user)
+		response = self.client.post(
+			"/api/v1/workouts/log/",
+			{
+				"title": "Manual Push Session",
+				"entry_source": "manual",
+				"mode": "strength",
+				"duration_minutes": 35,
+				"intensity": "moderate",
+				"body_groups": ["chest"],
+				"muscles": ["Triceps"],
+				"exercises": [{"name": "Custom bench press", "volume": "3x8"}],
+			},
+			format="json",
+		)
+		self.assertEqual(response.status_code, 201)
+		session_id = response.json()["workout_session_id"]
+		self.assertTrue(
+			SessionExercise.objects.filter(
+				session_id=session_id,
+				is_completed=True,
+				exercise__primary_muscles__canonical_group="chest",
+			).exists()
+		)
+		self.assertTrue(
+			SessionExercise.objects.filter(
+				session_id=session_id,
+				is_completed=True,
+				exercise__primary_muscles__canonical_group="arms",
+			).exists()
+		)
+
+		dashboard = self.client.get("/api/v1/dashboard/summary/")
+		self.assertEqual(dashboard.status_code, 200)
+		groups = dashboard.json()["metrics"]["body_battle_map"]["detail"]["groups"]
+		self.assertGreaterEqual(groups["chest"]["sessions"], 1)
+		self.assertGreaterEqual(groups["arms"]["sessions"], 1)
 
 	def test_manual_workout_scores_prompt_example(self) -> None:
 		result = log_workout(
@@ -194,6 +261,23 @@ class WorkoutScoringTests(APITestCase):
 			},
 		)
 		self.assertEqual(result.score.activity_xp, 70)
+
+	def test_service_log_syncs_metrics_snapshot_and_public_card(self) -> None:
+		log_workout(
+			self.user,
+			{
+				"title": "Synced Service Workout",
+				"entry_source": "recorded_timer",
+				"mode": "strength",
+				"duration_minutes": 30,
+				"intensity": "moderate",
+				"body_groups": ["chest"],
+			},
+		)
+		self.assertTrue(UserMetricsSnapshot.objects.filter(user=self.user).exists())
+		card = UserPublicCard.objects.get(user=self.user)
+		self.assertGreater(card.weekly_xp, 0)
+		self.assertEqual(card.post_count, 1)
 
 	def test_third_same_day_workout_is_reduced(self) -> None:
 		for index in range(3):
@@ -254,7 +338,7 @@ class WorkoutScoringTests(APITestCase):
 		)
 
 	def test_workout_badge_unlock_merges_into_workout_activity(self) -> None:
-		now = timezone.now()
+		now = timezone.now().replace(day=10)
 		workouts = [
 			("Upper", "strength", ["chest"]),
 			("Lower", "strength", ["legs"]),

@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { PS_BLUE } from "../styles/theme";
+import { LIGHT_BORDER_SUBTLE, PS_BLUE } from "../styles/theme";
 
 type ThemeToggleProps = {
 	isLight: boolean;
@@ -16,7 +16,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 	inHeader = false,
 }) => {
 	const iconName: keyof typeof Ionicons.glyphMap = isLight ? "sunny" : "moon";
-	const iconColor = isLight ? "#FBBF24" : "#E5E7EB";
+	const iconColor = isLight ? PS_BLUE : "#E5E7EB";
 
 	return (
 		<TouchableOpacity
@@ -66,9 +66,9 @@ const styles = StyleSheet.create({
 		elevation: 2,
 	},
 	themeToggleLight: {
-		borderColor: "#DDE3ED",
-		backgroundColor: "#F8FAFC",
-		shadowColor: "#94A3B8",
+		borderColor: LIGHT_BORDER_SUBTLE,
+		backgroundColor: "#FFFFFF",
+		shadowColor: "#000000",
 		shadowOpacity: 0.06,
 	},
 	themeToggleInHeader: {

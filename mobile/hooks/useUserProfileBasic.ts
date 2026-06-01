@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 
-import { API_BASE_URL } from "../api/client";
+import { fetchCachedJson } from "../api/client";
 import { useAuth } from "../App";
 import type { UserProfile } from "../App";
 
@@ -18,7 +18,7 @@ export function useUserProfileBasic() {
 		};
 	}, []);
 
-	const loadProfile = useCallback(async () => {
+	const loadProfile = useCallback(async (force = true) => {
 		if (!accessToken) {
 			if (isMountedRef.current) {
 				setProfile(null);
@@ -29,24 +29,15 @@ export function useUserProfileBasic() {
 		try {
 			setLoading(true);
 			setError(null);
-			let tokenToUse = accessToken;
-			let response = await fetch(`${API_BASE_URL}/me/`, {
-				headers: { Authorization: `Bearer ${tokenToUse}` },
+			const json = await fetchCachedJson<UserProfile>("/me/", {
+				accessToken,
+				refreshAccessToken,
+				signOut,
+			}, {
+				force,
+				requiredAuth: true,
+				tags: ["profile"],
 			});
-			if (response.status === 401) {
-				const refreshed = await refreshAccessToken();
-				if (!refreshed) {
-					await signOut();
-					return;
-				}
-				response = await fetch(`${API_BASE_URL}/me/`, {
-					headers: { Authorization: `Bearer ${refreshed}` },
-				});
-			}
-			if (!response.ok) {
-				throw new Error("Failed to load profile");
-			}
-			const json = (await response.json()) as UserProfile;
 			if (isMountedRef.current) {
 				setProfile(json);
 			}
@@ -62,12 +53,12 @@ export function useUserProfileBasic() {
 	}, [accessToken, refreshAccessToken, signOut]);
 
 	useEffect(() => {
-		void loadProfile();
+		void loadProfile(false);
 	}, [loadProfile]);
 
 	useFocusEffect(
 		useCallback(() => {
-			void loadProfile();
+			void loadProfile(false);
 		}, [loadProfile]),
 	);
 

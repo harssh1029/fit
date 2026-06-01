@@ -2,7 +2,7 @@ from datetime import datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.signing import BadSignature, TimestampSigner
-from django.db.models import Count, F, Q
+from django.db.models import Count, Exists, F, OuterRef, Q
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from rest_framework import status
@@ -13,10 +13,12 @@ from rest_framework.views import APIView
 from .models import (
 	ActivityComment,
 	ActivityLike,
+	ActivitySave,
 	ActivityShare,
 	CommunityActivity,
 	CommunityGroup,
 	ContactSyncInvite,
+	Friendship,
 	GroupAnnouncement,
 	GroupChallenge,
 	GroupInvite,
@@ -36,13 +38,12 @@ from .serializers import (
 	UserSuggestionSerializer,
 )
 from .services import (
-	community_scope_user_ids,
 	create_friendship,
 	ensure_public_card,
 	ensure_public_cards,
 	get_friend_cards,
+	get_public_card,
 	remove_friendship,
-	sync_recent_activities,
 )
 from workouts.models import WorkoutSession
 from achievements.services import evaluate_group_achievements
@@ -163,16 +164,47 @@ def _member_group_ids(user) -> list[int]:
 	)
 
 
-def _visible_feed_user_ids(user) -> list[int]:
-	user_ids = list(community_scope_user_ids(user))
+def _visible_feed_activities(user):
 	group_ids = _member_group_ids(user)
-	if group_ids:
-		group_member_ids = GroupMembership.objects.filter(
+	group_member_ids = GroupMembership.objects.filter(
 			group_id__in=group_ids,
 			status=GroupMembership.STATUS_ACTIVE,
-		).values_list('user_id', flat=True)
-		user_ids.extend(group_member_ids)
-	return list(dict.fromkeys(user_ids))
+		).values('user_id')
+	following_ids = UserFollow.objects.filter(
+		follower=user,
+		status=UserFollow.STATUS_ACTIVE,
+	).values('following_id')
+	friend_ids_from = Friendship.objects.filter(
+		from_user=user,
+		status=Friendship.STATUS_ACCEPTED,
+	).values('to_user_id')
+	friend_ids_to = Friendship.objects.filter(
+		to_user=user,
+		status=Friendship.STATUS_ACCEPTED,
+	).values('from_user_id')
+	return CommunityActivity.objects.filter(
+		Q(user=user)
+		| Q(user_id__in=following_ids)
+		| Q(user_id__in=friend_ids_from)
+		| Q(user_id__in=friend_ids_to)
+		| Q(user_id__in=group_member_ids)
+	).filter(
+		Q(metadata__group_id__isnull=True) | Q(metadata__group_id__in=group_ids)
+	)
+
+
+def _with_activity_engagement(queryset, user):
+	return queryset.annotate(
+		likes_count=Count('likes', distinct=True),
+		comments_count=Count('comments', distinct=True),
+		shares_count=Count('shares', distinct=True),
+		liked_by_me=Exists(
+			ActivityLike.objects.filter(activity_id=OuterRef('pk'), user=user)
+		),
+		saved_by_me=Exists(
+			ActivitySave.objects.filter(activity_id=OuterRef('pk'), user=user)
+		),
+	)
 
 
 class CommunitySummaryView(APIView):
@@ -180,23 +212,13 @@ class CommunitySummaryView(APIView):
 
 	def get(self, request, *args, **kwargs):
 		user = request.user
-		card = ensure_public_card(user)
+		card = get_public_card(user)
 		friend_cards = get_friend_cards(user)
-		for friend_card in friend_cards:
-			sync_recent_activities(friend_card.user)
-		sync_recent_activities(user)
 		week_start = timezone.now() - timedelta(days=7)
-		member_group_ids = _member_group_ids(user)
-		activities = CommunityActivity.objects.filter(
-			user_id__in=_visible_feed_user_ids(user),
+		activities = _visible_feed_activities(user).filter(
 			occurred_at__gte=week_start,
-		).filter(
-			Q(metadata__group_id__isnull=True) | Q(metadata__group_id__in=member_group_ids)
-		).select_related('user', 'user__profile').annotate(
-			likes_count=Count('likes', distinct=True),
-			comments_count=Count('comments', distinct=True),
-			shares_count=Count('shares', distinct=True),
-		).order_by('-occurred_at', '-id')[:100]
+		).select_related('user', 'user__profile')
+		activities = _with_activity_engagement(activities, user).order_by('-occurred_at', '-id')[:100]
 		return Response(
 			{
 				'public_card': UserPublicCardSerializer(card).data,
@@ -318,10 +340,14 @@ class LeaderboardView(APIView):
 		group_id = request.query_params.get('group_id')
 		sort_field = LEADERBOARD_SORTS.get(metric, LEADERBOARD_SORTS['overall'])
 		limit = min(int(request.query_params.get('limit', 100)), 100)
-		ensure_public_card(request.user)
+		get_public_card(request.user)
 		ensure_public_cards(User.objects.filter(public_card__isnull=True)[:100])
 
-		all_cards = UserPublicCard.objects.select_related('user', 'user__profile')
+		all_cards = UserPublicCard.objects.select_related(
+			'user',
+			'user__profile',
+			'user__achievement_level',
+		)
 		selected_group = None
 		if scope == 'following':
 			user_ids = list(
@@ -358,7 +384,7 @@ class LeaderboardView(APIView):
 
 		all_cards = all_cards.order_by(sort_field, 'display_name', 'id')
 		top_cards = list(all_cards[:limit])
-		user_card = ensure_public_card(request.user)
+		user_card = get_public_card(request.user)
 		user_rank = None
 		for index, card in enumerate(all_cards, start=1):
 			if card.user_id == request.user.id:
@@ -384,22 +410,11 @@ class ActivityFeedView(APIView):
 	def get(self, request, *args, **kwargs):
 		feed_filter = request.query_params.get('filter', 'recent')
 		limit = min(int(request.query_params.get('limit', 50)), 100)
-		user_ids = _visible_feed_user_ids(request.user)
-		for user in User.objects.filter(id__in=user_ids):
-			sync_recent_activities(user)
-
 		week_start = timezone.now() - timedelta(days=7)
-		member_group_ids = _member_group_ids(request.user)
-		activities = CommunityActivity.objects.filter(
-			user_id__in=user_ids,
+		activities = _visible_feed_activities(request.user).filter(
 			occurred_at__gte=week_start,
-		).filter(
-			Q(metadata__group_id__isnull=True) | Q(metadata__group_id__in=member_group_ids)
-		).select_related('user', 'user__profile').annotate(
-			likes_count=Count('likes', distinct=True),
-			comments_count=Count('comments', distinct=True),
-			shares_count=Count('shares', distinct=True),
-		).order_by('-occurred_at', '-id')
+		).select_related('user', 'user__profile')
+		activities = _with_activity_engagement(activities, request.user).order_by('-occurred_at', '-id')
 		if feed_filter in {'workout', 'challenge', 'plan', 'test'}:
 			activities = activities.filter(activity_type=feed_filter)
 		elif feed_filter == 'friends':
@@ -568,6 +583,42 @@ class ActivityCommentsView(APIView):
 		return Response(ActivityCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
 
 
+class ActivityCommentDetailView(APIView):
+	permission_classes = [IsAuthenticated]
+
+	def _get_comment(self, activity_id: int, comment_id: int, user):
+		comment = (
+			ActivityComment.objects.filter(id=comment_id, activity_id=activity_id)
+			.select_related('activity', 'user', 'user__profile')
+			.first()
+		)
+		if comment is None or not _can_view_activity(comment.activity, user):
+			return None
+		return comment
+
+	def patch(self, request, activity_id: int, comment_id: int, *args, **kwargs):
+		comment = self._get_comment(activity_id, comment_id, request.user)
+		if comment is None:
+			return Response({'detail': 'Comment not found.'}, status=status.HTTP_404_NOT_FOUND)
+		if comment.user_id != request.user.id and not request.user.is_staff:
+			return Response({'detail': 'Only the comment owner can edit this comment.'}, status=status.HTTP_403_FORBIDDEN)
+		body = str(request.data.get('body') or '').strip()
+		if not body:
+			return Response({'detail': 'body is required.'}, status=status.HTTP_400_BAD_REQUEST)
+		comment.body = body[:1000]
+		comment.save(update_fields=['body', 'updated_at'])
+		return Response(ActivityCommentSerializer(comment).data)
+
+	def delete(self, request, activity_id: int, comment_id: int, *args, **kwargs):
+		comment = self._get_comment(activity_id, comment_id, request.user)
+		if comment is None:
+			return Response(status=status.HTTP_204_NO_CONTENT)
+		if comment.user_id != request.user.id and not request.user.is_staff:
+			return Response({'detail': 'Only the comment owner can delete this comment.'}, status=status.HTTP_403_FORBIDDEN)
+		comment.delete()
+		return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class ActivityShareView(APIView):
 	permission_classes = [IsAuthenticated]
 
@@ -579,6 +630,66 @@ class ActivityShareView(APIView):
 			return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
 		ActivityShare.objects.create(activity=activity, user=request.user)
 		return Response({'shared': True, 'shareCount': activity.shares.count()}, status=status.HTTP_201_CREATED)
+
+
+class ActivitySaveView(APIView):
+	permission_classes = [IsAuthenticated]
+
+	def post(self, request, activity_id: int, *args, **kwargs):
+		activity = CommunityActivity.objects.filter(id=activity_id).first()
+		if activity is None or not _can_view_activity(activity, request.user):
+			return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
+		ActivitySave.objects.get_or_create(activity=activity, user=request.user)
+		return Response({'saved': True}, status=status.HTTP_200_OK)
+
+	def delete(self, request, activity_id: int, *args, **kwargs):
+		ActivitySave.objects.filter(activity_id=activity_id, user=request.user).delete()
+		return Response({'saved': False}, status=status.HTTP_200_OK)
+
+
+class SavedActivityListView(APIView):
+	permission_classes = [IsAuthenticated]
+
+	def get(self, request, *args, **kwargs):
+		try:
+			limit = min(max(int(request.query_params.get('limit', 30)), 1), 50)
+		except (TypeError, ValueError):
+			limit = 30
+		try:
+			before = int(request.query_params.get('before', '0')) or None
+		except (TypeError, ValueError):
+			before = None
+
+		visible_activity_ids = _visible_feed_activities(request.user).values('id')
+		saves = ActivitySave.objects.filter(
+			user=request.user,
+			activity_id__in=visible_activity_ids,
+		)
+		if before is not None:
+			saves = saves.filter(id__lt=before)
+		saves = list(saves.order_by('-created_at', '-id')[:limit + 1])
+		page = saves[:limit]
+		activities = _with_activity_engagement(
+			CommunityActivity.objects.filter(id__in=[save.activity_id for save in page])
+			.select_related('user', 'user__profile'),
+			request.user,
+		)
+		activities_by_id = {activity.id: activity for activity in activities}
+		results = [
+			activities_by_id[save.activity_id]
+			for save in page
+			if save.activity_id in activities_by_id
+		]
+		return Response(
+			{
+				'results': CommunityActivitySerializer(
+					results,
+					many=True,
+					context={'request': request},
+				).data,
+				'nextCursor': page[-1].id if len(saves) > limit and page else None,
+			}
+		)
 
 
 def _activity_group_id(activity: CommunityActivity):
@@ -613,7 +724,7 @@ def _can_view_activity(activity: CommunityActivity, user) -> bool:
 		group__memberships__status=GroupMembership.STATUS_ACTIVE,
 	).exists():
 		return True
-	return activity.user_id in community_scope_user_ids(user)
+	return _visible_feed_activities(user).filter(id=activity.id).exists()
 
 
 def _is_group_admin(group: CommunityGroup, user) -> bool:
@@ -634,35 +745,45 @@ def _is_group_owner(group: CommunityGroup, user) -> bool:
 	).exists()
 
 
-def _refresh_group_count(group: CommunityGroup) -> None:
-	count = group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).count()
+def _refresh_group_count(group: CommunityGroup, *, persist: bool = True, member_ids=None) -> None:
+	count = len(member_ids) if member_ids is not None else group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).count()
 	if group.member_count != count:
 		group.member_count = count
-		group.save(update_fields=['member_count', 'updated_at'])
+		if persist:
+			group.save(update_fields=['member_count', 'updated_at'])
 
 
-def _refresh_group_metrics(group: CommunityGroup) -> None:
+def _refresh_group_metrics(group: CommunityGroup, *, persist: bool = True, member_ids=None) -> None:
 	today = timezone.localdate()
 	week_start = today - timedelta(days=today.weekday())
-	member_ids = list(group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True))
+	if member_ids is None:
+		member_ids = list(group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True))
 	weekly_activity = WorkoutSession.objects.filter(
 		user_id__in=member_ids,
 		status='completed',
 		completed_at__date__gte=week_start,
 	).count() if member_ids else 0
 	active_challenge = group.challenges.filter(start_date__lte=today, end_date__gte=today).order_by('-start_date').first()
-	group.weekly_activity_count = weekly_activity
-	group.active_challenge_title = active_challenge.title if active_challenge else ''
-	group.save(update_fields=['weekly_activity_count', 'active_challenge_title', 'updated_at'])
+	active_challenge_title = active_challenge.title if active_challenge else ''
+	if (
+		group.weekly_activity_count != weekly_activity
+		or group.active_challenge_title != active_challenge_title
+	):
+		group.weekly_activity_count = weekly_activity
+		group.active_challenge_title = active_challenge_title
+		if persist:
+			group.save(update_fields=['weekly_activity_count', 'active_challenge_title', 'updated_at'])
 
 
-def _group_leaderboard_payload(group: CommunityGroup, user, *, limit: int = 10) -> dict:
+def _group_leaderboard_payload(group: CommunityGroup, user, *, limit: int = 10, member_ids=None) -> dict:
 	today = timezone.localdate()
 	week_start = today - timedelta(days=today.weekday())
 	start_dt = timezone.make_aware(datetime.combine(week_start, time.min))
 	rows = (
 		WorkoutSession.objects.filter(
-			user_id__in=group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True),
+			user_id__in=member_ids
+			if member_ids is not None
+			else group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True),
 			status='completed',
 			completed_at__gte=start_dt,
 		)
@@ -690,10 +811,11 @@ def _group_leaderboard_payload(group: CommunityGroup, user, *, limit: int = 10) 
 	return {'top': top, 'userRank': user_rank, 'neighborhood': neighborhood}
 
 
-def _group_feed_payload(group: CommunityGroup, request, *, limit: int = 20) -> dict:
-	member_ids = list(
-		group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True)
-	)
+def _group_feed_payload(group: CommunityGroup, request, *, limit: int = 20, member_ids=None) -> dict:
+	if member_ids is None:
+		member_ids = list(
+			group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True)
+		)
 	week_start = timezone.now() - timedelta(days=14)
 	member_activity = CommunityActivity.objects.filter(
 		user_id__in=member_ids,
@@ -704,23 +826,17 @@ def _group_feed_payload(group: CommunityGroup, request, *, limit: int = 20) -> d
 			CommunityActivity.ACTIVITY_BADGE,
 		],
 		occurred_at__gte=week_start,
-	).select_related('user', 'user__profile').annotate(
-		likes_count=Count('likes', distinct=True),
-		comments_count=Count('comments', distinct=True),
-		shares_count=Count('shares', distinct=True),
-	).order_by('-occurred_at', '-id')[:limit]
+	).select_related('user', 'user__profile')
+	member_activity = _with_activity_engagement(member_activity, request.user).order_by('-occurred_at', '-id')[:limit]
 
 	group_posts = CommunityActivity.objects.filter(
 		activity_type=CommunityActivity.ACTIVITY_GROUP,
 		metadata__group_id=group.id,
-	).select_related('user', 'user__profile').annotate(
-		likes_count=Count('likes', distinct=True),
-		comments_count=Count('comments', distinct=True),
-		shares_count=Count('shares', distinct=True),
-	).order_by('-occurred_at', '-id')
+	).select_related('user', 'user__profile')
+	group_posts = list(_with_activity_engagement(group_posts, request.user).order_by('-occurred_at', '-id')[:80])
 
 	def by_kind(*kinds):
-		return [item for item in group_posts[:80] if (item.metadata if isinstance(item.metadata, dict) else {}).get('kind') in kinds]
+		return [item for item in group_posts if (item.metadata if isinstance(item.metadata, dict) else {}).get('kind') in kinds]
 
 	context = {'request': request}
 	return {
@@ -763,8 +879,8 @@ class CommunityOverviewView(APIView):
 			| Q(memberships__user=request.user, memberships__status=GroupMembership.STATUS_ACTIVE)
 		).distinct()[:10]
 		for group in groups:
-			_refresh_group_count(group)
-			_refresh_group_metrics(group)
+			_refresh_group_count(group, persist=False)
+			_refresh_group_metrics(group, persist=False)
 		return Response(
 			{
 				'todayActivity': today,
@@ -783,8 +899,8 @@ class GroupListCreateView(APIView):
 			| Q(memberships__user=request.user, memberships__status=GroupMembership.STATUS_ACTIVE)
 		).distinct().prefetch_related('memberships')
 		for group in groups:
-			_refresh_group_count(group)
-			_refresh_group_metrics(group)
+			_refresh_group_count(group, persist=False)
+			_refresh_group_metrics(group, persist=False)
 		return Response(CommunityGroupSerializer(groups, many=True, context={'request': request}).data)
 
 	def post(self, request, *args, **kwargs):
@@ -829,24 +945,34 @@ class GroupDetailView(APIView):
 		group = CommunityGroup.objects.filter(id=group_id).first()
 		if group is None:
 			return Response({'detail': 'Group not found.'}, status=status.HTTP_404_NOT_FOUND)
-		is_member = _is_group_member(group, request.user)
+		membership = GroupMembership.objects.filter(
+			group=group,
+			user=request.user,
+			status=GroupMembership.STATUS_ACTIVE,
+		).first()
+		is_member = membership is not None
+		setattr(group, f'_request_membership_{request.user.id}', membership)
 		pending_request = GroupInvite.objects.filter(
 			group=group,
 			invitee=request.user,
 			invited_by=request.user,
 			status=GroupInvite.STATUS_PENDING,
 		).exists()
-		_refresh_group_count(group)
-		_refresh_group_metrics(group)
+		member_ids = list(
+			group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True)
+		)
+		_refresh_group_count(group, persist=False, member_ids=member_ids)
+		_refresh_group_metrics(group, persist=False, member_ids=member_ids)
 		activities = CommunityActivity.objects.none()
 		if is_member:
 			activities = CommunityActivity.objects.filter(
-				user_id__in=group.memberships.filter(status=GroupMembership.STATUS_ACTIVE).values_list('user_id', flat=True),
+				user_id__in=member_ids,
 				occurred_at__gte=timezone.now() - timedelta(days=7),
-			).select_related('user', 'user__profile')[:8]
+			).select_related('user', 'user__profile')
+			activities = _with_activity_engagement(activities, request.user)[:8]
 		pinned = group.announcements.filter(is_pinned=True).first()
 		payload = CommunityGroupSerializer(group, context={'request': request}).data
-		group_feed = _group_feed_payload(group, request) if is_member else {
+		group_feed = _group_feed_payload(group, request, member_ids=member_ids) if is_member else {
 			'memberActivity': [],
 			'threads': [],
 			'events': [],
@@ -862,10 +988,12 @@ class GroupDetailView(APIView):
 					'percent': min(100, round((group.weekly_activity_count / max(1, group.weekly_goal_target)) * 100)),
 				},
 				'activeChallenges': GroupChallengeSerializer(group.challenges.filter(start_date__lte=timezone.localdate(), end_date__gte=timezone.localdate()), many=True).data if is_member else [],
-				'leaderboard': _group_leaderboard_payload(group, request.user) if is_member else {'top': [], 'userRank': None, 'neighborhood': []},
+				'leaderboard': _group_leaderboard_payload(group, request.user, member_ids=member_ids) if is_member else {'top': [], 'userRank': None, 'neighborhood': []},
 				'pinnedAnnouncement': GroupAnnouncementSerializer(pinned).data if pinned and is_member else None,
 				'pendingRequest': pending_request,
-				'joinRequests': _group_join_requests_payload(group) if _is_group_admin(group, request.user) else [],
+				'joinRequests': _group_join_requests_payload(group)
+				if membership and membership.role in [GroupMembership.ROLE_OWNER, GroupMembership.ROLE_ADMIN]
+				else [],
 			}
 		)
 		return Response(payload)

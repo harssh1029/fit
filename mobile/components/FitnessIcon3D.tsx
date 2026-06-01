@@ -41,11 +41,13 @@ type FitnessIcon3DProps = {
   active?: boolean;
   muted?: boolean;
   tile?: boolean;
+  color?: string;
+  accentColor?: string;
 };
 
-const ACTIVE = "#F8FAFC";
-const INACTIVE = "#AAB4C7";
-const ACTIVE_ACCENT = "#8EA2FF";
+const ACTIVE = "#0070CC";
+const INACTIVE = "#64748B";
+const ACTIVE_ACCENT = "#1EAEDB";
 
 type GlyphProps = {
   name: FitnessIcon3DName;
@@ -220,19 +222,22 @@ export const FitnessIcon3D: React.FC<FitnessIcon3DProps> = ({
   size = 30,
   active = false,
   muted = false,
+  color,
+  accentColor,
 }) => {
-  const stroke = active ? ACTIVE : INACTIVE;
+  const accent = accentColor ?? ACTIVE_ACCENT;
+  const stroke = color ?? (active ? ACTIVE : INACTIVE);
   const opacity = muted ? 0.68 : 1;
 
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" opacity={opacity}>
       {active ? (
-        <Circle cx={16} cy={16} r={13.2} fill={ACTIVE_ACCENT} opacity={0.1} />
+        <Circle cx={16} cy={16} r={13.2} fill={accent} opacity={0.1} />
       ) : null}
       <Glyph
         name={name}
         stroke={stroke}
-        accent={ACTIVE_ACCENT}
+        accent={accent}
         active={active}
       />
     </Svg>

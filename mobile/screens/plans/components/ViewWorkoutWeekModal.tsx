@@ -17,8 +17,8 @@ import {
   type ViewWorkoutDay,
   FancyWorkoutTypeIcon,
   GLASS_ACCENT_GREEN,
-  API_BASE_URL,
 } from "../../../App";
+import { fetchRequiredAuth, invalidateWorkoutData } from "../../../api/client";
 import { useWorkoutHistory } from "../../../hooks/useWorkoutHistory";
 import { loadExerciseDemoIds } from "../../../utils/exerciseLookup";
 
@@ -144,7 +144,7 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
         plan_day_id?: number;
         plan_week_number?: number;
         plan_day_index?: number;
-        plan_id?: number;
+        plan_id?: number | string;
       } = {};
 
       if (hasValidPlanDayId) {
@@ -157,41 +157,18 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
       }
 
       if (planId != null) {
-        const numericPlanId = Number(planId);
-        if (!Number.isNaN(numericPlanId)) {
-          payload.plan_id = numericPlanId;
-        }
+        payload.plan_id = planId;
       }
 
-      console.log("POST /plans/complete-day/ payload", payload);
-
-      let tokenToUse = accessToken;
-      let response = await fetch(`${API_BASE_URL}/plans/complete-day/`, {
+      const response = await fetchRequiredAuth("/plans/complete-day/", {
+        accessToken,
+        refreshAccessToken,
+        signOut,
+      }, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${tokenToUse}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          setCompletingDayId(null);
-          return;
-        }
-        tokenToUse = refreshed;
-        response = await fetch(`${API_BASE_URL}/plans/complete-day/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${tokenToUse}`,
-          },
-          body: JSON.stringify(payload),
-        });
-      }
 
       if (!response.ok) {
         let errorBody: unknown = null;
@@ -214,6 +191,7 @@ export const ViewWorkoutWeekModal: React.FC<ViewWorkoutWeekModalProps> = ({
         [day.id]: true,
       }));
 
+      invalidateWorkoutData();
       reloadWorkoutHistoryModal();
       onDayMarkedComplete?.();
     } catch (err) {

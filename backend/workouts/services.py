@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
+from django.utils.text import slugify
 
 from .models import (
 	SessionExercise,
@@ -103,6 +104,48 @@ BODY_PART_MAP = {
 	'core': ('core_score', 'core_score', 'core_score'),
 	'abs': ('core_score', 'core_score', 'core_score'),
 	'obliques': ('core_score', 'core_score', 'core_score'),
+}
+
+BODY_MAP_CANONICAL_GROUPS = {
+	'chest',
+	'shoulders',
+	'arms',
+	'back',
+	'core',
+	'glutes',
+	'legs',
+}
+
+BODY_MAP_GROUP_ALIASES = {
+	'chest': 'chest',
+	'pecs': 'chest',
+	'pectorals': 'chest',
+	'shoulders': 'shoulders',
+	'shoulder': 'shoulders',
+	'deltoids': 'shoulders',
+	'delts': 'shoulders',
+	'arms': 'arms',
+	'arm': 'arms',
+	'biceps': 'arms',
+	'triceps': 'arms',
+	'forearms': 'arms',
+	'back': 'back',
+	'lats': 'back',
+	'latissimus': 'back',
+	'trapezius': 'back',
+	'traps': 'back',
+	'core': 'core',
+	'abs': 'core',
+	'abdominals': 'core',
+	'obliques': 'core',
+	'glutes': 'glutes',
+	'glute': 'glutes',
+	'legs': 'legs',
+	'leg': 'legs',
+	'quads': 'legs',
+	'quadriceps': 'legs',
+	'hamstrings': 'legs',
+	'calves': 'legs',
 }
 
 
@@ -355,6 +398,10 @@ def build_session_from_payload(user: User, payload: dict[str, Any], *, as_of: da
 			plan = Plan.objects.filter(id=plan_id, is_active=True).first()
 	body_groups = _clean_list(payload.get('body_groups'), limit=24)
 	muscles = _clean_list(payload.get('muscles'), limit=40)
+	if scheduled_workout is not None and not body_groups:
+		body_groups = plan_day_body_groups(scheduled_workout.plan_day)
+	if body_groups and not muscles:
+		muscles = [group.title() for group in body_groups]
 	modes = _clean_list(payload.get('modes'), limit=8)
 	cardio = bool(payload.get('cardio', False))
 	workout_type = _normalize_type(payload.get('workout_type') or payload.get('mode'), cardio=cardio)
@@ -478,6 +525,171 @@ def _normalize_exercises(value: Any) -> list[dict[str, Any]]:
 	return exercises
 
 
+def _canonical_body_map_group(value: Any) -> str:
+	text = str(value or '').strip().lower().replace('_', ' ').replace('-', ' ')
+	if not text:
+		return ''
+	if text in BODY_MAP_GROUP_ALIASES:
+		return BODY_MAP_GROUP_ALIASES[text]
+	compact = text.replace(' ', '')
+	if compact in BODY_MAP_GROUP_ALIASES:
+		return BODY_MAP_GROUP_ALIASES[compact]
+	for alias, group in BODY_MAP_GROUP_ALIASES.items():
+		if alias in text:
+			return group
+	return ''
+
+
+PLAN_EXERCISE_GROUP_HINTS = {
+	'chest': ['bench', 'push up', 'chest', 'fly'],
+	'shoulders': ['shoulder', 'overhead', 'lateral raise', 'face pull', 'push press'],
+	'arms': ['curl', 'triceps', 'pushdown'],
+	'back': ['row', 'pull up', 'pull-up', 'pulldown', 'lat pull'],
+	'core': ['plank', 'dead bug', 'pallof', 'bird dog', 'core', 'hollow', 'carry'],
+	'glutes': ['glute', 'hip thrust', 'bridge'],
+	'legs': [
+		'squat',
+		'lunge',
+		'step up',
+		'step-up',
+		'deadlift',
+		'rdl',
+		'calf',
+		'run',
+		'walk',
+		'bike',
+		'hinge',
+	],
+}
+
+
+def plan_day_body_groups(plan_day: Any) -> list[str]:
+	"""Infer body-map groups from structured plan metadata and exercise labels."""
+
+	groups: list[str] = []
+
+	def add(value: Any) -> None:
+		group = _canonical_body_map_group(value)
+		if group and group not in groups:
+			groups.append(group)
+
+	for link in plan_day.exercises.select_related('exercise').all():
+		exercise = getattr(link, 'exercise', None)
+		if exercise is not None:
+			for value in [
+				*(getattr(exercise, 'primary_muscles', []) or []),
+				*(getattr(exercise, 'secondary_muscles', []) or []),
+			]:
+				add(value)
+		label = str(getattr(link, 'label', '') or '').strip().lower()
+		for group, hints in PLAN_EXERCISE_GROUP_HINTS.items():
+			if any(hint in label for hint in hints):
+				add(group)
+	return groups
+
+
+def _exercise_body_map_groups(exercise: Any) -> set[str]:
+	groups: set[str] = set()
+	for muscle in list(exercise.primary_muscles.all()) + list(exercise.secondary_muscles.all()):
+		group = _canonical_body_map_group(getattr(muscle, 'canonical_group', ''))
+		if group:
+			groups.add(group)
+	return groups
+
+
+def _custom_body_map_exercise(group: str):
+	from exercises.models import Exercise, MuscleGroup
+
+	if group not in BODY_MAP_CANONICAL_GROUPS:
+		return None
+	muscle = MuscleGroup.objects.filter(canonical_group=group).first()
+	if muscle is None:
+		muscle, _ = MuscleGroup.objects.get_or_create(
+			id=group,
+			defaults={
+				'name': group.title(),
+				'side': 'both',
+				'regions': [],
+				'aliases': [group],
+				'canonical_group': group,
+			},
+		)
+		if muscle.canonical_group != group:
+			muscle.canonical_group = group
+			muscle.save(update_fields=['canonical_group'])
+
+	exercise, _ = Exercise.objects.get_or_create(
+		id=f'custom-{group}-workout',
+		defaults={
+			'name': f'Custom {group.title()} Workout',
+			'movement_pattern': 'custom',
+			'equipment': [],
+			'level': 'beginner',
+			'is_compound': True,
+			'source': 'internal',
+			'body_part': group,
+			'target': muscle.name,
+			'description': 'Synthetic exercise used to attribute custom workouts to body-map groups.',
+		},
+	)
+	exercise.primary_muscles.add(muscle)
+	return exercise
+
+
+def _find_catalog_exercise(name: str):
+	from exercises.models import Exercise
+
+	clean_name = str(name or '').strip()
+	if not clean_name:
+		return None
+	slug = slugify(clean_name)
+	return (
+		Exercise.objects.filter(name__iexact=clean_name).first()
+		or (Exercise.objects.filter(id=slug).first() if slug else None)
+	)
+
+
+def ensure_body_map_attribution(session: WorkoutSession, *, as_of: datetime | None = None) -> None:
+	"""Create completed SessionExercise rows that power body-map insights.
+
+	Scoring already accepts high-level ``body_groups`` and free-form ``muscles``.
+	Body-map analytics read canonical muscle groups through SessionExercise, so
+	this bridge keeps every workout logging path aligned with the same source of
+	truth.
+	"""
+	as_of = as_of or session.completed_at or timezone.now()
+	metadata = session.metadata or {}
+	exercises = _normalize_exercises(metadata.get('exercises'))
+	covered_groups: set[str] = set()
+
+	for item in exercises:
+		exercise = _find_catalog_exercise(item.get('name', ''))
+		if exercise is None:
+			continue
+		SessionExercise.objects.update_or_create(
+			session=session,
+			exercise=exercise,
+			defaults={'is_completed': True, 'completed_at': as_of},
+		)
+		covered_groups.update(_exercise_body_map_groups(exercise))
+
+	requested_groups = {
+		group
+		for value in [*(session.body_groups or []), *(session.muscles or [])]
+		for group in [_canonical_body_map_group(value)]
+		if group
+	}
+	for group in sorted(requested_groups - covered_groups):
+		exercise = _custom_body_map_exercise(group)
+		if exercise is None:
+			continue
+		SessionExercise.objects.update_or_create(
+			session=session,
+			exercise=exercise,
+			defaults={'is_completed': True, 'completed_at': as_of},
+		)
+
+
 @transaction.atomic
 def log_workout(user: User, payload: dict[str, Any], *, as_of: datetime | None = None) -> WorkoutLogResult:
 	session = build_session_from_payload(user, payload, as_of=as_of)
@@ -508,6 +720,7 @@ def score_completed_workout(session: WorkoutSession, *, as_of: datetime | None =
 			'updated_at',
 		]
 	)
+	ensure_body_map_attribution(session, as_of=as_of)
 
 	duration_minutes = int(session.duration_minutes or 0)
 	same_day_index = max(1, _same_day_count(session.user, as_of))
@@ -552,6 +765,17 @@ def score_completed_workout(session: WorkoutSession, *, as_of: datetime | None =
 		'overtraining_modifier': overtraining_modifier,
 		'same_day_index': same_day_index,
 	}
+	existing_score = WorkoutScore.objects.filter(session=session).first()
+	preserved_challenge_reward_xp = int(
+		(getattr(existing_score, 'calculation_breakdown', {}) or {}).get(
+			'training_challenge_reward_xp',
+			0,
+		)
+		or 0
+	)
+	if preserved_challenge_reward_xp:
+		activity_xp += preserved_challenge_reward_xp
+		breakdown['training_challenge_reward_xp'] = preserved_challenge_reward_xp
 	score, _ = WorkoutScore.objects.update_or_create(
 		session=session,
 		defaults={
@@ -573,9 +797,19 @@ def score_completed_workout(session: WorkoutSession, *, as_of: datetime | None =
 	recalculate_user_score_summary(session.user, as_of=as_of)
 	plan_badges = _complete_plan_schedule_for_session(session, as_of=as_of)
 	_update_group_challenge_progress(session, score, as_of=as_of)
-	_update_training_challenge_progress(session, score)
+	training_challenge_reward_xp = _update_training_challenge_progress(session, score)
+	if training_challenge_reward_xp:
+		total_reward_xp = preserved_challenge_reward_xp + training_challenge_reward_xp
+		score.activity_xp += training_challenge_reward_xp
+		score.calculation_breakdown = {
+			**(score.calculation_breakdown or {}),
+			'training_challenge_reward_xp': total_reward_xp,
+		}
+		score.save(update_fields=['activity_xp', 'calculation_breakdown', 'updated_at'])
+		recalculate_user_score_summary(session.user, as_of=as_of)
 	earned_badges = _evaluate_workout_achievements(session, score, as_of=as_of)
 	earned_badges = [*plan_badges, *earned_badges]
+	_sync_user_progress_snapshots(session.user, as_of=as_of)
 	summary = materialize_activity_card(session, score, as_of=as_of, earned_badges=earned_badges)
 	return WorkoutLogResult(session=session, score=score, summary=summary)
 
@@ -995,6 +1229,14 @@ def materialize_activity_card(
 	}
 
 
+def _sync_user_progress_snapshots(user: User, *, as_of: datetime) -> None:
+	from community.services import ensure_public_card
+	from insights.services import recalculate_user_metrics
+
+	recalculate_user_metrics(user, as_of=as_of)
+	ensure_public_card(user)
+
+
 def _is_group_admin(group, user: User) -> bool:
 	from community.models import GroupMembership
 
@@ -1019,34 +1261,108 @@ def _update_group_challenge_progress(session: WorkoutSession, score: WorkoutScor
 		start_date__lte=as_of.date(),
 		end_date__gte=as_of.date(),
 	):
-		types = challenge.eligible_workout_types or []
-		parts = challenge.eligible_body_parts or []
-		if types and session.workout_type not in types:
-			continue
-		if parts and not set(parts).intersection(set(session.body_groups or [])):
-			continue
-		if (session.duration_minutes or 0) < challenge.min_duration:
+		if not _session_matches_group_challenge(session, challenge):
 			continue
 		progress, _ = GroupChallengeProgress.objects.get_or_create(
 			challenge=challenge,
 			user=session.user,
 		)
-		progress.points += score.challenge_points or score.activity_xp
-		if session.entry_source == 'manual':
-			progress.manual_logs += 1
-		else:
-			progress.recorded_workouts += 1
-		progress.active_days = WorkoutSession.objects.filter(
-			user=session.user,
-			completed_at__date__gte=challenge.start_date,
-			completed_at__date__lte=challenge.end_date,
-			status='completed',
-		).dates('completed_at', 'day').count()
+		existing_ids = [
+			int(item)
+			for item in (progress.qualifying_workout_ids or [])
+			if str(item).isdigit()
+		]
+		ids = list(dict.fromkeys(existing_ids))
+		session_was_added = session.id not in ids
+		if session_was_added and challenge.max_daily_entries:
+			same_day_entries = WorkoutSession.objects.filter(
+				id__in=ids,
+				user=session.user,
+				status='completed',
+				completed_at__date=as_of.date(),
+			).count()
+			if same_day_entries >= challenge.max_daily_entries:
+				continue
+		if session_was_added:
+			ids.append(session.id)
+
+		qualifying_sessions = list(
+			WorkoutSession.objects.filter(
+				id__in=ids,
+				user=session.user,
+				status='completed',
+				completed_at__date__gte=challenge.start_date,
+				completed_at__date__lte=challenge.end_date,
+			).select_related('score_record')
+		)
+		clean_ids = [row.id for row in qualifying_sessions]
+		base_points = 0
+		for row in qualifying_sessions:
+			score_record = getattr(row, 'score_record', None)
+			base_points += int(
+				getattr(score_record, 'challenge_points', 0)
+				or getattr(score_record, 'activity_xp', 0)
+				or 0
+			)
+
+		was_completed = progress.completed_at is not None
+		is_completed = len(clean_ids) >= challenge.required_sessions
+		progress.qualifying_workout_ids = clean_ids
+		progress.points = base_points + (int(challenge.completion_bonus or 0) if is_completed else 0)
+		progress.manual_logs = sum(1 for row in qualifying_sessions if row.entry_source == 'manual')
+		progress.recorded_workouts = max(0, len(qualifying_sessions) - progress.manual_logs)
+		progress.active_days = len(
+			{
+				row.completed_at.date()
+				for row in qualifying_sessions
+				if row.completed_at
+			}
+		)
+		if is_completed and progress.completed_at is None:
+			progress.completed_at = as_of
 		progress.save()
+
+		rank = (
+			GroupChallengeProgress.objects.filter(
+				challenge=challenge,
+				points__gt=progress.points,
+			).count()
+			+ 1
+		)
+		if is_completed and not was_completed:
+			from community.services import materialize_challenge_activity
+
+			materialize_challenge_activity(
+				session.user,
+				source_id=f'group_challenge:{challenge.id}:{session.user_id}',
+				title=f'Completed {challenge.title}',
+				description=challenge.group.name,
+				metadata={
+					'event_type': 'group_challenge_completed',
+					'group_id': challenge.group_id,
+					'group_name': challenge.group.name,
+					'challenge_id': challenge.id,
+					'challenge_name': challenge.title,
+					'points': progress.points,
+					'rank': rank,
+					'frontend_summary': {
+						'title': challenge.title,
+						'xp': challenge.reward_xp,
+						'challenge_badge': challenge.badge_icon or 'Group challenge',
+					},
+				},
+				occurred_at=as_of,
+			)
+		if not session_was_added and not (is_completed and not was_completed):
+			continue
 		total_group_progress = GroupChallengeProgress.objects.filter(user=session.user).aggregate(
 			recorded=Sum('recorded_workouts'),
 			manual=Sum('manual_logs'),
 		)
+		completed_group_challenges = GroupChallengeProgress.objects.filter(
+			user=session.user,
+			completed_at__isnull=False,
+		).count()
 		evaluate_group_achievements(
 			session.user,
 			context={
@@ -1054,17 +1370,58 @@ def _update_group_challenge_progress(session: WorkoutSession, score: WorkoutScor
 				'group_challenge_contributions': 1,
 				'group_workouts_single_group': progress.recorded_workouts + progress.manual_logs,
 				'group_workouts_total': int(total_group_progress.get('recorded') or 0) + int(total_group_progress.get('manual') or 0),
+				'group_challenges_completed': completed_group_challenges,
+				'group_weekly_rank_lte': rank,
+				'rank': rank,
 				'as_of': as_of,
 			},
 		)
 
 
-def _update_training_challenge_progress(session: WorkoutSession, score: WorkoutScore) -> None:
+def _group_challenge_tokens(values: list[Any]) -> set[str]:
+	tokens: set[str] = set()
+	for value in values:
+		text = str(value or '').strip().lower().replace('-', '_').replace(' ', '_')
+		if not text:
+			continue
+		tokens.add(text)
+		canonical = _canonical_body_map_group(text)
+		if canonical:
+			tokens.add(canonical)
+	if tokens & {'upper_body', 'chest', 'shoulders', 'arms', 'back', 'biceps', 'triceps', 'lats', 'trapezius'}:
+		tokens.update({'upper_body', 'chest', 'shoulders', 'arms', 'back', 'biceps', 'triceps', 'lats', 'trapezius'})
+	if tokens & {'lower_body', 'legs', 'glutes', 'quads', 'quadriceps', 'hamstrings', 'calves'}:
+		tokens.update({'lower_body', 'legs', 'glutes', 'quads', 'quadriceps', 'hamstrings', 'calves'})
+	if tokens & {'core', 'abs', 'obliques'}:
+		tokens.update({'core', 'abs', 'obliques'})
+	if tokens & {'push', 'chest', 'shoulders', 'triceps'}:
+		tokens.update({'push', 'chest', 'shoulders', 'triceps'})
+	if tokens & {'pull', 'back', 'biceps', 'lats', 'trapezius'}:
+		tokens.update({'pull', 'back', 'biceps', 'lats', 'trapezius'})
+	return tokens
+
+
+def _session_matches_group_challenge(session: WorkoutSession, challenge: Any) -> bool:
+	types = challenge.eligible_workout_types or []
+	if types and session.workout_type not in types:
+		return False
+	if (session.duration_minutes or 0) < challenge.min_duration:
+		return False
+	parts = challenge.eligible_body_parts or []
+	if parts:
+		required = _group_challenge_tokens(parts)
+		actual = _group_challenge_tokens([*(session.body_groups or []), *(session.muscles or []), session.focus_label])
+		if not required.intersection(actual):
+			return False
+	return True
+
+
+def _update_training_challenge_progress(session: WorkoutSession, score: WorkoutScore) -> int:
 	try:
 		from challenges.services import update_training_challenge_progress_for_workout
 	except Exception:
-		return
-	update_training_challenge_progress_for_workout(session, score)
+		return 0
+	return update_training_challenge_progress_for_workout(session, score)
 
 
 def _evaluate_workout_achievements(session: WorkoutSession, score: WorkoutScore, *, as_of: datetime) -> list[Any]:

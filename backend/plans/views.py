@@ -1,5 +1,7 @@
 from datetime import timedelta
+from decimal import Decimal
 
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,7 +10,11 @@ from rest_framework.views import APIView
 
 from exercises.models import Exercise
 from insights.services import recalculate_user_metrics
-from workouts.services import score_completed_workout
+from workouts.services import (
+    materialize_activity_card,
+    plan_day_body_groups,
+    score_completed_workout,
+)
 from workouts.models import SessionExercise, WorkoutSession
 
 from .models import Plan, PlanDay, UserPlan
@@ -18,19 +24,44 @@ from .services import (
     checkMissedWorkouts,
     recalibrateUserPlan,
     startUserPlan,
-    user_has_premium,
 )
 
 
-class PlanListView(generics.ListAPIView):
-    """Read-only list of plans with nested weeks, days, and exercises."""
-
-    queryset = Plan.objects.filter(is_active=True).prefetch_related(
-        "weeks__days__exercises__exercise",
-        "versions__weeks__days__exercises__exercise",
+def _hydrated_user_plan(user_plan_id: int) -> UserPlan:
+    return (
+        UserPlan.objects.filter(id=user_plan_id)
+        .select_related("plan", "plan_version")
+        .prefetch_related("scheduled_workouts__plan_day__exercises__exercise")
+        .get()
     )
+
+
+def _refresh_existing_public_card(user) -> None:
+    from community.services import refresh_public_card_if_exists
+
+    refresh_public_card_if_exists(user)
+
+
+class PlanListView(generics.ListAPIView):
+    """Read-only plan summaries for discovery cards."""
+
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = Plan.objects.filter(is_active=True).prefetch_related("versions")
+        user = self.request.user
+        if user.is_authenticated:
+            queryset = queryset.prefetch_related(
+                Prefetch(
+                    "user_plans",
+                    queryset=UserPlan.objects.filter(user=user)
+                    .select_related("plan_version")
+                    .order_by("-is_active", "-started_at", "-created_at"),
+                    to_attr="_current_user_plans",
+                )
+            )
+        return queryset
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -50,8 +81,8 @@ class PlanDetailView(generics.RetrieveAPIView):
     """Read-only plan detail including weeks, days, exercises, nutrition, supplements."""
 
     queryset = Plan.objects.filter(is_active=True).prefetch_related(
-        "weeks__days__exercises__exercise",
-        "versions__weeks__days__exercises__exercise",
+        "weeks__days__exercises",
+        "versions__weeks__days__exercises",
     )
     serializer_class = PlanSerializer
     permission_classes = [AllowAny]
@@ -106,6 +137,7 @@ class OptOutPlanView(APIView):
             profile.save(update_fields=["active_plan"])
 
         snapshot = recalculate_user_metrics(user, as_of=now)
+        _refresh_existing_public_card(user)
         return Response(
             {
                 "status": "cancelled",
@@ -179,15 +211,13 @@ class CompletePlanDayView(APIView):
             for value in (composite_plan_id, composite_week_number, composite_day_index)
         ):
             try:
-                plan_id_int = int(composite_plan_id)  # type: ignore[arg-type]
                 week_number_int = int(composite_week_number)  # type: ignore[arg-type]
                 day_index_int = int(composite_day_index)  # type: ignore[arg-type]
             except (TypeError, ValueError):
                 return Response(
                     {
                         "detail": (
-                            "plan_id, plan_week_number, and plan_day_index must all "
-                            "be integers."
+                            "plan_week_number and plan_day_index must both be integers."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -198,7 +228,7 @@ class CompletePlanDayView(APIView):
                     PlanDay.objects.select_related("plan_week__plan")
                     .prefetch_related("exercises")
                     .get(
-                        plan_week__plan_id=plan_id_int,
+                        plan_week__plan_id=str(composite_plan_id),
                         plan_week__number=week_number_int,
                         day_index=day_index_int,
                     )
@@ -281,6 +311,11 @@ class CompletePlanDayView(APIView):
         workout_template_id = plan_day.workout_template_id or ""
         planned_week_number = plan_day.plan_week.number
         planned_day_key = str(plan_day.day_index)
+        scheduled_workout = (
+            user_plan.scheduled_workouts.filter(plan_day=plan_day)
+            .order_by("order_index")
+            .first()
+        )
 
         session, created = WorkoutSession.objects.get_or_create(
             user=user,
@@ -324,6 +359,8 @@ class CompletePlanDayView(APIView):
         session.intensity = (plan_day.intensity or "moderate").replace(" ", "_").lower()
         session.focus_label = plan_day.primary_focus or plan_day.day_type.title()
         session.modes = [session.workout_type]
+        session.body_groups = plan_day_body_groups(plan_day)
+        session.muscles = [group.title() for group in session.body_groups]
         session.metadata = {
             **(session.metadata or {}),
             "type": "plan_workout",
@@ -332,8 +369,14 @@ class CompletePlanDayView(APIView):
             "modes": [session.workout_type],
             "focus_label": session.focus_label,
             "intensity": session.intensity,
+            "body_groups": session.body_groups,
+            "muscles": session.muscles,
             "plan_day_id": plan_day.id,
             "plan_id": plan.id,
+            "user_plan_id": user_plan.id,
+            "scheduled_workout_id": scheduled_workout.id if scheduled_workout else None,
+            "planned_week_number": planned_week_number,
+            "planned_day_key": planned_day_key,
         }
         session.save(
             update_fields=[
@@ -343,6 +386,8 @@ class CompletePlanDayView(APIView):
                 "intensity",
                 "focus_label",
                 "modes",
+                "body_groups",
+                "muscles",
                 "metadata",
                 "updated_at",
             ]
@@ -387,18 +432,66 @@ class CompletePlanDayView(APIView):
                 if ex_updated_fields:
                     se.save(update_fields=ex_updated_fields)
 
-        # Keep the cached sessions_completed in sync for Race Readiness progress.
+        # Keep plan progress in sync for Race Readiness, profile progress, and
+        # plan-completion achievements. This endpoint predates scheduled
+        # workouts, so it computes progress from completed plan sessions.
         completed_count = WorkoutSession.objects.filter(
             user=user,
             plan=plan,
             user_plan=user_plan,
             status="completed",
         ).count()
-        if user_plan.sessions_completed != completed_count:
-            user_plan.sessions_completed = completed_count
-            user_plan.save(update_fields=["sessions_completed", "updated_at"])
+        total_sessions = (
+            user_plan.total_sessions
+            or PlanDay.objects.filter(plan_week__plan=plan).count()
+            or completed_count
+        )
+        was_completed = user_plan.status == "completed"
+        user_plan.sessions_completed = completed_count
+        user_plan.completed_sessions = completed_count
+        user_plan.total_sessions = total_sessions
+        user_plan.completion_percent = (
+            Decimal(completed_count * 100) / Decimal(total_sessions)
+            if total_sessions
+            else Decimal("0")
+        ).quantize(Decimal("0.01"))
+        if total_sessions and completed_count >= total_sessions:
+            user_plan.status = "completed"
+            user_plan.is_active = False
+            if user_plan.completed_at is None:
+                user_plan.completed_at = now
+        user_plan.save(
+            update_fields=[
+                "sessions_completed",
+                "completed_sessions",
+                "total_sessions",
+                "completion_percent",
+                "status",
+                "is_active",
+                "completed_at",
+                "updated_at",
+            ],
+        )
 
-        score_completed_workout(session, as_of=now)
+        result = score_completed_workout(session, as_of=now)
+        plan_badges = []
+        if user_plan.status == "completed" and not was_completed:
+            try:
+                from achievements.services import evaluate_plan_completion
+
+                plan_badges = evaluate_plan_completion(
+                    user_plan,
+                    create_feed_activity=False,
+                )
+            except Exception:
+                plan_badges = []
+            if plan_badges:
+                result.summary = materialize_activity_card(
+                    session,
+                    result.score,
+                    as_of=now,
+                    earned_badges=plan_badges,
+                )
         snapshot = recalculate_user_metrics(user, as_of=now)
 
         return Response(
@@ -408,6 +501,9 @@ class CompletePlanDayView(APIView):
                 "plan_day_id": plan_day.id,
                 "user_plan_id": user_plan.id,
                 "workout_session_id": session.id,
+                "activity_xp": result.score.activity_xp,
+                "leaderboard_xp": result.score.leaderboard_xp,
+                "activity_card": result.summary,
                 "metrics_snapshot_id": snapshot.id,
             },
             status=status.HTTP_200_OK,
@@ -461,16 +557,9 @@ class StartUserPlanView(APIView):
         except Exception as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        user_plan = (
-            UserPlan.objects.filter(id=user_plan.id)
-            .select_related("plan", "plan_version")
-            .prefetch_related(
-                "scheduled_workouts__plan_day__exercises__exercise",
-                "plan__versions__weeks__days__exercises__exercise",
-                "plan_version__weeks__days__exercises__exercise",
-            )
-            .get()
-        )
+        user_plan = _hydrated_user_plan(user_plan.id)
+        recalculate_user_metrics(request.user)
+        _refresh_existing_public_card(request.user)
         return Response(UserPlanSerializer(user_plan).data, status=status.HTTP_201_CREATED)
 
 
@@ -478,19 +567,16 @@ class ActiveUserPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        user_plan = (
+        user_plan_id = (
             UserPlan.objects.filter(user=request.user, is_active=True, status="active")
-            .select_related("plan", "plan_version")
-            .prefetch_related(
-                "scheduled_workouts__plan_day__exercises__exercise",
-                "plan__versions__weeks__days__exercises__exercise",
-                "plan_version__weeks__days__exercises__exercise",
-            )
             .order_by("-created_at")
+            .values_list("id", flat=True)
             .first()
         )
-        if user_plan is None:
+        if user_plan_id is None:
             return Response({"detail": "No active plan."}, status=status.HTTP_404_NOT_FOUND)
+        checkMissedWorkouts(user_plan_id)
+        user_plan = _hydrated_user_plan(user_plan_id)
         return Response(UserPlanSerializer(user_plan).data, status=status.HTTP_200_OK)
 
 
@@ -521,6 +607,20 @@ class CompleteScheduledWorkoutView(APIView):
         if scheduled is not None:
             now = scheduled.completed_at or timezone.now()
             plan_day = scheduled.plan_day
+
+            def _normalize_exercise_label(value: str) -> str:
+                import re
+
+                if not value:
+                    return ""
+                return re.sub(r"[^a-z0-9]+", "", value).lower()
+
+            normalized_exercise_index = {}
+            for ex in Exercise.objects.all():
+                key = _normalize_exercise_label(ex.name)
+                if key and key not in normalized_exercise_index:
+                    normalized_exercise_index[key] = ex
+
             session, _ = WorkoutSession.objects.get_or_create(
                 user=request.user,
                 plan=updated.plan,
@@ -548,21 +648,69 @@ class CompleteScheduledWorkoutView(APIView):
                     },
                 },
             )
-            if session.status != "completed":
-                session.status = "completed"
-                session.completed_at = now
-                session.save(update_fields=["status", "completed_at", "updated_at"])
+            session.title = plan_day.title
+            session.status = "completed"
+            session.completed_at = session.completed_at or now
+            session.duration_minutes = session.duration_minutes or plan_day.duration_minutes or None
+            session.workout_type = plan_day.day_type if plan_day.day_type in {"strength", "cardio", "conditioning", "mobility", "sport", "recovery"} else "strength"
+            session.entry_source = "plan_workout"
+            session.intensity = (plan_day.intensity or "moderate").replace(" ", "_").lower()
+            session.focus_label = plan_day.primary_focus or plan_day.day_type.title()
+            session.modes = [session.workout_type]
+            session.body_groups = plan_day_body_groups(plan_day)
+            session.muscles = [group.title() for group in session.body_groups]
+            session.metadata = {
+                **(session.metadata or {}),
+                "type": "plan_workout",
+                "title": plan_day.title,
+                "mode": session.workout_type,
+                "modes": [session.workout_type],
+                "focus_label": session.focus_label,
+                "intensity": session.intensity,
+                "body_groups": session.body_groups,
+                "muscles": session.muscles,
+                "plan_id": updated.plan_id,
+                "user_plan_id": updated.id,
+                "plan_day_id": plan_day.id,
+                "scheduled_workout_id": scheduled.id,
+                "planned_week_number": scheduled.week_number,
+                "planned_day_key": str(plan_day.day_index),
+            }
+            session.save(
+                update_fields=[
+                    "title",
+                    "status",
+                    "completed_at",
+                    "duration_minutes",
+                    "workout_type",
+                    "entry_source",
+                    "intensity",
+                    "focus_label",
+                    "modes",
+                    "body_groups",
+                    "muscles",
+                    "metadata",
+                    "updated_at",
+                ]
+            )
             for plan_ex in plan_day.exercises.all():
-                if plan_ex.exercise_id:
+                label = (plan_ex.label or "").strip()
+                exercise = Exercise.objects.filter(name__iexact=label).first()
+                if exercise is None:
+                    exercise = normalized_exercise_index.get(_normalize_exercise_label(label))
+                if exercise is not None:
                     SessionExercise.objects.get_or_create(
                         session=session,
-                        exercise_id=plan_ex.exercise_id,
+                        exercise=exercise,
                         defaults={"is_completed": True, "completed_at": now},
                     )
             score_completed_workout(session, as_of=now)
             updated.refresh_from_db()
             recalculate_user_metrics(request.user, as_of=now)
-        return Response(UserPlanSerializer(updated).data, status=status.HTTP_200_OK)
+        return Response(
+            UserPlanSerializer(_hydrated_user_plan(updated.id)).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class CheckMissedWorkoutsView(APIView):
@@ -574,18 +722,16 @@ class CheckMissedWorkoutsView(APIView):
             updated = checkMissedWorkouts(user_plan.id)
         except UserPlan.DoesNotExist:
             return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(UserPlanSerializer(updated).data, status=status.HTTP_200_OK)
+        return Response(
+            UserPlanSerializer(_hydrated_user_plan(updated.id)).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class RecalibrateUserPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, id, *args, **kwargs):
-        if not user_has_premium(request.user):
-            return Response(
-                {"code": "premium_required", "detail": "Premium is required to recalibrate plans."},
-                status=status.HTTP_402_PAYMENT_REQUIRED,
-            )
         try:
             user_plan = UserPlan.objects.get(id=id, user=request.user)
             updated = recalibrateUserPlan(user_plan.id)
@@ -593,10 +739,12 @@ class RecalibrateUserPlanView(APIView):
             return Response({"detail": "User plan not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        snapshot = recalculate_user_metrics(request.user)
         return Response(
             {
                 "message": "Your plan has been recalibrated. Missed workouts have been moved to your upcoming training days.",
-                "user_plan": UserPlanSerializer(updated).data,
+                "user_plan": UserPlanSerializer(_hydrated_user_plan(updated.id)).data,
+                "metrics_snapshot_id": snapshot.id,
             },
             status=status.HTTP_200_OK,
         )

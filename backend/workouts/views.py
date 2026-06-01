@@ -58,6 +58,110 @@ def _custom_exercise_for_group(group: str) -> Optional[Exercise]:
 	return exercise
 
 
+def _completed_session_indexes(user, user_plan):
+	sessions = WorkoutSession.objects.filter(
+		user=user,
+		user_plan=user_plan,
+		status="completed",
+		completed_at__isnull=False,
+	).only("id", "planned_week_number", "planned_day_key", "completed_at", "metadata")
+	by_plan_day = {}
+	by_scheduled_workout = {}
+	for session in sessions:
+		key = (session.planned_week_number, session.planned_day_key)
+		if key not in by_plan_day:
+			by_plan_day[key] = session
+		scheduled_workout_id = (session.metadata or {}).get("scheduled_workout_id")
+		if str(scheduled_workout_id).isdigit():
+			by_scheduled_workout[int(scheduled_workout_id)] = session
+	return by_plan_day, by_scheduled_workout
+
+
+def _plan_history_entries(user, user_plan, today):
+	plan = user_plan.plan
+	by_plan_day, by_scheduled_workout = _completed_session_indexes(user, user_plan)
+	entries = []
+	scheduled_workouts = list(
+		user_plan.scheduled_workouts.select_related("plan_day", "plan_day__plan_week")
+		.order_by("scheduled_date", "order_index")
+	)
+
+	if scheduled_workouts:
+		for scheduled in scheduled_workouts:
+			plan_day = scheduled.plan_day
+			session = by_scheduled_workout.get(scheduled.id) or by_plan_day.get(
+				(scheduled.week_number, str(plan_day.day_index))
+			)
+			if session is not None or scheduled.status == "completed":
+				entry_status = "completed"
+				completed_at = getattr(session, "completed_at", None) or scheduled.completed_at
+			elif scheduled.status == "missed" or (
+				scheduled.status == "scheduled" and scheduled.scheduled_date < today
+			):
+				entry_status = "missed"
+				completed_at = None
+			else:
+				continue
+			entries.append(
+				{
+					"date": scheduled.scheduled_date.isoformat(),
+					"status": entry_status,
+					"title": plan_day.title,
+					"day_type": plan_day.day_type,
+					"scheduled_day_index": plan_day.day_index,
+					"scheduled_workout_id": scheduled.id,
+					"week_number": scheduled.week_number,
+					"plan_id": plan.id,
+					"plan_name": plan.name,
+					"user_plan_id": user_plan.id,
+					"workout_session_id": getattr(session, "id", None),
+					"completed_at": completed_at.isoformat() if completed_at else None,
+				}
+			)
+		return entries
+
+	# Preserve history for enrollments created before dated schedules existed.
+	start_date = user_plan.start_date or (
+		user_plan.started_at.date() if user_plan.started_at is not None else None
+	)
+	if start_date is None:
+		return entries
+	plan_days = (
+		PlanDay.objects.filter(plan_week__plan=plan)
+		.select_related("plan_week")
+		.order_by("day_index")
+	)
+	for plan_day in plan_days:
+		scheduled_date = start_date + timedelta(days=plan_day.day_index - 1)
+		if scheduled_date > today:
+			continue
+		session = by_plan_day.get((plan_day.plan_week.number, str(plan_day.day_index)))
+		if session is not None:
+			entry_status = "completed"
+			completed_at = session.completed_at
+		elif scheduled_date < today:
+			entry_status = "missed"
+			completed_at = None
+		else:
+			continue
+		entries.append(
+			{
+				"date": scheduled_date.isoformat(),
+				"status": entry_status,
+				"title": plan_day.title,
+				"day_type": plan_day.day_type,
+				"scheduled_day_index": plan_day.day_index,
+				"week_number": plan_day.plan_week.number,
+				"plan_id": plan.id,
+				"plan_name": plan.name,
+				"user_plan_id": user_plan.id,
+				"workout_session_id": getattr(session, "id", None),
+				"completed_at": completed_at.isoformat() if completed_at else None,
+			}
+		)
+	return entries
+
+
 class WorkoutHistoryView(APIView):
 	"""Return recent workout history for the current user's active plan.
 
@@ -108,71 +212,8 @@ class WorkoutHistoryView(APIView):
 		entries = []
 		today = timezone.localdate()
 
-		if user_plan and user_plan.started_at is not None:
-			plan = user_plan.plan
-			start_date = user_plan.started_at.date()
-
-			plan_days = (
-				PlanDay.objects.filter(plan_week__plan=plan)
-				.select_related("plan_week")
-				.order_by("day_index")
-			)
-
-			# Index completed sessions by (planned_week_number, planned_day_key) so
-			# we can quickly determine whether each scheduled day was completed.
-			sessions = (
-				WorkoutSession.objects.filter(
-					user=user,
-					plan=plan,
-					user_plan=user_plan,
-					status="completed",
-					completed_at__isnull=False,
-				)
-				.only("id", "planned_week_number", "planned_day_key", "completed_at")
-			)
-			session_index = {}
-			for session in sessions:
-				key = (session.planned_week_number, session.planned_day_key)
-				# Keep the first one we see; in practice there should only be one per day.
-				if key not in session_index:
-					session_index[key] = session
-
-			for plan_day in plan_days:
-				scheduled_date = start_date + timedelta(days=plan_day.day_index - 1)
-				if scheduled_date > today:
-					continue
-
-				key = (plan_day.plan_week.number, str(plan_day.day_index))
-				session = session_index.get(key)
-
-				if session is not None:
-					status = "completed"
-					completed_at = session.completed_at
-				else:
-					# Only count as "missed" if the scheduled date is strictly in the
-					# past. Today with no session is treated as upcoming.
-					if scheduled_date < today:
-						status = "missed"
-						completed_at = None
-					else:
-						continue
-
-				entries.append(
-					{
-						"date": scheduled_date.isoformat(),
-						"status": status,
-						"title": plan_day.title,
-						"day_type": plan_day.day_type,
-						"scheduled_day_index": plan_day.day_index,
-						"week_number": plan_day.plan_week.number,
-						"plan_id": plan.id,
-						"user_plan_id": user_plan.id,
-						"workout_session_id": getattr(session, "id", None),
-						"completed_at": completed_at.isoformat()
-						if completed_at is not None
-						else None,
-					}
-				)
+		if user_plan:
+			entries = _plan_history_entries(user, user_plan, today)
 		else:
 			# Product rule: when there is no active plan, the dashboard "Previous
 			# workouts" history should be empty. A separate endpoint will expose
@@ -506,65 +547,7 @@ class FullWorkoutHistoryView(APIView):
 		today = timezone.localdate()
 
 		for user_plan in user_plans:
-			if user_plan.started_at is None:
-				continue
-			plan = user_plan.plan
-			start_date = user_plan.started_at.date()
-
-			plan_days = (
-				PlanDay.objects.filter(plan_week__plan=plan)
-				.select_related("plan_week")
-				.order_by("day_index")
-			)
-			sessions = (
-				WorkoutSession.objects.filter(
-					user=user,
-					plan=plan,
-					user_plan=user_plan,
-					status="completed",
-					completed_at__isnull=False,
-				)
-				.only("id", "planned_week_number", "planned_day_key", "completed_at")
-			)
-			session_index = {}
-			for session in sessions:
-				key = (session.planned_week_number, session.planned_day_key)
-				if key not in session_index:
-					session_index[key] = session
-
-			for plan_day in plan_days:
-				scheduled_date = start_date + timedelta(days=plan_day.day_index - 1)
-				if scheduled_date > today:
-					continue
-
-				key = (plan_day.plan_week.number, str(plan_day.day_index))
-				session = session_index.get(key)
-				if session is not None:
-					status = "completed"
-					completed_at = session.completed_at
-				elif scheduled_date < today:
-					status = "missed"
-					completed_at = None
-				else:
-					continue
-
-				entries.append(
-					{
-						"date": scheduled_date.isoformat(),
-						"status": status,
-						"title": plan_day.title,
-						"day_type": plan_day.day_type,
-						"scheduled_day_index": plan_day.day_index,
-						"week_number": plan_day.plan_week.number,
-						"plan_id": plan.id,
-						"plan_name": plan.name,
-						"user_plan_id": user_plan.id,
-						"workout_session_id": getattr(session, "id", None),
-						"completed_at": completed_at.isoformat()
-						if completed_at is not None
-						else None,
-					}
-				)
+			entries.extend(_plan_history_entries(user, user_plan, today))
 
 		quick_sessions = (
 			WorkoutSession.objects.filter(

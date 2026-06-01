@@ -8,8 +8,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Animated,
-  Easing,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -35,7 +33,7 @@ import {
 import { AppHeader } from "../../components/AppHeader";
 import { AppTabs, PremiumCard } from "../../components/PremiumUI";
 import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
-import { API_BASE_URL } from "../../api/client";
+import { fetchRequiredAuth, invalidateWorkoutData } from "../../api/client";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
 import { useWorkoutHistory } from "../../hooks/useWorkoutHistory";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
@@ -69,107 +67,10 @@ import {
   PercentileCurve,
 } from "../../App";
 
-type AnimatedMetricProgressRowProps = {
-  label: string;
-  percent: number;
-  isLight: boolean;
-};
-
-const AnimatedMetricProgressRow: React.FC<AnimatedMetricProgressRowProps> = ({
-  label,
-  percent,
-  isLight,
-}) => {
-  const clamped = Math.max(0, Math.min(100, percent));
-  const [displayValue, setDisplayValue] = useState(0);
-  const barAnimated = useRef(new Animated.Value(0)).current;
-  const valueAnimated = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!Number.isFinite(clamped)) return;
-
-    barAnimated.stopAnimation();
-    valueAnimated.stopAnimation();
-    barAnimated.setValue(0);
-    valueAnimated.setValue(0);
-
-    const listenerId = valueAnimated.addListener(({ value }) => {
-      setDisplayValue(Math.round(value));
-    });
-
-    Animated.parallel([
-      Animated.timing(barAnimated, {
-        toValue: clamped / 100,
-        duration: 900,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(valueAnimated, {
-        toValue: clamped,
-        duration: 900,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      valueAnimated.removeListener(listenerId);
-      setDisplayValue(Math.round(clamped));
-    });
-
-    return () => {
-      valueAnimated.removeListener(listenerId);
-    };
-  }, [clamped, barAnimated, valueAnimated]);
-
-  return (
-    <View style={styles.metricProgressRow}>
-      <Text
-        style={[
-          styles.metricProgressLabel,
-          isLight && styles.metricProgressLabelLight,
-        ]}
-      >
-        {label}
-      </Text>
-      <View
-        style={[
-          styles.metricProgressBarTrack,
-          { position: "relative" },
-        ]}
-      >
-        <Animated.View
-          style={[
-            styles.metricProgressBarFill,
-            {
-              width: barAnimated.interpolate({
-                inputRange: [0, 1],
-                outputRange: ["0%", "100%"],
-              }),
-            },
-          ]}
-        />
-        <Text
-          style={[
-            styles.metricProgressValue,
-            isLight && styles.metricProgressValueLight,
-            {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              width: "100%",
-              textAlign: "center",
-            },
-          ]}
-        >
-          {`${displayValue}%`}
-        </Text>
-      </View>
-    </View>
-  );
-};
-
 type InsightMetric = {
   key: string;
   label: string;
+  metric_type?: "body_part" | "training_category";
   xp: number;
   target_xp: number;
   percent: number;
@@ -215,6 +116,16 @@ const formatComparisonValue = (
   return `${formatted} ${unit}`.trim();
 };
 
+const formatDashboardUpdatedAt = (value: string | null | undefined) => {
+  if (!value) return "Updates after completed workouts";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Updates after completed workouts";
+  return `Updated ${date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+};
+
 const buildSmoothChartPath = (
   points: Array<{ x: number; y: number }>,
   closed = false,
@@ -244,72 +155,28 @@ const buildSmoothChartPath = (
   return commands.join(" ");
 };
 
-const InsightOrbitChart: React.FC<{ metrics: InsightMetric[] }> = ({
-  metrics,
-}) => {
-  const rings = metrics.slice(0, 4);
-  return (
-    <View style={insightStyles.orbitChart}>
-      <Svg width={148} height={148} viewBox="0 0 168 168">
-        {rings.map((item, index) => {
-          const radius = 68 - index * 15;
-          const circumference = 2 * Math.PI * radius;
-          const progress = clampPercent(item.percent) / 100;
-          return (
-            <React.Fragment key={item.key}>
-              <Circle cx={84} cy={84} r={radius} stroke="rgba(148,163,184,0.14)" strokeWidth={10} fill="transparent" />
-              <Circle
-                cx={84}
-                cy={84}
-                r={radius}
-                stroke={item.accent}
-                strokeWidth={10}
-                fill="transparent"
-                strokeLinecap="round"
-                strokeDasharray={`${circumference} ${circumference}`}
-                strokeDashoffset={circumference * (1 - progress)}
-                rotation="-90"
-                origin="84,84"
-              />
-              <Circle cx={84} cy={84 - radius} r={index === 0 ? 8 : 7} fill={item.accent} opacity={0.92} />
-            </React.Fragment>
-          );
-        })}
-      </Svg>
-    </View>
-  );
-};
-
-const InsightSparkline: React.FC = () => (
-  <View style={insightStyles.sparklineFrame}>
-    <Svg width="100%" height="100%" viewBox="0 0 210 76">
-      <Path
-        d="M4 58 L20 12 L34 22 L48 18 L63 65 L79 26 L94 38 L112 30 L130 52 L146 62 L162 49 L178 66 L194 36 L206 20"
-        fill="none"
-        stroke="#2E63F7"
-        strokeWidth={2.2}
-      />
-      <Path
-        d="M4 58 L20 12 L34 22 L48 18 L63 65 L79 26 L94 38 L112 30 L130 52 L146 62 L162 49 L178 66 L194 36 L206 20 L206 76 L4 76 Z"
-        fill="#2E63F7"
-        opacity={0.12}
-      />
-      <Circle cx={206} cy={20} r={4.5} fill="#2454F4" />
-    </Svg>
-  </View>
-);
-
 const InsightComparisonGraph: React.FC<{
   metrics: InsightComparisonMetric[];
   activeKey: string;
   onChange: (key: string) => void;
-}> = ({ metrics, activeKey, onChange }) => {
+  isLight: boolean;
+}> = ({ metrics, activeKey, onChange, isLight }) => {
   const metric = metrics.find((item) => item.key === activeKey) ?? metrics[0];
+  const [activeRange, setActiveRange] = useState<"week" | "4w" | "6w">("6w");
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
   if (!metric) return null;
 
-  const points = metric.trend?.length
+  const allPoints = metric.trend?.length
     ? metric.trend
     : [{ label: "Now", you: metric.current, average: metric.average, ideal: metric.ideal }];
+  const rangeOptions = [
+    { key: "week" as const, label: "This week", take: 1 },
+    { key: "4w" as const, label: "4 weeks", take: 4 },
+    { key: "6w" as const, label: "6 weeks", take: 6 },
+  ];
+  const selectedRange =
+    rangeOptions.find((item) => item.key === activeRange) ?? rangeOptions[2];
+  const points = allPoints.slice(-selectedRange.take);
   const maxValue = Math.max(
     metric.ideal,
     metric.current,
@@ -351,37 +218,118 @@ const InsightComparisonGraph: React.FC<{
 
   return (
     <View style={insightStyles.comparisonPanel}>
-      <View style={insightStyles.comparisonGraphCard}>
+      <View
+        style={[
+          insightStyles.comparisonGraphCard,
+          isLight && insightStyles.comparisonGraphCardLight,
+        ]}
+      >
         <View style={insightStyles.comparisonHeader}>
           <View style={insightStyles.comparisonTitleBlock}>
-            <Text style={insightStyles.comparisonTitle}>{metric.label} Progress</Text>
-            <Text style={insightStyles.comparisonMeta}>
+            <Text
+              style={[
+                insightStyles.comparisonTitle,
+                isLight && insightStyles.comparisonTitleLight,
+              ]}
+            >
+              {metric.label} Progress
+            </Text>
+            <Text
+              style={[
+                insightStyles.comparisonMeta,
+                isLight && insightStyles.comparisonMetaLight,
+              ]}
+            >
               You {formatComparisonValue(metric.current, metric.unit)} · Avg {formatComparisonValue(metric.average, metric.unit)}
             </Text>
           </View>
-          <View style={insightStyles.comparisonRangePill}>
-            <Text style={insightStyles.comparisonRangeText}>Weekly</Text>
-            <Ionicons name="chevron-down" size={13} color="#38A8FF" />
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.84}
+            onPress={() => setIsRangeOpen((current) => !current)}
+            style={[
+              insightStyles.comparisonRangePill,
+              isLight && insightStyles.comparisonRangePillLight,
+            ]}
+          >
+            <Text
+              style={[
+                insightStyles.comparisonRangeText,
+                isLight && insightStyles.comparisonRangeTextLight,
+              ]}
+            >
+              {selectedRange.label}
+            </Text>
+            <Ionicons
+              name={isRangeOpen ? "chevron-up" : "chevron-down"}
+              size={13}
+              color={isLight ? "#0068BD" : "#38A8FF"}
+            />
+          </TouchableOpacity>
         </View>
+        {isRangeOpen && (
+          <View
+            style={[
+              insightStyles.comparisonRangeMenu,
+              isLight && insightStyles.comparisonRangeMenuLight,
+            ]}
+          >
+            {rangeOptions.map((option) => {
+              const selected = option.key === activeRange;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  activeOpacity={0.82}
+                  onPress={() => {
+                    setActiveRange(option.key);
+                    setIsRangeOpen(false);
+                  }}
+                  style={[
+                    insightStyles.comparisonRangeOption,
+                    selected && insightStyles.comparisonRangeOptionActive,
+                    isLight &&
+                      selected &&
+                      insightStyles.comparisonRangeOptionActiveLight,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      insightStyles.comparisonRangeOptionText,
+                      selected && insightStyles.comparisonRangeOptionTextActive,
+                      isLight && insightStyles.comparisonRangeOptionTextLight,
+                      isLight &&
+                        selected &&
+                        insightStyles.comparisonRangeOptionTextActiveLight,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
           <Defs>
             <LinearGradient id="insightComparisonFill" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#38A8FF" stopOpacity="0.62" />
-              <Stop offset="0.62" stopColor="#38A8FF" stopOpacity="0.22" />
-              <Stop offset="1" stopColor="#38A8FF" stopOpacity="0.02" />
+              <Stop offset="0" stopColor={isLight ? "#0070CC" : "#38A8FF"} stopOpacity={isLight ? "0.30" : "0.62"} />
+              <Stop offset="0.62" stopColor={isLight ? "#0070CC" : "#38A8FF"} stopOpacity={isLight ? "0.12" : "0.22"} />
+              <Stop offset="1" stopColor={isLight ? "#0070CC" : "#38A8FF"} stopOpacity="0.02" />
             </LinearGradient>
           </Defs>
           {axisValues.map((value) => {
             const y = toY(value);
             return (
               <React.Fragment key={`axis-${value}`}>
-                <Path d={`M ${left} ${y} L ${right} ${y}`} stroke="rgba(148,163,184,0.16)" strokeWidth={1} />
+                <Path
+                  d={`M ${left} ${y} L ${right} ${y}`}
+                  stroke={isLight ? "rgba(15,23,42,0.12)" : "rgba(148,163,184,0.16)"}
+                  strokeWidth={1}
+                />
                 <SvgText
                   x={left - 10}
                   y={y + 4}
-                  fill="#94A3B8"
+                  fill={isLight ? "#475569" : "#94A3B8"}
                   fontSize="10"
                   textAnchor="end"
                 >
@@ -391,11 +339,11 @@ const InsightComparisonGraph: React.FC<{
             );
           })}
           <Path d={areaPath} fill="url(#insightComparisonFill)" />
-          <Path d={`M ${left} ${idealY} L ${right} ${idealY}`} fill="none" stroke="#20DDBB" strokeWidth={1.8} strokeDasharray="6 7" strokeLinecap="round" opacity={0.72} />
-          <Path d={linePath} fill="none" stroke="#1D9BF0" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-          <Path d={averagePath} fill="none" stroke="#F2C16F" strokeWidth={2.4} strokeDasharray="6 6" strokeLinecap="round" opacity={0.98} />
+          <Path d={`M ${left} ${idealY} L ${right} ${idealY}`} fill="none" stroke={isLight ? "#0F9F86" : "#20DDBB"} strokeWidth={1.8} strokeDasharray="6 7" strokeLinecap="round" opacity={0.78} />
+          <Path d={linePath} fill="none" stroke={isLight ? "#0070CC" : "#1D9BF0"} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          <Path d={averagePath} fill="none" stroke={isLight ? "#B7791F" : "#F2C16F"} strokeWidth={2.4} strokeDasharray="6 6" strokeLinecap="round" opacity={0.98} />
           {activePoint ? (
-            <Path d={`M ${activePoint.x} ${top - 4} L ${activePoint.x} ${bottom}`} stroke="#1D9BF0" strokeWidth={1.8} opacity={0.9} />
+            <Path d={`M ${activePoint.x} ${top - 4} L ${activePoint.x} ${bottom}`} stroke={isLight ? "#0070CC" : "#1D9BF0"} strokeWidth={1.8} opacity={0.9} />
           ) : null}
           {chartPoints.map((point, index) => (
             <Circle
@@ -403,8 +351,8 @@ const InsightComparisonGraph: React.FC<{
               cx={point.x}
               cy={point.y}
               r={index === activeIndex ? 4.8 : 2.8}
-              fill={index === activeIndex ? "#EAF6FF" : "#1D9BF0"}
-              stroke="#1D9BF0"
+              fill={index === activeIndex ? (isLight ? "#FFFFFF" : "#EAF6FF") : isLight ? "#0070CC" : "#1D9BF0"}
+              stroke={isLight ? "#0070CC" : "#1D9BF0"}
               strokeWidth={index === activeIndex ? 2 : 0}
             />
           ))}
@@ -413,7 +361,7 @@ const InsightComparisonGraph: React.FC<{
               key={`${point.label}-${index}`}
               x={point.x}
               y={height - 8}
-              fill="#94A3B8"
+              fill={isLight ? "#475569" : "#94A3B8"}
               fontSize="10"
               textAnchor={index === 0 ? "start" : index === labelPoints.length - 1 ? "end" : "middle"}
             >
@@ -423,20 +371,26 @@ const InsightComparisonGraph: React.FC<{
         </Svg>
         <View style={insightStyles.comparisonLegend}>
           <View style={insightStyles.legendItem}>
-            <View style={[insightStyles.legendDot, { backgroundColor: "#2454F4" }]} />
-            <Text style={insightStyles.legendText}>You</Text>
+            <View style={[insightStyles.legendDot, { backgroundColor: isLight ? "#0070CC" : "#2454F4" }]} />
+            <Text style={[insightStyles.legendText, isLight && insightStyles.legendTextLight]}>You</Text>
           </View>
           <View style={insightStyles.legendItem}>
-            <View style={[insightStyles.legendDot, { backgroundColor: "#F2C16F" }]} />
-            <Text style={insightStyles.legendText}>Average</Text>
+            <View style={[insightStyles.legendDot, { backgroundColor: isLight ? "#B7791F" : "#F2C16F" }]} />
+            <Text style={[insightStyles.legendText, isLight && insightStyles.legendTextLight]}>Average</Text>
           </View>
           <View style={insightStyles.legendItem}>
-            <View style={[insightStyles.legendDot, { backgroundColor: "#20DDBB" }]} />
-            <Text style={insightStyles.legendText}>Ideal</Text>
+            <View style={[insightStyles.legendDot, { backgroundColor: isLight ? "#0F9F86" : "#20DDBB" }]} />
+            <Text style={[insightStyles.legendText, isLight && insightStyles.legendTextLight]}>Ideal</Text>
           </View>
         </View>
       </View>
-      <Text style={insightStyles.comparisonDescription} numberOfLines={2}>
+      <Text
+        style={[
+          insightStyles.comparisonDescription,
+          isLight && insightStyles.comparisonDescriptionLight,
+        ]}
+        numberOfLines={2}
+      >
         {metric.description || "Your current training output against average users and a healthy ideal."}
       </Text>
       <ScrollView
@@ -454,12 +408,18 @@ const InsightComparisonGraph: React.FC<{
               style={[
                 insightStyles.comparisonChip,
                 isActive && insightStyles.comparisonChipActive,
+                isLight && insightStyles.comparisonChipLight,
+                isLight && isActive && insightStyles.comparisonChipActiveLight,
               ]}
             >
               <Text
                 style={[
                   insightStyles.comparisonChipText,
                   isActive && insightStyles.comparisonChipTextActive,
+                  isLight && insightStyles.comparisonChipTextLight,
+                  isLight &&
+                    isActive &&
+                    insightStyles.comparisonChipTextActiveLight,
                 ]}
               >
                 {item.label}
@@ -483,55 +443,32 @@ const InsightProgressBar: React.FC<{ percent: number; height?: number }> = ({
   </View>
 );
 
-const InsightOverviewCard: React.FC<{
-  bodyMetrics: InsightMetric[];
-  levelMetric: { level: number; xp: number; target: number };
-}> = ({ bodyMetrics, levelMetric }) => (
-  <View style={insightStyles.referenceCard}>
-    <View style={insightStyles.overviewGrid}>
-      <View style={insightStyles.overviewLeft}>
-        <InsightOrbitChart metrics={bodyMetrics} />
-        <InsightSparkline />
-      </View>
-      <View style={insightStyles.overviewList}>
-        {bodyMetrics.slice(0, 4).map((item) => (
-          <View key={item.key} style={insightStyles.metricListRow}>
-            <View style={[insightStyles.metricIcon, { backgroundColor: item.accent }]}>
-              <Ionicons name={(item.icon || "fitness-outline") as any} size={16} color="#FFFFFF" />
-            </View>
-            <View style={insightStyles.metricListCopy}>
-              <Text style={insightStyles.metricListTitle}>{item.label}</Text>
-              <Text style={insightStyles.metricListMeta}>
-                {Math.round(item.xp)} / {Math.round(item.target_xp)} XP
-              </Text>
-            </View>
-          </View>
-        ))}
-        <View style={[insightStyles.metricListRow, insightStyles.levelMiniRow]}>
-          <View style={[insightStyles.metricIcon, insightStyles.levelMiniIcon]}>
-            <Ionicons name="podium-outline" size={16} color="#CBD5E1" />
-          </View>
-          <View style={insightStyles.metricListCopy}>
-            <Text style={insightStyles.metricListTitle}>Lvl {levelMetric.level}</Text>
-            <Text style={insightStyles.metricListMeta}>
-              {Math.round(levelMetric.xp)} / {Math.round(levelMetric.target)} XP
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  </View>
-);
-
 const InsightLevelCard: React.FC<{
   level: { level: number; title: string; career_xp: number; next_level_xp: number; progress_percent: number };
   categories: InsightMetric[];
-}> = ({ level, categories }) => (
-  <View style={insightStyles.referenceCard}>
-    <Text style={insightStyles.cardEyebrow}>Quests Level</Text>
-    <View style={insightStyles.levelHeadingRow}>
-      <Text style={insightStyles.levelHeading}>Lvl {level.level}</Text>
-      <Text style={insightStyles.levelXp}>{formatCompactXp(level.next_level_xp)}</Text>
+  isLight: boolean;
+}> = ({ level, categories, isLight }) => (
+    <View
+      style={[
+        insightStyles.referenceCard,
+        isLight && insightStyles.referenceCardLight,
+      ]}
+    >
+    <View style={insightStyles.cardHeaderBlock}>
+      <Text style={[insightStyles.cardEyebrow, isLight && insightStyles.cardEyebrowLight]}>
+        Training level
+      </Text>
+      <Text style={[insightStyles.cardHelper, isLight && insightStyles.cardHelperLight]}>
+        Overall career XP, separated from body-part ranks.
+      </Text>
+      <View style={insightStyles.levelHeadingRow}>
+        <Text style={[insightStyles.levelHeading, isLight && insightStyles.levelHeadingLight]}>
+          Lvl {level.level}
+        </Text>
+        <Text style={[insightStyles.levelXp, isLight && insightStyles.levelXpLight]}>
+          {formatCompactXp(level.next_level_xp)}
+        </Text>
+      </View>
     </View>
     <InsightProgressBar percent={clampPercent(level.progress_percent)} />
     <View style={insightStyles.verticalMetricsRow}>
@@ -541,7 +478,12 @@ const InsightLevelCard: React.FC<{
         const label = item.key === "conditioning" ? "Cond." : item.label;
         return (
           <View key={item.key} style={insightStyles.verticalMetricItem}>
-            <View style={insightStyles.verticalTrack}>
+            <View
+              style={[
+                insightStyles.verticalTrack,
+                isLight && insightStyles.verticalTrackLight,
+              ]}
+            >
               <View style={[insightStyles.verticalFill, { height: `${Math.max(18, percent)}%` as any, backgroundColor: item.accent }]} />
               <View
                 style={[
@@ -563,7 +505,10 @@ const InsightLevelCard: React.FC<{
               </View>
             </View>
             <Text
-              style={insightStyles.verticalLabel}
+              style={[
+                insightStyles.verticalLabel,
+                isLight && insightStyles.verticalLabelLight,
+              ]}
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.72}
@@ -778,6 +723,10 @@ const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { savePr } = useExercisePrs();
   const { accessToken, refreshAccessToken, signOut } = useAuth();
+  const auth = useMemo(
+    () => ({ accessToken, refreshAccessToken, signOut }),
+    [accessToken, refreshAccessToken, signOut],
+  );
   const {
     summary,
     loading: metricsLoading,
@@ -1145,14 +1094,22 @@ const HomeScreen: React.FC = () => {
       : null;
 
   const metrics = summary?.metrics;
-  const hasCompletedFitnessTest = fitnessTestResult != null;
-  const isFitnessTestLocked = !hasCompletedFitnessTest;
+  const hasBackendAssessment =
+    metrics?.fitness_age?.detail?.source === "assessment_activity_adjusted";
+  const hasCompletedFitnessTest = fitnessTestResult != null || hasBackendAssessment;
+  const hasMetricEstimate = Boolean(
+    metrics?.fitness_age?.available ||
+      metrics?.percentile_rank?.available ||
+      metrics?.race_readiness?.available ||
+      metrics?.body_battle_map?.available,
+  );
+  const isFitnessTestLocked = !hasCompletedFitnessTest && !hasMetricEstimate;
   const fitness = fitnessTestResult
     ? {
         fitness_age_years: fitnessTestResult.fitnessAgeYears,
         chronological_age: fitnessTestResult.chronologicalAge,
       }
-    : null;
+    : metrics?.fitness_age ?? null;
   const race = fitnessTestResult
     ? {
         score: fitnessTestResult.raceScore,
@@ -1169,10 +1126,10 @@ const HomeScreen: React.FC = () => {
           },
         },
       }
-    : null;
+    : metrics?.race_readiness ?? null;
   const percentile = fitnessTestResult
     ? { percentile: fitnessTestResult.percentile }
-    : null;
+    : metrics?.percentile_rank ?? null;
   const streak = metrics?.streak;
   const totalTime = metrics?.total_time;
   const bodyBattle = fitnessTestResult
@@ -1191,7 +1148,7 @@ const HomeScreen: React.FC = () => {
           ),
         },
       }
-    : null;
+    : metrics?.body_battle_map ?? null;
 
   const fitnessAgeValue =
     typeof fitness?.fitness_age_years === "number"
@@ -1256,13 +1213,6 @@ const HomeScreen: React.FC = () => {
     }
   }
 
-  const percentileValue =
-    typeof percentile?.percentile === "number"
-      ? `${Math.round(percentile.percentile)}th`
-      : metricsLoading && !isFitnessTestLocked
-        ? "Loading…"
-        : "—";
-
   let percentileLabel: string | null = null;
   let percentileTone: "positive" | "negative" | "neutral" | "error" | null =
     null;
@@ -1287,27 +1237,6 @@ const HomeScreen: React.FC = () => {
     }
   }
 
-  let fitnessDeltaColor: string | undefined;
-  if (fitnessAgeDeltaTone === "positive") {
-    fitnessDeltaColor = GLASS_ACCENT_GREEN_SOFT;
-  } else if (
-    fitnessAgeDeltaTone === "negative" ||
-    fitnessAgeDeltaTone === "error"
-  ) {
-    fitnessDeltaColor = isLight ? LIGHT_ACCENT_ORANGE : DARK_ACCENT_ORANGE;
-  } else if (fitnessAgeDeltaTone === "neutral") {
-    fitnessDeltaColor = isLight ? LIGHT_TEXT_MUTED : GLASS_TEXT_MUTED;
-  }
-
-  let raceDeltaColor: string | undefined;
-  if (raceScoreTone === "positive") {
-    raceDeltaColor = GLASS_ACCENT_GREEN_SOFT;
-  } else if (raceScoreTone === "negative" || raceScoreTone === "error") {
-    raceDeltaColor = isLight ? LIGHT_ACCENT_ORANGE : DARK_ACCENT_ORANGE;
-  } else if (raceScoreTone === "neutral") {
-    raceDeltaColor = isLight ? LIGHT_TEXT_MUTED : GLASS_TEXT_MUTED;
-  }
-
   let percentileDeltaColor: string | undefined;
   if (percentileTone === "positive") {
     percentileDeltaColor = GLASS_ACCENT_GREEN_SOFT;
@@ -1322,18 +1251,6 @@ const HomeScreen: React.FC = () => {
       ? fitness.chronological_age
       : null;
 
-  const fitnessGaugeProgress =
-    fitness?.chronological_age != null &&
-    typeof fitness?.fitness_age_years === "number"
-      ? Math.max(
-          0,
-          Math.min(
-            1,
-            (fitness.chronological_age - fitness.fitness_age_years + 20) / 40,
-          ),
-        )
-      : null;
-
   const racePercent =
     typeof race?.score === "number" ? Math.round(race.score) : null;
   const racePercentDisplay =
@@ -1344,6 +1261,22 @@ const HomeScreen: React.FC = () => {
         : "—";
   const raceGaugeProgress =
     racePercent != null ? Math.max(0, Math.min(1, racePercent / 100)) : null;
+  const fitnessAgeYears =
+    typeof fitness?.fitness_age_years === "number"
+      ? Math.round(fitness.fitness_age_years)
+      : null;
+  const fitnessAgeGaugeProgress =
+    fitnessAgeYears != null
+      ? Math.max(
+          0.08,
+          Math.min(
+            1,
+            chronologicalAge != null
+              ? 0.5 + (chronologicalAge - fitnessAgeYears) / 20
+              : (80 - fitnessAgeYears) / 60,
+          ),
+        )
+      : null;
 
   const raceDetail: any = race?.detail;
   const racePlanPercent =
@@ -1500,9 +1433,14 @@ const HomeScreen: React.FC = () => {
   );
 
   const bodyMapRows: BodyMapRow[] =
-    hasCompletedFitnessTest ? realBodyMapRows : recruitBodyMapRows;
+    bodyBattleGroups ? realBodyMapRows : recruitBodyMapRows;
 
   const trainingProfile = metrics?.training_profile;
+  const bodyMapUpdatedAt = formatDashboardUpdatedAt(
+    typeof (bodyBattle?.detail as any)?.updated_at === "string"
+      ? (bodyBattle?.detail as any).updated_at
+      : trainingProfile?.updated_at,
+  );
   const insightLevel = trainingProfile?.level ?? {
     level: 1,
     title: "Rookie",
@@ -1511,35 +1449,12 @@ const HomeScreen: React.FC = () => {
     next_level_xp: 1000,
     progress_percent: 0,
   };
-  const insightBodyMetrics: InsightMetric[] =
-    trainingProfile?.body_focus?.length
-      ? trainingProfile.body_focus.map((item: any) => ({
-          key: item.key,
-          label: item.label,
-          xp: Number(item.xp) || 0,
-          target_xp: Number(item.target_xp) || 100,
-          percent: Number(item.percent) || 0,
-          rank: item.rank,
-          sessions: Number(item.sessions) || 0,
-          icon: item.icon,
-          accent: item.accent || "#2454F4",
-        }))
-      : bodyMapRows.slice(0, 5).map((row, index) => ({
-          key: row.key,
-          label: row.label,
-          xp: row.sessions,
-          target_xp: 15,
-          percent: Math.min(100, (row.sessions / 15) * 100),
-          rank: row.rank,
-          sessions: row.sessions,
-          icon: "fitness-outline",
-          accent: ["#2454F4", "#22C9D8", "#7867F2", "#20DDBB", "#86A5F4"][index] ?? "#2454F4",
-        }));
   const insightCategoryMetrics: InsightMetric[] =
     trainingProfile?.category_levels?.length
       ? trainingProfile.category_levels.map((item: any) => ({
           key: item.key,
           label: item.label,
+          metric_type: item.metric_type || "training_category",
           xp: Number(item.xp) || 0,
           target_xp: Number(item.target_xp) || 500,
           percent: Number(item.percent) || 0,
@@ -1547,7 +1462,63 @@ const HomeScreen: React.FC = () => {
           icon: item.icon,
           accent: item.accent || "#2454F4",
         }))
-      : insightBodyMetrics;
+      : [
+          {
+            key: "strength",
+            label: "Strength",
+            metric_type: "training_category",
+            xp: 0,
+            target_xp: 500,
+            percent: 0,
+            tier: "Bronze",
+            icon: "barbell-outline",
+            accent: "#2454F4",
+          },
+          {
+            key: "cardio",
+            label: "Cardio",
+            metric_type: "training_category",
+            xp: 0,
+            target_xp: 500,
+            percent: 0,
+            tier: "Bronze",
+            icon: "pulse-outline",
+            accent: "#22C9D8",
+          },
+          {
+            key: "conditioning",
+            label: "Conditioning",
+            metric_type: "training_category",
+            xp: 0,
+            target_xp: 500,
+            percent: 0,
+            tier: "Bronze",
+            icon: "flash-outline",
+            accent: "#20DDBB",
+          },
+          {
+            key: "mobility",
+            label: "Mobility",
+            metric_type: "training_category",
+            xp: 0,
+            target_xp: 500,
+            percent: 0,
+            tier: "Bronze",
+            icon: "accessibility-outline",
+            accent: "#7867F2",
+          },
+          {
+            key: "sport",
+            label: "Sport",
+            metric_type: "training_category",
+            xp: 0,
+            target_xp: 500,
+            percent: 0,
+            tier: "Bronze",
+            icon: "football-outline",
+            accent: "#86A5F4",
+          },
+        ];
   const insightComparisonMetrics: InsightComparisonMetric[] =
     trainingProfile?.comparison_metrics?.metrics?.length
       ? trainingProfile.comparison_metrics.metrics.map((item: any) => ({
@@ -1570,9 +1541,9 @@ const HomeScreen: React.FC = () => {
       : [
           {
             key: "consistency",
-            label: "Consistency",
+            label: "Weekly consistency",
             unit: "%",
-            description: "Your training rhythm against average users and a healthy ideal.",
+            description: "Weeks with enough active training days against average users and a healthy ideal.",
             current: Math.round(trainingProfile?.performance_score ?? 0),
             average: 40,
             ideal: 75,
@@ -1587,25 +1558,13 @@ const HomeScreen: React.FC = () => {
           },
         ];
 
-  const bodyBalanceFillProgress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const target =
-      bodyBalanceScore != null
-        ? Math.max(0, Math.min(100, bodyBalanceScore)) / 100
-        : 0;
-    Animated.timing(bodyBalanceFillProgress, {
-      toValue: target,
-      duration: 900,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [bodyBalanceScore, bodyBalanceFillProgress]);
-
-  const bodyBalanceFillHeight = bodyBalanceFillProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 140],
-  });
+  const handlePressRaceReadiness = () => {
+    if (isFitnessTestLocked) {
+      openFitnessTest();
+      return;
+    }
+    setActiveMetricTooltip("race_readiness");
+  };
 
   const handlePressFitnessAge = () => {
     if (isFitnessTestLocked) {
@@ -1613,14 +1572,6 @@ const HomeScreen: React.FC = () => {
       return;
     }
     setActiveMetricTooltip("fitness_age");
-  };
-
-  const handlePressRaceReadiness = () => {
-    if (isFitnessTestLocked) {
-      openFitnessTest();
-      return;
-    }
-    setActiveMetricTooltip("race_readiness");
   };
 
   const handlePressPercentile = () => {
@@ -1674,32 +1625,13 @@ const HomeScreen: React.FC = () => {
             payload.plan_day_index = workoutItem.planDayIndex;
           }
 
-          let tokenToUse = accessToken;
-          let response = await fetch(`${API_BASE_URL}/plans/complete-day/`, {
+          const response = await fetchRequiredAuth("/plans/complete-day/", auth, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${tokenToUse}`,
             },
             body: JSON.stringify(payload),
           });
-
-          if (response.status === 401) {
-            const refreshed = await refreshAccessToken();
-            if (!refreshed) {
-              await signOut();
-              return;
-            }
-            tokenToUse = refreshed;
-            response = await fetch(`${API_BASE_URL}/plans/complete-day/`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${tokenToUse}`,
-              },
-              body: JSON.stringify(payload),
-            });
-          }
 
           if (!response.ok) {
             try {
@@ -1723,6 +1655,7 @@ const HomeScreen: React.FC = () => {
             [id]: true,
           }));
 
+          invalidateWorkoutData();
           reloadMetrics();
           reloadWorkoutHistory();
           return;
@@ -1773,32 +1706,13 @@ const HomeScreen: React.FC = () => {
         cardio: customWorkoutCardio,
       };
 
-      let tokenToUse = accessToken;
-      let response = await fetch(`${API_BASE_URL}/workouts/custom/`, {
+      const response = await fetchRequiredAuth("/workouts/custom/", auth, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${tokenToUse}`,
         },
         body: JSON.stringify(payload),
       });
-
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          return;
-        }
-        tokenToUse = refreshed;
-        response = await fetch(`${API_BASE_URL}/workouts/custom/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${tokenToUse}`,
-          },
-          body: JSON.stringify(payload),
-        });
-      }
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -1811,6 +1725,7 @@ const HomeScreen: React.FC = () => {
       setCustomWorkoutCardio(false);
       setCustomWorkoutExerciseCount("4");
       setCustomWorkoutDuration("45");
+      invalidateWorkoutData();
       reloadMetrics();
       reloadWorkoutHistory();
     } catch {
@@ -2628,8 +2543,8 @@ const HomeScreen: React.FC = () => {
               ]}
             >
               Your fitness age compares your recent training volume and
-              intensity against your chronological age to estimate how "young"
-              your body is moving.
+              intensity with your profile or assessment baseline to estimate
+              how "young" your body is moving.
             </Text>
           </View>
           <View style={styles.metricTooltipSectionLast}>
@@ -2647,7 +2562,7 @@ const HomeScreen: React.FC = () => {
                 isLight && styles.metricTooltipTextLight,
               ]}
             >
-              • Consistency of your weekly training
+              • Daily streak and weekly consistency
             </Text>
             <Text
               style={[
@@ -2751,7 +2666,7 @@ const HomeScreen: React.FC = () => {
             </Text>
             <View style={styles.metricTooltipSubMetricGroup}>
               {renderSubMetricRow("Plan progress", racePlanPercent)}
-              {renderSubMetricRow("Consistency", raceConsistencyPercent)}
+              {renderSubMetricRow("Energy score", raceConsistencyPercent)}
               {renderSubMetricRow("Benchmarks", raceBenchmarksPercent)}
             </View>
           </View>
@@ -2882,7 +2797,8 @@ const HomeScreen: React.FC = () => {
               ]}
             >
               Your percentile rank compares your overall performance to other
-              athletes of similar age and gender using our internal dataset.
+              athletes of similar age and gender using your profile or
+              assessment baseline plus recent activity.
             </Text>
           </View>
         </View>
@@ -3028,48 +2944,48 @@ const HomeScreen: React.FC = () => {
     <View style={insightStyles.section}>
       <View style={insightStyles.sectionHeader}>
         <View>
-          <Text style={insightStyles.sectionTitle}>Insights</Text>
-          <Text style={insightStyles.sectionSubtitle}>Performance profile from your training data</Text>
+          <Text style={[insightStyles.sectionTitle, isLight && insightStyles.sectionTitleLight]}>
+            Insights
+          </Text>
+          <Text style={[insightStyles.sectionSubtitle, isLight && insightStyles.sectionSubtitleLight]}>
+            Training categories, level XP, and real-time progress
+          </Text>
         </View>
       </View>
-
-      <InsightOverviewCard
-        bodyMetrics={insightBodyMetrics}
-        levelMetric={{
-          level: insightLevel.level,
-          xp: insightLevel.career_xp,
-          target: insightLevel.next_level_xp,
-        }}
-      />
 
       <InsightComparisonGraph
         metrics={insightComparisonMetrics}
         activeKey={activeInsightComparisonKey}
         onChange={setActiveInsightComparisonKey}
+        isLight={isLight}
       />
 
-      <InsightLevelCard level={insightLevel} categories={insightCategoryMetrics} />
+      <InsightLevelCard
+        level={insightLevel}
+        categories={insightCategoryMetrics}
+        isLight={isLight}
+      />
 
-      <View style={insightStyles.summaryStrip}>
+      <View style={[insightStyles.summaryStrip, isLight && insightStyles.summaryStripLight]}>
         <View style={insightStyles.summaryItem}>
-          <Text style={insightStyles.summaryValue}>
+          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
             {Math.round(trainingProfile?.performance_score ?? 0)}
           </Text>
-          <Text style={insightStyles.summaryLabel}>Performance</Text>
+          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Performance</Text>
         </View>
-        <View style={insightStyles.summaryDivider} />
+        <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
         <View style={insightStyles.summaryItem}>
-          <Text style={insightStyles.summaryValue}>
+          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
             {Math.round(trainingProfile?.training_balance_score ?? bodyBalanceScore ?? 0)}
           </Text>
-          <Text style={insightStyles.summaryLabel}>Balance</Text>
+          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Balance</Text>
         </View>
-        <View style={insightStyles.summaryDivider} />
+        <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
         <View style={insightStyles.summaryItem}>
-          <Text style={insightStyles.summaryValue}>
+          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
             {Math.round(trainingProfile?.weekly_xp ?? 0)}
           </Text>
-          <Text style={insightStyles.summaryLabel}>Weekly XP</Text>
+          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Weekly XP</Text>
         </View>
       </View>
     </View>
@@ -3086,6 +3002,8 @@ const HomeScreen: React.FC = () => {
           isLight={isLight}
           title="Ready to train?"
           greetingText="Good morning,"
+          userName={profile?.profile.display_name || profile?.username || null}
+          avatarUrl={profile?.profile.avatar_url}
           onThemeToggle={toggle}
         />
 
@@ -4164,382 +4082,276 @@ const HomeScreen: React.FC = () => {
         {renderPremiumInsightsSection()}
 
         <View style={styles.metricsSection}>
-          <TouchableOpacity
+          <View
             style={[
-              styles.metricCardLarge,
-              isLight && styles.metricCardLargeLight,
+              insightMetricStyles.summaryCard,
+              isLight && insightMetricStyles.summaryCardLight,
             ]}
-            activeOpacity={0.9}
-            onPress={handlePressFitnessAge}
           >
-            <View style={styles.metricCardHeaderRow}>
+            <TouchableOpacity
+              style={insightMetricStyles.racePane}
+              activeOpacity={0.9}
+              onPress={handlePressFitnessAge}
+            >
               <Text
                 style={[
-                  styles.metricCardTitle,
-                  isLight && styles.metricCardTitleLight,
+                  insightMetricStyles.metricKicker,
+                  isLight && insightMetricStyles.metricKickerLight,
                 ]}
               >
                 Fitness age
               </Text>
-              <Ionicons
-                name="pulse-outline"
-                size={18}
-                color={isLight ? "#6B7280" : "#9CA3AF"}
-              />
-            </View>
-            <MetricGauge
-              progress={fitnessGaugeProgress}
-              isLight={isLight}
-              size="large"
-              leftLabel="Younger"
-              rightLabel="Older"
-              centerText={
-	                typeof fitness?.fitness_age_years === "number"
-	                  ? String(fitness?.fitness_age_years)
-                  : metricsLoading && !isFitnessTestLocked
-                    ? "..."
-                    : "--"
-              }
-              centerSubText="yrs"
-            />
-            <View style={styles.metricFitnessMetaRow}>
-              {chronologicalAge != null && (
-                <Text
-                  style={[
-                    styles.metricMetaText,
-                    isLight && styles.metricMetaTextLight,
-                  ]}
-                >
-                  {`Actual: ${chronologicalAge}`}
-                </Text>
-              )}
-              {fitnessAgeDelta && (
-                <Text
-                  style={[
-                    styles.metricDeltaText,
-                    isLight && styles.metricDeltaTextLight,
-                    fitnessDeltaColor && { color: fitnessDeltaColor },
-                  ]}
-                >
-                  {fitnessAgeDelta}
-                </Text>
-              )}
-            </View>
-            <Text
-              style={[
-                styles.metricCaption,
-                isLight && styles.metricCaptionLight,
-              ]}
-            >
-              {isFitnessTestLocked
-                ? "Take a quick baseline test to unlock this metric"
-                : "Based on strength, BMI, and easy endurance inputs"}
-            </Text>
-            <Text
-              style={[styles.metricLink, isLight && styles.metricLinkLight]}
-            >
-              {hasCompletedFitnessTest ? "View details" : "Take test"}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.metricsRow}>
-            <TouchableOpacity
-              style={[
-                styles.metricCardSmall,
-                isLight && styles.metricCardSmallLight,
-              ]}
-              activeOpacity={0.9}
-              onPress={handlePressRaceReadiness}
-            >
-              <View style={styles.metricCardHeaderRow}>
-                <Text
-                  style={[
-                    styles.metricCardTitle,
-                    isLight && styles.metricCardTitleLight,
-                  ]}
-                >
-                  Race readiness
-                </Text>
-                <Ionicons
-                  name="trophy-outline"
-                  size={18}
-                  color={isLight ? "#6B7280" : "#9CA3AF"}
+              <View style={insightMetricStyles.raceGaugeWrap}>
+                <MetricGauge
+                  progress={fitnessAgeGaugeProgress}
+                  isLight={isLight}
+                  size="small"
+                  centerText={
+                    fitnessAgeYears != null
+                      ? String(fitnessAgeYears)
+                      : metricsLoading && !isFitnessTestLocked
+                        ? "..."
+                        : "--"
+                  }
+                  centerSubText="yrs"
                 />
               </View>
-              {raceScoreLabel && (
+              <View style={insightMetricStyles.raceLabelRow}>
                 <Text
                   style={[
-                    styles.metricDeltaText,
-                    isLight && styles.metricDeltaTextLight,
-                    raceDeltaColor && { color: raceDeltaColor },
+                    insightMetricStyles.raceEdgeLabel,
+                    isLight && insightMetricStyles.raceEdgeLabelLight,
                   ]}
                 >
-                  {raceScoreLabel}
+                  Older
                 </Text>
-              )}
-              <MetricGauge
-                progress={raceGaugeProgress}
-                isLight={isLight}
-                size="small"
-                leftLabel="Base"
-                rightLabel="Ready"
-                centerText={
-                  racePercent != null
-                    ? String(racePercent)
-                    : metricsLoading && !isFitnessTestLocked
-                      ? "..."
-                      : "--"
-                }
-                centerSubText="%"
-              />
-              <View style={styles.metricProgressGroup}>
-                {racePlanPercent != null && (
-                  <AnimatedMetricProgressRow
-                    label="Plan"
-                    percent={racePlanPercent}
-                    isLight={isLight}
-                  />
-                )}
-                {raceConsistencyPercent != null && (
-                  <AnimatedMetricProgressRow
-                    label="Consistency"
-	                    percent={raceConsistencyPercent ?? 0}
-                    isLight={isLight}
-                  />
-                )}
-                {raceBenchmarksPercent != null && (
-                  <AnimatedMetricProgressRow
-                    label="Benchmarks"
-	                    percent={raceBenchmarksPercent ?? 0}
-                    isLight={isLight}
-                  />
-                )}
+                <Text
+                  style={[
+                    insightMetricStyles.raceEdgeLabel,
+                    isLight && insightMetricStyles.raceEdgeLabelLight,
+                  ]}
+                >
+                  Fitter
+                </Text>
               </View>
+              <TouchableOpacity
+                onPress={handlePressFitnessAge}
+                activeOpacity={0.78}
+                style={insightMetricStyles.tinyInfoButton}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={isLight ? "#6B7280" : "#8B93A7"}
+                />
+              </TouchableOpacity>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <View
               style={[
-                styles.metricCardSmall,
-                styles.metricCardSmallRight,
-                isLight && styles.metricCardSmallLight,
+                insightMetricStyles.summaryDivider,
+                isLight && insightMetricStyles.summaryDividerLight,
               ]}
+            />
+
+            <TouchableOpacity
+              style={insightMetricStyles.percentilePane}
               activeOpacity={0.9}
               onPress={handlePressPercentile}
             >
-              <View style={styles.metricCardHeaderRow}>
-                <Text
-                  style={[
-                    styles.metricCardTitle,
-                    isLight && styles.metricCardTitleLight,
-                  ]}
-                >
-                  Fitter than
-                </Text>
+              <View style={insightMetricStyles.percentileHeader}>
+                <View style={insightMetricStyles.percentileTitleRow}>
+                  <Ionicons
+                    name="trophy-outline"
+                    size={24}
+                    color="#8B6CF6"
+                  />
+                  <Text
+                    style={[
+                      insightMetricStyles.metricKicker,
+                      isLight && insightMetricStyles.metricKickerLight,
+                    ]}
+                  >
+                    Fitter than
+                  </Text>
+                </View>
                 <Ionicons
-                  name="stats-chart-outline"
-                  size={18}
-                  color={isLight ? "#6B7280" : "#9CA3AF"}
+                  name="bar-chart-outline"
+                  size={24}
+                  color={isLight ? "#6B7280" : "#A6ACBA"}
                 />
               </View>
               <Text
                 style={[
-                  styles.metricSecondaryValue,
-                  isLight && styles.metricSecondaryValueLight,
+                  insightMetricStyles.percentileValue,
+                  isLight && insightMetricStyles.percentileValueLight,
                 ]}
               >
                 {percentilePercentDisplay}
               </Text>
-              {percentilePercent != null && (
-                <Text
-                  style={[
-                    styles.metricCaption,
-                    isLight && styles.metricCaptionLight,
-                  ]}
-                >
-                  Fitter than {percentilePercent}% of peers
-                </Text>
-              )}
-              <PercentileCurve
-                isLight={isLight}
-                percentile={percentilePercent}
-              />
+              <Text
+                style={[
+                  insightMetricStyles.percentileCaption,
+                  isLight && insightMetricStyles.percentileCaptionLight,
+                ]}
+                numberOfLines={1}
+              >
+                {percentilePercent != null
+                  ? `Fitter than ${percentilePercent}% of peers`
+                  : "Profile and activity estimate"}
+              </Text>
+              <View style={insightMetricStyles.percentileCurveWrap}>
+                <PercentileCurve
+                  isLight={isLight}
+                  percentile={percentilePercent}
+                />
+              </View>
               {percentileLabel && (
                 <Text
                   style={[
-                    styles.metricDeltaText,
-                    isLight && styles.metricDeltaTextLight,
+                    insightMetricStyles.percentileStatus,
                     percentileDeltaColor && { color: percentileDeltaColor },
                   ]}
+                  numberOfLines={1}
                 >
                   {percentileLabel}
                 </Text>
               )}
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View
-          style={[
-            styles.metricCardLarge,
-            isLight && styles.metricCardLargeLight,
-            { marginTop: 12 },
-          ]}
-        >
-          <View style={styles.metricCardHeaderRow}>
-            <Text
-              style={[
-                styles.metricCardTitle,
-                isLight && styles.metricCardTitleLight,
-              ]}
-            >
-              Body battle map
-            </Text>
-            <TouchableOpacity
-              onPress={handlePressBodyBattleMap}
-              activeOpacity={0.8}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color={isLight ? "#6B7280" : "#9CA3AF"}
-              />
-            </TouchableOpacity>
-          </View>
           <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginTop: 10,
-            }}
+            style={[
+              insightMetricStyles.bodyRankCard,
+              isLight && insightMetricStyles.bodyRankCardLight,
+            ]}
           >
-            <View
-              style={{
-                flexBasis: 96,
-                maxWidth: 96,
-                height: 142,
-                marginRight: 18,
-              }}
-            >
-              <BodyMuscleFront
-                isLight={isLight}
-                resetKey={0}
-                singleSelect
-                onSelectionChange={handleBodyMapSelectionChange}
-              />
+            <View style={insightMetricStyles.bodyRankHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={[
+                    insightMetricStyles.metricKicker,
+                    isLight && insightMetricStyles.metricKickerLight,
+                  ]}
+                >
+                  Body-part ranks
+                </Text>
+                <Text
+                  style={[
+                    insightMetricStyles.bodySubtitle,
+                    isLight && insightMetricStyles.bodySubtitleLight,
+                  ]}
+                  numberOfLines={1}
+                >
+                  Completed sessions by muscle group · {bodyMapUpdatedAt}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handlePressBodyBattleMap}
+                activeOpacity={0.78}
+                style={[
+                  insightMetricStyles.infoButton,
+                  isLight && insightMetricStyles.infoButtonLight,
+                ]}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={21}
+                  color={isLight ? "#6B7280" : "#9AA2B4"}
+                />
+              </TouchableOpacity>
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              {bodyMapRows.length > 0 && (
-                <View>
-                  {bodyMapRows.map((row) => {
-                    const isActive = row.key === activeBodyBattleGroup;
-                    return (
-                      <View
-                        key={row.key}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          minHeight: 30,
-                          paddingVertical: 4,
-                          paddingHorizontal: 8,
-                          borderRadius: isActive ? 999 : 0,
-                          backgroundColor: isActive
-                            ? "rgba(148,163,184,0.18)"
-                            : "transparent",
-                        }}
-                      >
+
+            <View style={insightMetricStyles.bodyRankContent}>
+              <View style={insightMetricStyles.bodyFigurePane}>
+                <BodyMuscleFront
+                  isLight={isLight}
+                  resetKey={0}
+                  singleSelect
+                  onSelectionChange={handleBodyMapSelectionChange}
+                />
+              </View>
+              <View style={insightMetricStyles.bodyRankList}>
+                {bodyMapRows.map((row) => {
+                  const isActive = row.key === activeBodyBattleGroup;
+                  const rowColor = row.sessions > 0 ? row.color : "#94A3B8";
+                  return (
+                    <View
+                      key={row.key}
+                      style={[
+                        insightMetricStyles.bodyRankRow,
+                        isActive && insightMetricStyles.bodyRankRowActive,
+                      ]}
+                    >
+                      <View style={insightMetricStyles.bodyRankNameWrap}>
                         <View
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            flexDirection: "row",
-                            alignItems: "center",
-                            paddingRight: 12,
-                          }}
-                        >
-                          <View
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 999,
-                              backgroundColor: row.color,
-                              marginRight: 10,
-                            }}
-                          />
-                          <Text
-                            style={[
-                              styles.metricCaption,
-                              isLight && styles.metricCaptionLight,
-                              isActive && { fontWeight: "600" },
-                              { marginTop: 0, flex: 1, lineHeight: 18 },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {row.label}
-                          </Text>
-                        </View>
+                          style={[
+                            insightMetricStyles.rankDot,
+                            { backgroundColor: rowColor },
+                          ]}
+                        />
                         <Text
                           style={[
-                            styles.metricCaption,
-                            {
-                              color: row.color,
-                              fontWeight: isActive ? "700" : "600",
-                              marginTop: 0,
-                              minWidth: 64,
-                              textAlign: "right",
-                              lineHeight: 18,
-                            },
+                            insightMetricStyles.bodyRankName,
+                            isLight && insightMetricStyles.bodyRankNameLight,
                           ]}
                           numberOfLines={1}
                         >
-                          {row.rank}
+                          {row.label}
                         </Text>
                       </View>
-                    );
-                  })}
-                </View>
-              )}
+                      <Text
+                        style={[
+                          insightMetricStyles.bodyRankValue,
+                          { color: rowColor },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {row.sessions}
+                      </Text>
+                      <Text
+                        style={[
+                          insightMetricStyles.bodyRankSeparator,
+                          isLight && insightMetricStyles.bodyRankSeparatorLight,
+                        ]}
+                      >
+                        ·
+                      </Text>
+                      <Text
+                        style={[
+                          insightMetricStyles.bodyRankTier,
+                          isLight && insightMetricStyles.bodyRankTierLight,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {row.rank}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
-          </View>
-          {bodyMapRows.length > 0 && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 8,
-                flexWrap: "wrap",
-              }}
-            >
+
+            <View style={insightMetricStyles.rankLegend}>
               {["Recruit", "Soldier", "Warrior", "Beast", "Legend"].map(
                 (rank) => {
                   const color =
                     BODY_BATTLE_RANK_COLORS[rank] ??
                     BODY_BATTLE_RANK_COLORS["Recruit"];
                   return (
-                    <View
-                      key={rank}
-                      style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          marginRight: 8,
-                          marginBottom: 4,
-                        }}
-                    >
+                    <View key={rank} style={insightMetricStyles.rankLegendItem}>
                       <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          backgroundColor: color,
-                          marginRight: 4,
-                          marginTop: 0,
-                        }}
+                        style={[
+                          insightMetricStyles.legendDot,
+                          { backgroundColor: color },
+                        ]}
                       />
                       <Text
                         style={[
-                          styles.metricCaption,
-                          isLight && styles.metricCaptionLight,
+                          insightMetricStyles.legendLabel,
+                          isLight && insightMetricStyles.legendLabelLight,
                         ]}
                       >
                         {rank}
@@ -4549,7 +4361,7 @@ const HomeScreen: React.FC = () => {
                 },
               )}
             </View>
-          )}
+          </View>
         </View>
       </ScrollView>
 
@@ -4569,16 +4381,302 @@ const HomeScreen: React.FC = () => {
   );
 };
 
+const insightMetricStyles = StyleSheet.create({
+  summaryCard: {
+    minHeight: 156,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    backgroundColor: "#0F1A2C",
+    flexDirection: "row",
+    overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  summaryCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  racePane: {
+    width: "32%",
+    minWidth: 112,
+    paddingTop: 16,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryDivider: {
+    width: StyleSheet.hairlineWidth,
+    marginVertical: 18,
+    backgroundColor: "rgba(148,163,184,0.20)",
+  },
+  summaryDividerLight: {
+    backgroundColor: "rgba(15,23,42,0.10)",
+  },
+  percentilePane: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 16,
+    paddingBottom: 12,
+    paddingLeft: 16,
+    paddingRight: 14,
+  },
+  percentileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 28,
+  },
+  percentileTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+    gap: 7,
+  },
+  metricKicker: {
+    color: "#A7ADBC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  metricKickerLight: {
+    color: "#5E6676",
+  },
+  raceGaugeWrap: {
+    marginTop: 10,
+    minHeight: 66,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  raceLabelRow: {
+    width: "100%",
+    marginTop: 6,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 5,
+  },
+  raceEdgeLabel: {
+    color: "#F7F8FA",
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  raceEdgeLabelLight: {
+    color: "#111827",
+  },
+  tinyInfoButton: {
+    marginTop: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  percentileValue: {
+    marginTop: 8,
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: 0,
+  },
+  percentileValueLight: {
+    color: "#0F172A",
+  },
+  percentileCaption: {
+    marginTop: 2,
+    color: "#A7ADBC",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  percentileCaptionLight: {
+    color: "#6B7280",
+  },
+  percentileCurveWrap: {
+    marginTop: 4,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  percentileStatus: {
+    marginTop: 2,
+    alignSelf: "flex-start",
+    color: "#8B6CF6",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  bodyRankCard: {
+    marginTop: 12,
+    minHeight: 238,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    backgroundColor: "#0F1A2C",
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  bodyRankCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  bodyRankHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  bodySubtitle: {
+    marginTop: 5,
+    color: "#A7ADBC",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  bodySubtitleLight: {
+    color: "#6B7280",
+  },
+  infoButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.48)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  infoButtonLight: {
+    borderColor: "#CBD5E1",
+    backgroundColor: "#F8FAFC",
+  },
+  bodyRankContent: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  bodyFigurePane: {
+    width: 100,
+    height: 154,
+    marginRight: 12,
+  },
+  bodyRankList: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  bodyRankRow: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 6,
+  },
+  bodyRankRowActive: {
+    backgroundColor: "rgba(139,108,246,0.12)",
+  },
+  bodyRankNameWrap: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  rankDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 9,
+  },
+  bodyRankName: {
+    flex: 1,
+    minWidth: 0,
+    color: "#F7F8FA",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  bodyRankNameLight: {
+    color: "#111827",
+  },
+  bodyRankValue: {
+    minWidth: 24,
+    textAlign: "right",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  bodyRankSeparator: {
+    marginHorizontal: 7,
+    color: "#A7ADBC",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  bodyRankSeparatorLight: {
+    color: "#9CA3AF",
+  },
+  bodyRankTier: {
+    minWidth: 50,
+    color: "#A7ADBC",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  bodyRankTierLight: {
+    color: "#6B7280",
+  },
+  rankLegend: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    rowGap: 7,
+  },
+  rankLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 7,
+  },
+  legendLabel: {
+    color: "#A7ADBC",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  legendLabelLight: {
+    color: "#6B7280",
+  },
+});
+
 const insightStyles = StyleSheet.create({
   section: {
     paddingHorizontal: 0,
-    paddingBottom: 8,
-    gap: 10,
+    paddingBottom: 6,
+    gap: 12,
   },
   sectionHeader: {
     marginTop: 6,
-    marginBottom: 0,
-    paddingHorizontal: 18,
+    marginBottom: 2,
+    paddingHorizontal: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -4586,14 +4684,22 @@ const insightStyles = StyleSheet.create({
   sectionTitle: {
     color: "#F8FAFC",
     fontFamily: "Inter_700Bold",
-    fontSize: 22,
+    fontSize: 21,
+    lineHeight: 27,
     letterSpacing: 0,
+  },
+  sectionTitleLight: {
+    color: "#0F172A",
   },
   sectionSubtitle: {
     marginTop: 3,
     color: "#94A3B8",
     fontFamily: "Inter_500Medium",
     fontSize: 12,
+    lineHeight: 17,
+  },
+  sectionSubtitleLight: {
+    color: "#64748B",
   },
   testButton: {
     minHeight: 32,
@@ -4611,96 +4717,54 @@ const insightStyles = StyleSheet.create({
   },
   referenceCard: {
     width: "100%",
-    borderRadius: 0,
-    paddingVertical: 12,
-    paddingHorizontal: 0,
-    backgroundColor: "transparent",
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: "#0F1A2C",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
-  overviewGrid: {
-    minHeight: 254,
-    flexDirection: "row",
+  referenceCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
-  overviewLeft: {
-    width: "52%",
-    justifyContent: "space-between",
-    paddingRight: 8,
-  },
-  orbitChart: {
-    height: 150,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sparklineFrame: {
-    height: 72,
-    borderRadius: 14,
-    backgroundColor: "rgba(15,23,42,0.56)",
-    overflow: "hidden",
-    padding: 12,
-  },
-  overviewList: {
-    flex: 1,
-    justifyContent: "center",
-    paddingLeft: 8,
-    gap: 11,
-  },
-  metricListRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  metricIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#1E40AF",
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-  },
-  metricListCopy: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 10,
-  },
-  metricListTitle: {
-    color: "#F8FAFC",
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    letterSpacing: 0,
-  },
-  metricListMeta: {
-    marginTop: 4,
-    color: "#94A3B8",
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-  },
-  levelMiniRow: {
-    marginTop: 6,
-  },
-  levelMiniIcon: {
-    backgroundColor: "rgba(226,232,240,0.10)",
-    shadowOpacity: 0,
+  cardHeaderBlock: {
+    marginBottom: 10,
   },
   comparisonPanel: {
     width: "100%",
     paddingHorizontal: 0,
-    paddingTop: 4,
-    paddingBottom: 8,
+    paddingTop: 2,
+    paddingBottom: 4,
   },
   comparisonGraphCard: {
     width: "100%",
-    borderRadius: 0,
+    borderRadius: 20,
     paddingTop: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingBottom: 10,
-    backgroundColor: "rgba(15,23,42,0.58)",
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "rgba(148,163,184,0.14)",
+    backgroundColor: "#0F1A2C",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  comparisonGraphCardLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
   comparisonHeader: {
-    paddingHorizontal: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -4723,6 +4787,9 @@ const insightStyles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: 0,
   },
+  comparisonTitleLight: {
+    color: "#1F1F1F",
+  },
   comparisonRangePill: {
     minHeight: 34,
     paddingHorizontal: 13,
@@ -4732,10 +4799,60 @@ const insightStyles = StyleSheet.create({
     gap: 5,
     backgroundColor: "rgba(36,84,244,0.14)",
   },
+  comparisonRangePillLight: {
+    backgroundColor: "rgba(229,240,248,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(0,112,204,0.12)",
+  },
   comparisonRangeText: {
     color: "#1D9BF0",
     fontFamily: "Inter_600SemiBold",
     fontSize: 12,
+  },
+  comparisonRangeTextLight: {
+    color: "#0068BD",
+  },
+  comparisonRangeMenu: {
+    alignSelf: "flex-end",
+    marginTop: 10,
+    marginRight: 4,
+    padding: 4,
+    borderRadius: 18,
+    flexDirection: "row",
+    backgroundColor: "rgba(15,23,42,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  comparisonRangeMenuLight: {
+    backgroundColor: "rgba(238,244,248,0.78)",
+    borderColor: "rgba(148,163,184,0.12)",
+  },
+  comparisonRangeOption: {
+    minHeight: 30,
+    paddingHorizontal: 11,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  comparisonRangeOptionActive: {
+    backgroundColor: "rgba(36,84,244,0.28)",
+  },
+  comparisonRangeOptionActiveLight: {
+    backgroundColor: "rgba(229,240,248,0.82)",
+  },
+  comparisonRangeOptionText: {
+    color: "#94A3B8",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  comparisonRangeOptionTextLight: {
+    color: "#475569",
+  },
+  comparisonRangeOptionTextActive: {
+    color: "#F8FAFC",
+  },
+  comparisonRangeOptionTextActiveLight: {
+    color: "#0068BD",
   },
   comparisonValueBlock: {
     alignItems: "flex-end",
@@ -4752,19 +4869,25 @@ const insightStyles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 10,
   },
+  comparisonMetaLight: {
+    color: "#475569",
+  },
   comparisonDescription: {
-    marginTop: 6,
+    marginTop: 8,
+    paddingHorizontal: 2,
     color: "#94A3B8",
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     lineHeight: 15,
   },
+  comparisonDescriptionLight: {
+    color: "#475569",
+  },
   comparisonGraphFrame: {
     marginTop: 10,
   },
   comparisonLegend: {
-    marginTop: -8,
-    paddingHorizontal: 4,
+    marginTop: -2,
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
@@ -4784,9 +4907,12 @@ const insightStyles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
   },
+  legendTextLight: {
+    color: "#475569",
+  },
   comparisonChips: {
-    paddingTop: 12,
-    paddingRight: 18,
+    paddingTop: 10,
+    paddingRight: 0,
     gap: 8,
   },
   comparisonChip: {
@@ -4797,21 +4923,49 @@ const insightStyles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(148,163,184,0.10)",
   },
+  comparisonChipLight: {
+    backgroundColor: "rgba(238,244,248,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.12)",
+  },
   comparisonChipActive: {
     backgroundColor: "rgba(36,84,244,0.24)",
+  },
+  comparisonChipActiveLight: {
+    backgroundColor: "#0070CC",
+    borderColor: "#0070CC",
   },
   comparisonChipText: {
     color: "#94A3B8",
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
   },
+  comparisonChipTextLight: {
+    color: "#475569",
+  },
   comparisonChipTextActive: {
     color: "#F8FAFC",
+  },
+  comparisonChipTextActiveLight: {
+    color: "#FFFFFF",
   },
   cardEyebrow: {
     color: "#CBD5E1",
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
+  },
+  cardEyebrowLight: {
+    color: "#1F1F1F",
+  },
+  cardHelper: {
+    marginTop: 4,
+    color: "#94A3B8",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  cardHelperLight: {
+    color: "#475569",
   },
   levelHeadingRow: {
     marginTop: 8,
@@ -4824,14 +4978,20 @@ const insightStyles = StyleSheet.create({
     fontSize: 30,
     letterSpacing: 0,
   },
+  levelHeadingLight: {
+    color: "#1F1F1F",
+  },
   levelXp: {
     marginLeft: 10,
     color: "#94A3B8",
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
   },
+  levelXpLight: {
+    color: "#475569",
+  },
   questTrack: {
-    marginTop: 14,
+    marginTop: 12,
     borderRadius: 999,
     backgroundColor: "rgba(148,163,184,0.16)",
     overflow: "hidden",
@@ -4862,7 +5022,7 @@ const insightStyles = StyleSheet.create({
     backgroundColor: "#2454F4",
   },
   verticalMetricsRow: {
-    marginTop: 22,
+    marginTop: 14,
     flexDirection: "row",
     justifyContent: "space-between",
   },
@@ -4872,24 +5032,27 @@ const insightStyles = StyleSheet.create({
   },
   verticalTrack: {
     width: "100%",
-    height: 136,
-    borderRadius: 28,
+    height: 96,
+    borderRadius: 22,
     backgroundColor: "rgba(148,163,184,0.14)",
     overflow: "hidden",
     justifyContent: "flex-end",
     alignItems: "center",
     position: "relative",
   },
+  verticalTrackLight: {
+    backgroundColor: "#E5E7EB",
+  },
   verticalFill: {
     width: "100%",
-    borderRadius: 28,
+    borderRadius: 22,
     position: "absolute",
     bottom: 0,
   },
   verticalBubble: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
     position: "absolute",
@@ -4898,30 +5061,39 @@ const insightStyles = StyleSheet.create({
   verticalBubbleText: {
     color: "#F8FAFC",
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 9,
+    lineHeight: 11,
     textAlign: "center",
     includeFontPadding: false,
     paddingHorizontal: 2,
     width: "100%",
   },
   verticalLabel: {
-    marginTop: 9,
+    marginTop: 7,
     color: "#E2E8F0",
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 9,
+    lineHeight: 11,
     textAlign: "center",
     includeFontPadding: false,
-    width: "116%",
+    width: "108%",
+  },
+  verticalLabelLight: {
+    color: "#1F1F1F",
   },
   summaryStrip: {
-    minHeight: 62,
-    borderRadius: 0,
-    paddingHorizontal: 18,
+    minHeight: 54,
+    borderRadius: 20,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(15,23,42,0.48)",
+    backgroundColor: "#0F1A2C",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  summaryStripLight: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
   },
   summaryItem: {
     flex: 1,
@@ -4930,18 +5102,29 @@ const insightStyles = StyleSheet.create({
   summaryValue: {
     color: "#F8FAFC",
     fontFamily: "Inter_700Bold",
-    fontSize: 17,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  summaryValueLight: {
+    color: "#0F172A",
   },
   summaryLabel: {
     marginTop: 3,
     color: "#94A3B8",
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  summaryLabelLight: {
+    color: "#64748B",
   },
   summaryDivider: {
     width: 1,
-    height: 34,
+    height: 28,
     backgroundColor: "rgba(148,163,184,0.18)",
+  },
+  summaryDividerLight: {
+    backgroundColor: "#E5E7EB",
   },
 });
 

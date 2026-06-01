@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL } from "../api/client";
+import { fetchCachedJson, invalidateApiCache } from "../api/client";
 import { useAuth } from "../App";
 import type { DashboardSummary } from "../types/dashboard";
+
+export const invalidateDashboardSummaryCache = () => {
+  invalidateApiCache("dashboard");
+};
 
 export function useDashboardSummary() {
   const { accessToken, refreshAccessToken, signOut } = useAuth();
@@ -17,7 +21,7 @@ export function useDashboardSummary() {
     };
   }, []);
 
-  const reload = async () => {
+  const reload = useCallback(async (force = true) => {
     if (!accessToken) {
       if (!isMountedRef.current) return;
       setSummary(null);
@@ -30,25 +34,15 @@ export function useDashboardSummary() {
     try {
       setLoading(true);
       setError(null);
-      let tokenToUse = accessToken;
-      let response = await fetch(`${API_BASE_URL}/dashboard/summary/`, {
-        headers: { Authorization: `Bearer ${tokenToUse}` },
+      const json = await fetchCachedJson<DashboardSummary>("/dashboard/summary/", {
+        accessToken,
+        refreshAccessToken,
+        signOut,
+      }, {
+        force,
+        requiredAuth: true,
+        tags: ["dashboard"],
       });
-      if (response.status === 401) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          await signOut();
-          return;
-        }
-        tokenToUse = refreshed;
-        response = await fetch(`${API_BASE_URL}/dashboard/summary/`, {
-          headers: { Authorization: `Bearer ${tokenToUse}` },
-        });
-      }
-      if (!response.ok) {
-        throw new Error("Failed to load dashboard metrics");
-      }
-      const json = (await response.json()) as DashboardSummary;
       if (!isMountedRef.current) return;
       setSummary(json);
     } catch (err) {
@@ -60,11 +54,11 @@ export function useDashboardSummary() {
       if (!isMountedRef.current) return;
       setLoading(false);
     }
-  };
+  }, [accessToken, refreshAccessToken, signOut]);
 
   useEffect(() => {
-    void reload();
-  }, [accessToken, refreshAccessToken, signOut]);
+    void reload(false);
+  }, [reload]);
 
   return { summary, loading, error, reload };
 }
