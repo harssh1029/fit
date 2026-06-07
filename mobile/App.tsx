@@ -36,9 +36,9 @@ import {
 import type { LayoutChangeEvent } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import {
-  API_BASE_URL,
   ACCESS_TOKEN_KEY,
   REFRESH_TOKEN_KEY,
+  fetchApi,
   fetchCachedJson,
   fetchWithAuth,
   invalidateApiCache,
@@ -1851,11 +1851,11 @@ const App: React.FC = () => {
 
   const refreshSessionAccessToken = useCallback(async () => {
     if (!state.refreshToken) return null;
-    const response = await fetch(`${API_BASE_URL}/auth/jwt/refresh/`, {
+    const response = await fetchApi("/auth/jwt/refresh/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: state.refreshToken }),
-    });
+    }, { retries: 1 });
     if (!response.ok) {
       await clearAuthSession();
       return null;
@@ -1912,7 +1912,7 @@ const App: React.FC = () => {
       accessToken: state.accessToken,
       refreshToken: state.refreshToken,
       signIn: async (username, password) => {
-        const response = await fetch(`${API_BASE_URL}/auth/jwt/create/`, {
+        const response = await fetchApi("/auth/jwt/create/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
@@ -1937,7 +1937,7 @@ const App: React.FC = () => {
         });
       },
       signUp: async (username, email, password, onboarding) => {
-        const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+        const response = await fetchApi("/auth/register/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

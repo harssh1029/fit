@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { API_BASE_URL } from "../../api/client";
+import { API_BASE_URL, fetchApi } from "../../api/client";
 import BodyMuscleFront, { MuscleName } from "../../BodyMuscleFront";
 import BodyMuscleBack from "../../BodyMuscleBack";
 import { AppHeader } from "../../components/AppHeader";
@@ -130,7 +130,7 @@ const ExerciseListScreen: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const musclesResponse = await fetch(`${API_BASE_URL}/muscles/`);
+        const musclesResponse = await fetchApi("/muscles/");
 
         if (!musclesResponse.ok) {
           throw new Error(`Failed to load muscles (${musclesResponse.status})`);
@@ -217,7 +217,7 @@ const ExerciseListScreen: React.FC = () => {
           startsWith: activeAlphabetLetter,
         });
 
-        const response = await fetch(exercisesUrl);
+        const response = await fetchApi(exercisesUrl);
         if (!response.ok) {
           throw new Error(`Failed to load exercises (${response.status})`);
         }
@@ -343,7 +343,7 @@ const ExerciseListScreen: React.FC = () => {
 
     setIsLoadingMoreExercises(true);
     try {
-      const response = await fetch(nextExercisesPageUrl);
+      const response = await fetchApi(nextExercisesPageUrl);
       if (!response.ok) {
         // Treat pagination failures as non-fatal: keep the items we already
         // have and simply stop trying to load more.

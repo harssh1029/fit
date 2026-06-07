@@ -1,7 +1,8 @@
+import re
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from exercises.models import Exercise
+from insights.models import UserMetricsSnapshot
 from insights.services import recalculate_user_metrics
 from workouts.services import (
     materialize_activity_card,
@@ -40,6 +42,97 @@ def _refresh_existing_public_card(user) -> None:
     from community.services import refresh_public_card_if_exists
 
     refresh_public_card_if_exists(user)
+
+
+MAX_EXERCISE_FALLBACK_CANDIDATES = 250
+
+
+def _normalize_exercise_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _resolved_exercises_for_plan_day(plan_day: PlanDay) -> list[Exercise]:
+    labels = {
+        (plan_ex.label or "").strip()
+        for plan_ex in plan_day.exercises.all()
+        if (plan_ex.label or "").strip()
+    }
+    if not labels:
+        return []
+
+    exact_query = Q()
+    for label in labels:
+        exact_query |= Q(name__iexact=label)
+    candidates = {
+        exercise.id: exercise
+        for exercise in Exercise.objects.filter(exact_query).only("id", "name")
+    }
+    normalized_index = {
+        _normalize_exercise_label(exercise.name): exercise
+        for exercise in candidates.values()
+    }
+
+    unresolved_labels = [
+        label for label in labels if _normalize_exercise_label(label) not in normalized_index
+    ]
+    fallback_query = Q()
+    for label in unresolved_labels:
+        tokens = [token for token in re.findall(r"[a-z0-9]+", label.lower()) if len(token) >= 3]
+        if not tokens:
+            continue
+        label_query = Q()
+        for token in tokens:
+            label_query &= Q(name__icontains=token)
+        fallback_query |= label_query
+    if fallback_query:
+        fallback = Exercise.objects.filter(fallback_query).only("id", "name").distinct()[
+            :MAX_EXERCISE_FALLBACK_CANDIDATES
+        ]
+        for exercise in fallback:
+            normalized_index.setdefault(_normalize_exercise_label(exercise.name), exercise)
+
+    resolved = {
+        exercise.id: exercise
+        for label in labels
+        if (exercise := normalized_index.get(_normalize_exercise_label(label))) is not None
+    }
+    return list(resolved.values())
+
+
+def _sync_session_exercises_for_plan_day(session: WorkoutSession, plan_day: PlanDay, *, completed_at) -> None:
+    exercises = _resolved_exercises_for_plan_day(plan_day)
+    if not exercises:
+        return
+    exercise_ids = [exercise.id for exercise in exercises]
+    existing = {
+        row.exercise_id: row
+        for row in SessionExercise.objects.filter(
+            session=session,
+            exercise_id__in=exercise_ids,
+        )
+    }
+    SessionExercise.objects.bulk_create(
+        [
+            SessionExercise(
+                session=session,
+                exercise=exercise,
+                is_completed=True,
+                completed_at=completed_at,
+            )
+            for exercise in exercises
+            if exercise.id not in existing
+        ],
+        ignore_conflicts=True,
+    )
+    updated = []
+    for row in existing.values():
+        if row.is_completed and row.completed_at is not None:
+            continue
+        row.is_completed = True
+        row.completed_at = row.completed_at or completed_at
+        updated.append(row)
+    if updated:
+        SessionExercise.objects.bulk_update(updated, ["is_completed", "completed_at"])
 
 
 class PlanListView(generics.ListAPIView):
@@ -277,24 +370,6 @@ class CompletePlanDayView(APIView):
 
         now = timezone.now()
 
-        # Build a normalized name index for Exercise objects so we can
-        # tolerate minor differences between plan labels and exercise
-        # names (hyphens vs spaces, punctuation, case), e.g.
-        # "Barbell Bent-Over Row" -> "barbellbentoverrow" will match
-        # the Exercise named "barbell bent over row".
-        def _normalize_exercise_label(value: str) -> str:
-            import re
-            if not value:
-                return ""
-            return re.sub(r"[^a-z0-9]+", "", value).lower()
-
-        all_exercises = list(Exercise.objects.all())
-        normalized_exercise_index = {}
-        for ex in all_exercises:
-            key = _normalize_exercise_label(ex.name)
-            if key and key not in normalized_exercise_index:
-                normalized_exercise_index[key] = ex
-
         # Try to extract a numeric duration (minutes) from the free-form label,
         # e.g. "45 min" -> 45, but keep it optional.
         duration_minutes = None
@@ -393,44 +468,7 @@ class CompletePlanDayView(APIView):
             ]
         )
 
-        # Create or update per-exercise SessionExercise rows based on the
-        # structured PlanDay exercises. We first try a direct
-        # Exercise.name case-insensitive match to the
-        # PlanDayExercise.label. If that fails, we fall back to a
-        # normalized lookup that ignores case, spaces, hyphens, and
-        # punctuation so labels such as "Barbell Bent-Over Row" still
-        # resolve to "barbell bent over row".
-        for plan_ex in plan_day.exercises.all():
-            label = (plan_ex.label or "").strip()
-            if not label:
-                continue
-
-            exercise = Exercise.objects.filter(name__iexact=label).first()
-            if not exercise:
-                normalized_label = _normalize_exercise_label(label)
-                if normalized_label:
-                    exercise = normalized_exercise_index.get(normalized_label)
-            if not exercise:
-                continue
-
-            se, se_created = SessionExercise.objects.get_or_create(
-                session=session,
-                exercise=exercise,
-                defaults={
-                    "is_completed": True,
-                    "completed_at": now,
-                },
-            )
-            if not se_created:
-                ex_updated_fields = []
-                if not se.is_completed:
-                    se.is_completed = True
-                    ex_updated_fields.append("is_completed")
-                if se.completed_at is None:
-                    se.completed_at = now
-                    ex_updated_fields.append("completed_at")
-                if ex_updated_fields:
-                    se.save(update_fields=ex_updated_fields)
+        _sync_session_exercises_for_plan_day(session, plan_day, completed_at=now)
 
         # Keep plan progress in sync for Race Readiness, profile progress, and
         # plan-completion achievements. This endpoint predates scheduled
@@ -492,7 +530,7 @@ class CompletePlanDayView(APIView):
                     as_of=now,
                     earned_badges=plan_badges,
                 )
-        snapshot = recalculate_user_metrics(user, as_of=now)
+        snapshot = UserMetricsSnapshot.objects.get(user=user)
 
         return Response(
             {
@@ -608,19 +646,6 @@ class CompleteScheduledWorkoutView(APIView):
             now = scheduled.completed_at or timezone.now()
             plan_day = scheduled.plan_day
 
-            def _normalize_exercise_label(value: str) -> str:
-                import re
-
-                if not value:
-                    return ""
-                return re.sub(r"[^a-z0-9]+", "", value).lower()
-
-            normalized_exercise_index = {}
-            for ex in Exercise.objects.all():
-                key = _normalize_exercise_label(ex.name)
-                if key and key not in normalized_exercise_index:
-                    normalized_exercise_index[key] = ex
-
             session, _ = WorkoutSession.objects.get_or_create(
                 user=request.user,
                 plan=updated.plan,
@@ -693,20 +718,9 @@ class CompleteScheduledWorkoutView(APIView):
                     "updated_at",
                 ]
             )
-            for plan_ex in plan_day.exercises.all():
-                label = (plan_ex.label or "").strip()
-                exercise = Exercise.objects.filter(name__iexact=label).first()
-                if exercise is None:
-                    exercise = normalized_exercise_index.get(_normalize_exercise_label(label))
-                if exercise is not None:
-                    SessionExercise.objects.get_or_create(
-                        session=session,
-                        exercise=exercise,
-                        defaults={"is_completed": True, "completed_at": now},
-                    )
+            _sync_session_exercises_for_plan_day(session, plan_day, completed_at=now)
             score_completed_workout(session, as_of=now)
             updated.refresh_from_db()
-            recalculate_user_metrics(request.user, as_of=now)
         return Response(
             UserPlanSerializer(_hydrated_user_plan(updated.id)).data,
             status=status.HTTP_200_OK,

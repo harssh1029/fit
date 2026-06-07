@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../api/client";
+import { fetchApi } from "../api/client";
 import type { Exercise, ExerciseListResponse } from "../App";
 
 export const normalizeExerciseName = (value: string) =>
@@ -82,8 +82,8 @@ export const loadExerciseDemoIds = async (
       const candidates: Exercise[] = [];
 
       for (const query of buildExerciseSearchQueries(name)) {
-        const response = await fetch(
-          `${API_BASE_URL}/exercises/?limit=12&search=${encodeURIComponent(query)}`,
+        const response = await fetchApi(
+          `/exercises/?limit=12&search=${encodeURIComponent(query)}`,
         );
         if (!response.ok) continue;
 

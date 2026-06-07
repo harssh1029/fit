@@ -32,6 +32,10 @@ import {
 } from "../../styles/theme";
 import { AppHeader } from "../../components/AppHeader";
 import { AppTabs, PremiumCard } from "../../components/PremiumUI";
+import {
+  MotionEntrance,
+  MotionProgressFill,
+} from "../../components/PremiumMotion";
 import ExerciseDetailSheet from "../../components/ExerciseDetailSheet";
 import { fetchRequiredAuth, invalidateWorkoutData } from "../../api/client";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary";
@@ -437,9 +441,23 @@ const InsightProgressBar: React.FC<{ percent: number; height?: number }> = ({
   height = 28,
 }) => (
   <View style={[insightStyles.questTrack, { height }]}>
-    <View style={[insightStyles.questFillTertiary, { width: `${Math.max(8, Math.min(100, percent))}%` as any }]} />
-    <View style={[insightStyles.questFillSecondary, { width: `${Math.max(8, Math.min(100, percent * 0.82))}%` as any }]} />
-    <View style={[insightStyles.questFillPrimary, { width: `${Math.max(8, Math.min(100, percent * 0.55))}%` as any }]} />
+    <MotionProgressFill
+      progress={percent / 100}
+      minimumPercent={8}
+      style={insightStyles.questFillTertiary}
+    />
+    <MotionProgressFill
+      progress={(percent * 0.82) / 100}
+      minimumPercent={8}
+      delay={70}
+      style={insightStyles.questFillSecondary}
+    />
+    <MotionProgressFill
+      progress={(percent * 0.55) / 100}
+      minimumPercent={8}
+      delay={140}
+      style={insightStyles.questFillPrimary}
+    />
   </View>
 );
 
@@ -2953,41 +2971,47 @@ const HomeScreen: React.FC = () => {
         </View>
       </View>
 
-      <InsightComparisonGraph
-        metrics={insightComparisonMetrics}
-        activeKey={activeInsightComparisonKey}
-        onChange={setActiveInsightComparisonKey}
-        isLight={isLight}
-      />
+      <MotionEntrance delay={40}>
+        <InsightComparisonGraph
+          metrics={insightComparisonMetrics}
+          activeKey={activeInsightComparisonKey}
+          onChange={setActiveInsightComparisonKey}
+          isLight={isLight}
+        />
+      </MotionEntrance>
 
-      <InsightLevelCard
-        level={insightLevel}
-        categories={insightCategoryMetrics}
-        isLight={isLight}
-      />
+      <MotionEntrance delay={110}>
+        <InsightLevelCard
+          level={insightLevel}
+          categories={insightCategoryMetrics}
+          isLight={isLight}
+        />
+      </MotionEntrance>
 
-      <View style={[insightStyles.summaryStrip, isLight && insightStyles.summaryStripLight]}>
-        <View style={insightStyles.summaryItem}>
-          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
-            {Math.round(trainingProfile?.performance_score ?? 0)}
-          </Text>
-          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Performance</Text>
+      <MotionEntrance delay={180}>
+        <View style={[insightStyles.summaryStrip, isLight && insightStyles.summaryStripLight]}>
+          <View style={insightStyles.summaryItem}>
+            <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
+              {Math.round(trainingProfile?.performance_score ?? 0)}
+            </Text>
+            <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Performance</Text>
+          </View>
+          <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
+          <View style={insightStyles.summaryItem}>
+            <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
+              {Math.round(trainingProfile?.training_balance_score ?? bodyBalanceScore ?? 0)}
+            </Text>
+            <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Balance</Text>
+          </View>
+          <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
+          <View style={insightStyles.summaryItem}>
+            <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
+              {Math.round(trainingProfile?.weekly_xp ?? 0)}
+            </Text>
+            <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Weekly XP</Text>
+          </View>
         </View>
-        <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
-        <View style={insightStyles.summaryItem}>
-          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
-            {Math.round(trainingProfile?.training_balance_score ?? bodyBalanceScore ?? 0)}
-          </Text>
-          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Balance</Text>
-        </View>
-        <View style={[insightStyles.summaryDivider, isLight && insightStyles.summaryDividerLight]} />
-        <View style={insightStyles.summaryItem}>
-          <Text style={[insightStyles.summaryValue, isLight && insightStyles.summaryValueLight]}>
-            {Math.round(trainingProfile?.weekly_xp ?? 0)}
-          </Text>
-          <Text style={[insightStyles.summaryLabel, isLight && insightStyles.summaryLabelLight]}>Weekly XP</Text>
-        </View>
-      </View>
+      </MotionEntrance>
     </View>
   );
 
@@ -4082,12 +4106,13 @@ const HomeScreen: React.FC = () => {
         {renderPremiumInsightsSection()}
 
         <View style={styles.metricsSection}>
-          <View
-            style={[
-              insightMetricStyles.summaryCard,
-              isLight && insightMetricStyles.summaryCardLight,
-            ]}
-          >
+          <MotionEntrance delay={220}>
+            <View
+              style={[
+                insightMetricStyles.summaryCard,
+                isLight && insightMetricStyles.summaryCardLight,
+              ]}
+            >
             <TouchableOpacity
               style={insightMetricStyles.racePane}
               activeOpacity={0.9}
@@ -4219,14 +4244,16 @@ const HomeScreen: React.FC = () => {
                 </Text>
               )}
             </TouchableOpacity>
-          </View>
+            </View>
+          </MotionEntrance>
 
-          <View
-            style={[
-              insightMetricStyles.bodyRankCard,
-              isLight && insightMetricStyles.bodyRankCardLight,
-            ]}
-          >
+          <MotionEntrance delay={290}>
+            <View
+              style={[
+                insightMetricStyles.bodyRankCard,
+                isLight && insightMetricStyles.bodyRankCardLight,
+              ]}
+            >
             <View style={insightMetricStyles.bodyRankHeader}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text
@@ -4361,7 +4388,8 @@ const HomeScreen: React.FC = () => {
                 },
               )}
             </View>
-          </View>
+            </View>
+          </MotionEntrance>
         </View>
       </ScrollView>
 

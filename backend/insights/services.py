@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from itertools import chain
 from math import sqrt
 from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -12,7 +13,7 @@ from django.utils import timezone
 
 from accounts.models import Profile
 from plans.models import Plan, UserPlan
-from workouts.models import WorkoutSession
+from workouts.models import SessionExercise, WorkoutSession
 
 from .models import FitnessAssessment, RaceBenchmark, UserMetricsSnapshot
 
@@ -20,8 +21,8 @@ from .models import FitnessAssessment, RaceBenchmark, UserMetricsSnapshot
 User = get_user_model()
 
 
-def _get_user_timezone(user: User) -> ZoneInfo:
-	profile = Profile.objects.filter(user=user).first()
+def _get_user_timezone(user: User, *, profile: Optional[Profile] = None) -> ZoneInfo:
+	profile = profile or Profile.objects.filter(user=user).first()
 	tz_name = getattr(profile, 'timezone', None) or settings.TIME_ZONE
 	try:
 		return ZoneInfo(tz_name)
@@ -524,8 +525,8 @@ def _estimated_body_battle_map_from_onboarding(
 def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -> Tuple[Dict, Optional[float]]:
 	"""Compute Body Battle Map stats per canonical group and balance score."""
 	as_of = as_of or timezone.now()
-	tz = _get_user_timezone(user)
 	profile = Profile.objects.filter(user=user).first()
+	tz = _get_user_timezone(user, profile=profile)
 
 	sessions = (
 		WorkoutSession.objects.filter(
@@ -533,10 +534,7 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 			status="completed",
 			completed_at__isnull=False,
 		)
-		.prefetch_related(
-			"session_exercises__exercise__primary_muscles",
-			"session_exercises__exercise__secondary_muscles",
-		)
+		.order_by()
 	)
 
 	if not sessions.exists():
@@ -548,28 +546,35 @@ def calculate_body_battle_map(user: User, *, as_of: Optional[datetime] = None) -
 		g: {"sessions": 0, "last_date": None} for g in CANONICAL_GROUPS
 	}
 
-	for session in sessions:
-		local_date = session.completed_at.astimezone(tz).date()
-		groups_for_session = set()
-		for se in session.session_exercises.all():
-			if not se.is_completed:
-				continue
-			exercise = se.exercise
-			muscles = list(exercise.primary_muscles.all()) + list(
-				exercise.secondary_muscles.all()
-			)
-			for m in muscles:
-				if not m.canonical_group:
-					continue
-				groups_for_session.add(m.canonical_group)
-
-		for g in groups_for_session:
-			if g not in stats:
-				continue
-			stats[g]["sessions"] += 1
-			last = stats[g]["last_date"]
-			if last is None or local_date > last:
-				stats[g]["last_date"] = local_date
+	primary_rows = SessionExercise.objects.filter(
+		session__in=sessions,
+		is_completed=True,
+		exercise__primary_muscles__canonical_group__in=CANONICAL_GROUPS,
+	).values_list(
+		"session_id",
+		"session__completed_at",
+		"exercise__primary_muscles__canonical_group",
+	)
+	secondary_rows = SessionExercise.objects.filter(
+		session__in=sessions,
+		is_completed=True,
+		exercise__secondary_muscles__canonical_group__in=CANONICAL_GROUPS,
+	).values_list(
+		"session_id",
+		"session__completed_at",
+		"exercise__secondary_muscles__canonical_group",
+	)
+	seen_session_groups = set()
+	for session_id, completed_at, group in chain(primary_rows.iterator(), secondary_rows.iterator()):
+		key = (session_id, group)
+		if key in seen_session_groups:
+			continue
+		seen_session_groups.add(key)
+		local_date = completed_at.astimezone(tz).date()
+		stats[group]["sessions"] += 1
+		last = stats[group]["last_date"]
+		if last is None or local_date > last:
+			stats[group]["last_date"] = local_date
 
 	local_today = as_of.astimezone(tz).date()
 

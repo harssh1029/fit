@@ -21,6 +21,11 @@ import Svg, { Circle } from "react-native-svg";
 import BodyMuscleBack from "../../BodyMuscleBack";
 import BodyMuscleFront, { MuscleName, MuscleSelection } from "../../BodyMuscleFront";
 import { fetchRequiredAuth, invalidateWorkoutData } from "../../api/client";
+import {
+  MotionEntrance,
+  MotionPulse,
+  MotionTouchable,
+} from "../../components/PremiumMotion";
 import { useAuth, useThemeMode } from "../../App";
 import { useActiveUserPlan } from "../../hooks/useActiveUserPlan";
 import { useAllWorkoutHistory } from "../../hooks/useAllWorkoutHistory";
@@ -1006,46 +1011,48 @@ const RecordScreen: React.FC = () => {
   );
 
   const renderTimerDial = () => (
-    <View style={rs.timerDial}>
-      <Svg width="100%" height="100%" viewBox="0 0 240 240" style={StyleSheet.absoluteFillObject}>
-        <Circle
-          cx="120"
-          cy="120"
-          r={TIMER_RING_RADIUS}
-          stroke="rgba(124,107,255,0.14)"
-          strokeWidth="8"
-          fill="transparent"
-        />
-        <Circle
-          cx="120"
-          cy="120"
-          r={TIMER_RING_RADIUS}
-          stroke="#6577FF"
-          strokeWidth="8"
-          fill="transparent"
-          strokeLinecap="round"
-          strokeDasharray={`${Math.max(
-            8,
-            Math.min(1, elapsedSeconds / TIMER_TARGET_SECONDS) * TIMER_RING_CIRCUMFERENCE,
-          )} ${TIMER_RING_CIRCUMFERENCE}`}
-          rotation="-90"
-          origin="120, 120"
-        />
-      </Svg>
-      <View style={rs.timerDialContent}>
-        <View style={rs.activePillCentered}>
-          <View style={rs.statusDot} />
-          <Text style={rs.statusPillText}>ACTIVE</Text>
-        </View>
-        <Text style={rs.timerLabel}>Active Time</Text>
-        <Text style={rs.timerValue} adjustsFontSizeToFit numberOfLines={1}>
-          {formatElapsed(elapsedSeconds)}
-        </Text>
-        <View style={rs.waveButton}>
-          <Ionicons name="pulse-outline" size={23} color="#8EA2FF" />
+    <MotionPulse active={phase === "recording" && !paused}>
+      <View style={rs.timerDial}>
+        <Svg width="100%" height="100%" viewBox="0 0 240 240" style={StyleSheet.absoluteFillObject}>
+          <Circle
+            cx="120"
+            cy="120"
+            r={TIMER_RING_RADIUS}
+            stroke="rgba(124,107,255,0.14)"
+            strokeWidth="8"
+            fill="transparent"
+          />
+          <Circle
+            cx="120"
+            cy="120"
+            r={TIMER_RING_RADIUS}
+            stroke="#6577FF"
+            strokeWidth="8"
+            fill="transparent"
+            strokeLinecap="round"
+            strokeDasharray={`${Math.max(
+              8,
+              Math.min(1, elapsedSeconds / TIMER_TARGET_SECONDS) * TIMER_RING_CIRCUMFERENCE,
+            )} ${TIMER_RING_CIRCUMFERENCE}`}
+            rotation="-90"
+            origin="120, 120"
+          />
+        </Svg>
+        <View style={rs.timerDialContent}>
+          <View style={rs.activePillCentered}>
+            <View style={rs.statusDot} />
+            <Text style={rs.statusPillText}>ACTIVE</Text>
+          </View>
+          <Text style={rs.timerLabel}>Active Time</Text>
+          <Text style={rs.timerValue} adjustsFontSizeToFit numberOfLines={1}>
+            {formatElapsed(elapsedSeconds)}
+          </Text>
+          <View style={rs.waveButton}>
+            <Ionicons name="pulse-outline" size={23} color="#8EA2FF" />
+          </View>
         </View>
       </View>
-    </View>
+    </MotionPulse>
   );
 
   return (
@@ -1099,7 +1106,7 @@ const RecordScreen: React.FC = () => {
       ) : null}
 
       {phase === "setup" ? (
-        <View style={rs.stagePanel}>
+        <MotionEntrance replayKey="setup" style={rs.stagePanel}>
           <View style={rs.heroPanel}>
             <View style={rs.mapHeaderRow}>
               <View>
@@ -1178,15 +1185,15 @@ const RecordScreen: React.FC = () => {
 
           {error ? <Text style={rs.errorText}>{error}</Text> : null}
 
-          <TouchableOpacity style={rs.primaryButton} activeOpacity={0.9} onPress={startRecording}>
+          <MotionTouchable style={rs.primaryButton} activeOpacity={0.94} onPress={startRecording}>
             <Ionicons name="play" size={18} color="#FFFFFF" />
             <Text style={rs.primaryButtonText}>Start Session</Text>
-          </TouchableOpacity>
-        </View>
+          </MotionTouchable>
+        </MotionEntrance>
       ) : null}
 
       {phase === "recording" ? (
-        <View style={rs.stagePanel}>
+        <MotionEntrance replayKey="recording" style={rs.stagePanel}>
           <View style={rs.activeHero}>
             <View style={rs.activeTopRow}>
               <TouchableOpacity style={rs.smallIconButton} activeOpacity={0.82}>
@@ -1233,27 +1240,27 @@ const RecordScreen: React.FC = () => {
           </View>
 
           <View style={rs.recordingActions}>
-            <TouchableOpacity style={rs.secondaryAction} activeOpacity={0.86} onPress={togglePause}>
+            <MotionTouchable style={rs.secondaryAction} activeOpacity={0.9} onPress={togglePause}>
               <Ionicons name={paused ? "play" : "pause"} size={20} color={isLight ? "#334155" : "#F8FAFC"} />
               <Text style={rs.secondaryActionText}>{paused ? "Resume" : "Pause"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={rs.finishButton} activeOpacity={0.9} onPress={finishRecording}>
+            </MotionTouchable>
+            <MotionTouchable style={rs.finishButton} activeOpacity={0.94} onPress={finishRecording}>
               <View style={rs.stopIcon}>
                 <View style={rs.stopSquare} />
               </View>
               <Text style={rs.finishText}>Finish Workout</Text>
-            </TouchableOpacity>
+            </MotionTouchable>
             <TouchableOpacity style={rs.secondaryAction} activeOpacity={0.86} onPress={() => navigation.navigate("Exercises")}>
               <Ionicons name="add-circle-outline" size={20} color="#8EA2FF" />
               <Text style={rs.secondaryActionText}>Add Exercise</Text>
             </TouchableOpacity>
           </View>
           <Text style={rs.finishHint}>Swipe up to finish workout</Text>
-        </View>
+        </MotionEntrance>
       ) : null}
 
       {phase === "review" ? (
-        <View style={rs.stagePanel}>
+        <MotionEntrance replayKey="review" style={rs.stagePanel}>
           <View style={rs.completionPanel}>
             <View style={rs.completionCheck}>
               <Ionicons name="checkmark" size={42} color="#8EA2FF" />
@@ -1488,9 +1495,9 @@ const RecordScreen: React.FC = () => {
             >
               <Text style={rs.discardButtonText}>Discard</Text>
             </TouchableOpacity>
-            <TouchableOpacity
+            <MotionTouchable
               style={[rs.postButton, saving && { opacity: 0.65 }]}
-              activeOpacity={0.9}
+              activeOpacity={0.94}
               onPress={saveSession}
               disabled={saving}
             >
@@ -1502,13 +1509,13 @@ const RecordScreen: React.FC = () => {
                   <Text style={rs.primaryButtonText}>Post Activity</Text>
                 </>
               )}
-            </TouchableOpacity>
+            </MotionTouchable>
           </View>
-        </View>
+        </MotionEntrance>
       ) : null}
 
       {phase === "complete" && completedCard ? (
-        <View style={rs.postedCard}>
+        <MotionEntrance replayKey="complete" style={rs.postedCard}>
           <Ionicons name="checkmark-circle" size={42} color="#34D399" />
           <Text style={rs.postedTitle}>Activity posted</Text>
           <Text style={rs.postedBody}>
@@ -1536,7 +1543,7 @@ const RecordScreen: React.FC = () => {
               <Text style={rs.primarySmallButtonText}>View feed</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </MotionEntrance>
       ) : null}
 
       <Modal visible={draftsVisible} transparent animationType="fade" onRequestClose={() => setDraftsVisible(false)}>

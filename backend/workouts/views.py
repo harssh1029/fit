@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from exercises.models import Exercise, MuscleGroup
-from insights.services import recalculate_user_metrics
+from insights.models import UserMetricsSnapshot
 from plans.models import PlanDay, UserPlan
 from .models import SessionExercise, WorkoutDraft, WorkoutSession
 from .services import (
@@ -355,7 +355,7 @@ class CustomWorkoutView(APIView):
 			)
 
 		result = score_completed_workout(session, as_of=now)
-		snapshot = recalculate_user_metrics(user, as_of=now)
+		snapshot = UserMetricsSnapshot.objects.get(user=user)
 		return Response(
 			{
 				"status": "completed",
@@ -381,7 +381,6 @@ class WorkoutLogView(APIView):
 			return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 		except ValueError as exc:
 			return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-		recalculate_user_metrics(request.user, as_of=result.session.completed_at)
 		return Response(
 			{
 				"status": "completed",

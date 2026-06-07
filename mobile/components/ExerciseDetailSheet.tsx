@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { API_BASE_URL, GLASS_ACCENT_GREEN, styles } from "../App";
+import { GLASS_ACCENT_GREEN, styles } from "../App";
+import { fetchApi } from "../api/client";
 import type { Exercise, ExerciseListResponse } from "../App";
 import { getBestExerciseMatch } from "../utils/exerciseLookup";
 
@@ -67,10 +68,9 @@ export const ExerciseDetailSheet: React.FC<ExerciseDetailSheetProps> = ({
         let idToFetch = exerciseId || initialExercise?.id || null;
 
         if (!idToFetch && exerciseName) {
-          const searchUrl = `${API_BASE_URL}/exercises/?limit=8&search=${encodeURIComponent(
-            exerciseName,
-          )}`;
-          const searchResponse = await fetch(searchUrl);
+          const searchResponse = await fetchApi(
+            `/exercises/?limit=8&search=${encodeURIComponent(exerciseName)}`,
+          );
           if (searchResponse.ok) {
             const searchJson =
               (await searchResponse.json()) as ExerciseListResponse;
@@ -92,9 +92,7 @@ export const ExerciseDetailSheet: React.FC<ExerciseDetailSheetProps> = ({
           return;
         }
 
-        const detailResponse = await fetch(
-          `${API_BASE_URL}/exercises/${idToFetch}/`,
-        );
+        const detailResponse = await fetchApi(`/exercises/${idToFetch}/`);
         if (!detailResponse.ok) {
           if (isMounted) {
             onClose();

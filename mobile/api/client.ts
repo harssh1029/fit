@@ -1,19 +1,32 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+const normalizeApiBaseUrl = (value: string): string => value.replace(/\/+$/, "");
+
 // API base URL helper that works across web, simulator, and Expo Go on device.
+// Deployed builds should configure EXPO_PUBLIC_API_BASE_URL or extra.apiBaseUrl
+// with an HTTPS API root such as https://api.example.com/api/v1.
 // - On web / simulators, we can safely use localhost.
 // - On a physical device running Expo Go, we derive the dev machine's IP from
 //   Expo's host URI (the same one Metro dev tools use), so you don't have to
 //   keep hard-coding your LAN IP.
 const getApiBaseUrl = (): string => {
+	const expoConfig: any =
+		(Constants as any).expoConfig ?? (Constants as any).manifest2;
+	const configuredUrl =
+		process.env.EXPO_PUBLIC_API_BASE_URL ||
+		(expoConfig && expoConfig.extra && expoConfig.extra.apiBaseUrl);
+	if (configuredUrl) {
+		return normalizeApiBaseUrl(configuredUrl);
+	}
+	if (!__DEV__) {
+		throw new Error("EXPO_PUBLIC_API_BASE_URL must be configured for production builds.");
+	}
 	if (Platform.OS === "web") {
 		return "http://localhost:8000/api/v1";
 	}
 	// Native (iOS / Android) via Expo Go or simulator
 	// Try to infer the host (e.g. "192.168.1.10") from Expo's config.
-	const expoConfig: any =
-		(Constants as any).expoConfig ?? (Constants as any).manifest2;
 	const hostUri: string | undefined =
 		(expoConfig && expoConfig.hostUri) ||
 		(expoConfig &&
@@ -47,6 +60,12 @@ export type ApiQueryOptions = {
 	ttlMs?: number;
 };
 
+export type ApiFetchPolicy = {
+	retries?: number;
+	retryDelayMs?: number;
+	timeoutMs?: number;
+};
+
 type ApiCacheEntry = {
 	loadedAt: number;
 	tags: Set<string>;
@@ -54,6 +73,11 @@ type ApiCacheEntry = {
 };
 
 const DEFAULT_QUERY_TTL_MS = 15_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+const DEFAULT_RETRY_DELAY_MS = 350;
+const DEFAULT_READ_RETRIES = 2;
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 const apiQueryCache = new Map<string, ApiCacheEntry>();
 const apiQueryRequests = new Map<string, Promise<unknown>>();
 let apiCacheEpoch = 0;
@@ -160,6 +184,72 @@ export const buildApiUrl = (path: string): string => {
 	return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
 
+const wait = (delayMs: number) =>
+	new Promise<void>((resolve) => {
+		setTimeout(resolve, delayMs);
+	});
+
+const fetchOnce = async (
+	path: string,
+	options: RequestInit,
+	timeoutMs: number,
+): Promise<Response> => {
+	const controller = new AbortController();
+	const upstreamSignal = options.signal;
+	const abortFromUpstream = () => controller.abort();
+	if (upstreamSignal) {
+		if (upstreamSignal.aborted) {
+			controller.abort();
+		} else {
+			upstreamSignal.addEventListener("abort", abortFromUpstream);
+		}
+	}
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(buildApiUrl(path), {
+			...options,
+			signal: controller.signal,
+		});
+	} catch (error) {
+		if (controller.signal.aborted && !upstreamSignal?.aborted) {
+			throw new Error(`Request timed out after ${timeoutMs}ms`);
+		}
+		throw error;
+	} finally {
+		clearTimeout(timeout);
+		upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+	}
+};
+
+export const fetchApi = async (
+	path: string,
+	options: RequestInit = {},
+	policy: ApiFetchPolicy = {},
+): Promise<Response> => {
+	const method = (options.method ?? "GET").toUpperCase();
+	const retries =
+		policy.retries ?? (IDEMPOTENT_METHODS.has(method) ? DEFAULT_READ_RETRIES : 0);
+	const retryDelayMs = policy.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+	const timeoutMs = policy.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+	let lastError: unknown = null;
+
+	for (let attempt = 0; attempt <= retries; attempt += 1) {
+		try {
+			const response = await fetchOnce(path, options, timeoutMs);
+			if (!RETRYABLE_STATUSES.has(response.status) || attempt === retries) {
+				return response;
+			}
+		} catch (error) {
+			lastError = error;
+			if (attempt === retries || options.signal?.aborted) {
+				throw error;
+			}
+		}
+		await wait(retryDelayMs * 2 ** attempt);
+	}
+	throw lastError instanceof Error ? lastError : new Error("Request failed");
+};
+
 const mergeAuthHeader = (
 	headers: HeadersInit | undefined,
 	token: string | null,
@@ -192,7 +282,7 @@ export const fetchWithAuth = async (
 	options: RequestInit = {},
 ): Promise<Response> => {
 	let tokenToUse = auth.accessToken;
-	let response = await fetch(buildApiUrl(path), {
+	let response = await fetchApi(path, {
 		...options,
 		headers: mergeAuthHeader(options.headers, tokenToUse),
 	});
@@ -213,7 +303,7 @@ export const fetchWithAuth = async (
 	}
 
 	tokenToUse = refreshed;
-	return fetch(buildApiUrl(path), {
+	return fetchApi(path, {
 		...options,
 		headers: mergeAuthHeader(options.headers, tokenToUse),
 	});

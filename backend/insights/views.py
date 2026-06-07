@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.db.models import Avg
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -43,6 +44,7 @@ CATEGORY_TIERS = [
     ("Platinum", 7500),
     ("Elite", 15000),
 ]
+DASHBOARD_METRICS_TTL_SECONDS = getattr(settings, "DASHBOARD_METRICS_TTL_SECONDS", 300)
 
 
 def _next_target(xp: float, targets: list[int]) -> int:
@@ -341,7 +343,11 @@ class DashboardSummaryView(APIView):
 
         refresh = request.query_params.get("refresh", "").lower() in {"1", "true", "yes"}
         snapshot = UserMetricsSnapshot.objects.filter(user=user).first()
-        if snapshot is None or date_param or refresh:
+        snapshot_is_stale = (
+            snapshot is None
+            or snapshot.computed_at < timezone.now() - timedelta(seconds=DASHBOARD_METRICS_TTL_SECONDS)
+        )
+        if snapshot_is_stale or date_param or refresh:
             snapshot = recalculate_user_metrics(user, as_of=as_of)
 
         def _is_available(detail: dict, has_scalar: bool) -> bool:

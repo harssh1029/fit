@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -9,11 +10,13 @@ from django.contrib.auth import get_user_model
 from achievements.models import UserBadge, UserLevel
 from achievements.services import ensure_badge_catalog
 from community.models import CommunityActivity
+from exercises.models import Exercise
 from insights.models import UserMetricsSnapshot
 from workouts.models import SessionExercise, UserScorePeriod, UserScoreSummary, WorkoutSession
 
-from .models import Plan, PlanDay, PlanVersion, PlanWeek, UserPlan
+from .models import Plan, PlanDay, PlanDayExercise, PlanVersion, PlanWeek, UserPlan
 from .services import getVisibleWorkoutsForWeek, startUserPlan
+from .views import _sync_session_exercises_for_plan_day
 
 
 User = get_user_model()
@@ -355,3 +358,49 @@ class PlanApiSmokeTests(APITestCase):
 		)
 		earned_badges = activity.metadata.get('earned_badges') or []
 		self.assertTrue(any(badge.get('id') == 'plan_finisher' for badge in earned_badges))
+
+	def test_plan_day_exercise_sync_uses_bounded_normalized_lookup(self):
+		user = User.objects.create_user(username='resolver-user', password='pass12345')
+		plan = Plan.objects.create(
+			id='resolver-plan',
+			name='Resolver Plan',
+			level='beginner',
+			duration_weeks=1,
+			goal='strength',
+			summary='Summary',
+			audience='Everyone',
+			result='Result',
+		)
+		week = PlanWeek.objects.create(plan=plan, number=1, title='Week 1', focus='Strength')
+		day = PlanDay.objects.create(
+			plan_week=week,
+			day_index=1,
+			title='Pull Day',
+			day_type='strength',
+		)
+		PlanDayExercise.objects.create(
+			plan_day=day,
+			label='Resolver Pike-Press',
+		)
+		exercise = Exercise.objects.create(
+			id='resolver_pike_press',
+			name='Resolver Pike Press',
+			movement_pattern='push',
+		)
+		session = WorkoutSession.objects.create(
+			user=user,
+			plan=plan,
+			status='completed',
+			completed_at=timezone.now(),
+		)
+
+		with patch('plans.views.Exercise.objects.all', side_effect=AssertionError('catalog-wide lookup')):
+			_sync_session_exercises_for_plan_day(session, day, completed_at=timezone.now())
+
+		self.assertTrue(
+			SessionExercise.objects.filter(
+				session=session,
+				exercise=exercise,
+				is_completed=True,
+			).exists()
+		)

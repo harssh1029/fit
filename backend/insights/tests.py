@@ -1,9 +1,14 @@
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from workouts.models import WorkoutSession
-from .models import FitnessAssessment, RaceBenchmark
+from exercises.models import Exercise, MuscleGroup
+from workouts.models import SessionExercise, WorkoutSession
+from .models import FitnessAssessment, RaceBenchmark, UserMetricsSnapshot
+from .services import calculate_body_battle_map, recalculate_user_metrics
 
 
 class DashboardSummaryViewTests(APITestCase):
@@ -99,6 +104,71 @@ class DashboardSummaryViewTests(APITestCase):
 			len(training_profile["comparison_metrics"].get("metrics", [])),
 			1,
 		)
+
+	def test_dashboard_summary_reuses_fresh_metrics_snapshot(self) -> None:
+		recalculate_user_metrics(self.user)
+		self.client.force_authenticate(self.user)
+
+		with patch("insights.views.recalculate_user_metrics") as recalculate:
+			response = self.client.get("/api/v1/dashboard/summary/")
+
+		self.assertEqual(response.status_code, 200)
+		recalculate.assert_not_called()
+
+	def test_dashboard_summary_refreshes_stale_metrics_snapshot(self) -> None:
+		snapshot = recalculate_user_metrics(self.user)
+		UserMetricsSnapshot.objects.filter(id=snapshot.id).update(
+			computed_at=timezone.now() - timedelta(minutes=10),
+		)
+		self.client.force_authenticate(self.user)
+
+		with patch(
+			"insights.views.recalculate_user_metrics",
+			wraps=recalculate_user_metrics,
+		) as recalculate:
+			response = self.client.get("/api/v1/dashboard/summary/")
+
+		self.assertEqual(response.status_code, 200)
+		recalculate.assert_called_once()
+
+	def test_body_battle_map_query_count_does_not_scale_with_session_count(self) -> None:
+		muscle = MuscleGroup.objects.create(
+			id="metrics_chest",
+			name="Metrics Chest",
+			side="front",
+			canonical_group="chest",
+		)
+		exercise = Exercise.objects.create(
+			id="metrics_bench_press",
+			name="Metrics Bench Press",
+			movement_pattern="push",
+		)
+		exercise.primary_muscles.add(muscle)
+		sessions = [
+			WorkoutSession.objects.create(
+				user=self.user,
+				status="completed",
+				completed_at=timezone.now() - timedelta(days=index),
+				duration_minutes=30,
+			)
+			for index in range(12)
+		]
+		SessionExercise.objects.bulk_create(
+			[
+				SessionExercise(
+					session=session,
+					exercise=exercise,
+					is_completed=True,
+					completed_at=session.completed_at,
+				)
+				for session in sessions
+			]
+		)
+
+		with self.assertNumQueries(4):
+			detail, _ = calculate_body_battle_map(self.user)
+
+		self.assertEqual(detail["groups"]["chest"]["sessions"], 12)
 
 	def test_fitness_age_has_profile_activity_estimate_without_assessment(self) -> None:
 		WorkoutSession.objects.create(

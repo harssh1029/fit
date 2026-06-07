@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Modal,
   RefreshControl,
@@ -20,6 +21,11 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import BodyMuscleBack from "../../BodyMuscleBack";
 import BodyMuscleFront, { MuscleName } from "../../BodyMuscleFront";
 import { AppHeader } from "../../components/AppHeader";
+import {
+  MotionEntrance,
+  MotionTouchable,
+  useReducedMotion,
+} from "../../components/PremiumMotion";
 import {
   FitnessIcon3D,
   type FitnessIcon3DName,
@@ -1293,6 +1299,8 @@ export const FeedCard: React.FC<{
   const { width } = useWindowDimensions();
   const [mediaIndex, setMediaIndex] = useState(0);
   const [saved, setSaved] = useState(Boolean(item.savedByMe));
+  const likePulse = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
   const icon3d = getFeedIcon3D(item.type);
   const stats = buildStats(item);
   const isChallenge = item.type === "challenge";
@@ -1335,8 +1343,41 @@ export const FeedCard: React.FC<{
     }
   };
 
+  const handleLike = () => {
+    if (!reducedMotion) {
+      likePulse.stopAnimation();
+      likePulse.setValue(0);
+      Animated.sequence([
+        Animated.spring(likePulse, {
+          toValue: 1,
+          friction: 5,
+          tension: 180,
+          useNativeDriver: true,
+        }),
+        Animated.spring(likePulse, {
+          toValue: 0,
+          friction: 7,
+          tension: 140,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    onLike(item);
+  };
+
+  const likePulseStyle = {
+    transform: [
+      {
+        scale: likePulse.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.22],
+        }),
+      },
+    ],
+  };
+
   return (
-    <TouchableOpacity
+    <MotionTouchable
       style={[
         feedStyles.card,
         isWorkout && feedStyles.workoutCard,
@@ -1345,6 +1386,8 @@ export const FeedCard: React.FC<{
       activeOpacity={openOnPress ? 0.92 : 1}
       disabled={!openOnPress}
       onPress={openOnPress ? () => onOpen(item) : undefined}
+      lift={-1}
+      pressedScale={0.996}
     >
       <View style={feedStyles.cardHeader}>
         <View style={[feedStyles.avatar, isLight && feedStyles.avatarLight]}>
@@ -1687,13 +1730,15 @@ export const FeedCard: React.FC<{
             <View style={feedStyles.socialMetric}>
               <TouchableOpacity
                 activeOpacity={0.78}
-                onPress={() => onLike(item)}
+                onPress={handleLike}
               >
-                <Ionicons
-                  name={item.likedByMe ? "heart" : "heart-outline"}
-                  size={22}
-                  color="#EF4444"
-                />
+                <Animated.View style={likePulseStyle}>
+                  <Ionicons
+                    name={item.likedByMe ? "heart" : "heart-outline"}
+                    size={22}
+                    color="#EF4444"
+                  />
+                </Animated.View>
               </TouchableOpacity>
               <Text style={[feedStyles.socialMetricText, isLight && feedStyles.socialMetricTextLight]}>
                 {item.likesCount ?? 0}
@@ -1760,13 +1805,15 @@ export const FeedCard: React.FC<{
           <TouchableOpacity
             style={feedStyles.footerAction}
             activeOpacity={0.78}
-            onPress={() => onLike(item)}
+            onPress={handleLike}
           >
-            <Ionicons
-              name={item.likedByMe ? "heart" : "heart-outline"}
-              size={17}
-              color={item.likedByMe ? "#EF4444" : isLight ? "#475569" : "#CBD5E1"}
-            />
+            <Animated.View style={likePulseStyle}>
+              <Ionicons
+                name={item.likedByMe ? "heart" : "heart-outline"}
+                size={17}
+                color={item.likedByMe ? "#EF4444" : isLight ? "#475569" : "#CBD5E1"}
+              />
+            </Animated.View>
             <Text
               style={[
                 feedStyles.footerText,
@@ -1827,7 +1874,7 @@ export const FeedCard: React.FC<{
           </TouchableOpacity>
         </View>
       ) : null}
-    </TouchableOpacity>
+    </MotionTouchable>
   );
 };
 
@@ -2155,15 +2202,17 @@ const HomeFeedScreen: React.FC = () => {
           onThemeToggle={toggle}
         />
 
-        <MetricRail
-          streakDays={me?.streakDays}
-          thisWeekPoints={me?.weeklyXp ?? 0}
-          weeklyWorkoutCount={me?.recentSessionsThisWeek ?? 0}
-          loggedWeekDays={loggedWeekDays}
-          cardWidth={metricCardWidth}
-          isLight={isLight}
-          onRecord={() => setManualVisible(true)}
-        />
+        <MotionEntrance delay={40}>
+          <MetricRail
+            streakDays={me?.streakDays}
+            thisWeekPoints={me?.weeklyXp ?? 0}
+            weeklyWorkoutCount={me?.recentSessionsThisWeek ?? 0}
+            loggedWeekDays={loggedWeekDays}
+            cardWidth={metricCardWidth}
+            isLight={isLight}
+            onRecord={() => setManualVisible(true)}
+          />
+        </MotionEntrance>
 
         {error ? (
           <Text
@@ -2188,29 +2237,33 @@ const HomeFeedScreen: React.FC = () => {
             </Text>
           </View>
         ) : (
-          feedItems.map((item) => (
-            <FeedCard
+          feedItems.map((item, index) => (
+            <MotionEntrance
               key={`${item.id}-${item.type}`}
-              item={item}
-              isLight={isLight}
-              openOnPress={false}
-              onOpen={() => undefined}
-              onLike={(activityItem) =>
-                void likeActivity(
-                  activityItem.id,
-                  Boolean(activityItem.likedByMe),
-                )
-              }
-              onComment={(activityItem) =>
-                void openComments(activityItem)
-              }
-              onShare={(activityItem) => void shareActivity(activityItem.id)}
-              onSave={(activityItem, saved) =>
-                activityItem.synthetic
-                  ? Promise.resolve()
-                  : setActivitySaved(activityItem.id, saved).then(() => undefined)
-              }
-            />
+              delay={Math.min(90 + index * 55, 360)}
+            >
+              <FeedCard
+                item={item}
+                isLight={isLight}
+                openOnPress={false}
+                onOpen={() => undefined}
+                onLike={(activityItem) =>
+                  void likeActivity(
+                    activityItem.id,
+                    Boolean(activityItem.likedByMe),
+                  )
+                }
+                onComment={(activityItem) =>
+                  void openComments(activityItem)
+                }
+                onShare={(activityItem) => void shareActivity(activityItem.id)}
+                onSave={(activityItem, saved) =>
+                  activityItem.synthetic
+                    ? Promise.resolve()
+                    : setActivitySaved(activityItem.id, saved).then(() => undefined)
+                }
+              />
+            </MotionEntrance>
           ))
         )}
       </ScrollView>

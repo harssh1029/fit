@@ -19,7 +19,7 @@ import type {
   AuthStackParamList,
   RegistrationOnboardingPayload,
 } from "../../App";
-import { API_BASE_URL } from "../../api/client";
+import { fetchApi } from "../../api/client";
 import { useAuth, useThemeMode } from "../../App";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { authStyles } from "./authStyles";
@@ -576,7 +576,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register/validate/`, {
+      const response = await fetchApi("/auth/register/validate/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -584,7 +584,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
           email: form.email.trim(),
           password: form.password,
         }),
-      });
+      }, { retries: 1 });
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));

@@ -25,6 +25,11 @@ import {
   FitnessIcon3D,
   type FitnessIcon3DName,
 } from "../../components/FitnessIcon3D";
+import {
+  MotionEntrance,
+  MotionProgressFill,
+  MotionTouchable,
+} from "../../components/PremiumMotion";
 import { useUserProfileBasic } from "../../hooks/useUserProfileBasic";
 import { useChallenges } from "../../hooks/useChallenges";
 import type { ApiChallenge, ChallengeStatus } from "../../types/challenges";
@@ -270,7 +275,7 @@ const ChallengesScreen: React.FC = () => {
         style={[styles.planSection, challengeStyles.difficultySection]}
       >
         <View style={challengeStyles.cardsGrid}>
-          {items.map((challenge) => {
+          {items.map((challenge, index) => {
             const status = (challenge.card.status ||
               "locked") as ChallengeStatus;
             const isDone = status === "done";
@@ -295,12 +300,16 @@ const ChallengesScreen: React.FC = () => {
             }
 
             return (
-              <View
+              <MotionEntrance
                 key={challenge.id}
+                delay={Math.min(170 + index * 55, 390)}
+                replayKey={`${difficulty}-${challenge.id}`}
                 style={challengeStyles.cardGridItem}
               >
-                <TouchableOpacity
+                <MotionTouchable
                   activeOpacity={0.9}
+                  lift={-3}
+                  pressedScale={0.996}
                   style={[
                     styles.viewWorkoutCard,
                     isLight
@@ -553,8 +562,8 @@ const ChallengesScreen: React.FC = () => {
                       />
                     </View>
                   </View>
-                </TouchableOpacity>
-              </View>
+                </MotionTouchable>
+              </MotionEntrance>
             );
           })}
         </View>
@@ -683,12 +692,13 @@ const ChallengesScreen: React.FC = () => {
           />
         )}
 
-        <View
-          style={[
-            challengeStyles.progressCard,
-            isLight && challengeStyles.progressCardLight,
-          ]}
-        >
+        <MotionEntrance delay={40}>
+          <View
+            style={[
+              challengeStyles.progressCard,
+              isLight && challengeStyles.progressCardLight,
+            ]}
+          >
           <View style={challengeStyles.progressCardInner}>
             <View style={challengeStyles.progressCardHeaderRow}>
               <View style={{ flex: 1, paddingRight: 14 }}>
@@ -771,15 +781,10 @@ const ChallengesScreen: React.FC = () => {
                   isLight && challengeStyles.progressCardMeterBarTrackLight,
                 ]}
               >
-                <View
-                  style={[
-                    challengeStyles.progressCardMeterBarFill,
-                    {
-                      width: `${Math.round(
-                        displayCompletionPercent * 100,
-                      )}%` as any,
-                    },
-                  ]}
+                <MotionProgressFill
+                  progress={displayCompletionPercent}
+                  delay={160}
+                  style={challengeStyles.progressCardMeterBarFill}
                 />
               </View>
             </View>
@@ -806,14 +811,16 @@ const ChallengesScreen: React.FC = () => {
               />
             </View>
           </View>
-        </View>
+          </View>
+        </MotionEntrance>
 
-        <View
-          style={[
-            challengeStyles.filterRow,
-            isLight && challengeStyles.filterRowLight,
-          ]}
-        >
+        <MotionEntrance delay={110}>
+          <View
+            style={[
+              challengeStyles.filterRow,
+              isLight && challengeStyles.filterRowLight,
+            ]}
+          >
           {(
             ["Beginner", "Intermediate", "Advanced"] as ChallengeDifficulty[]
           ).map((difficulty) => {
@@ -845,7 +852,8 @@ const ChallengesScreen: React.FC = () => {
               </TouchableOpacity>
             );
           })}
-        </View>
+          </View>
+        </MotionEntrance>
 
         {renderSection(activeDifficulty)}
       </ScrollView>
